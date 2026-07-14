@@ -49,3 +49,7 @@ pnpm-debug.log*
 *.mov
 *.mkv
 
+# Ignored directories
+sample_rfqs_pdf/
+
+
