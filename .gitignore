@@ -52,4 +52,6 @@ pnpm-debug.log*
 # Ignored directories
 sample_rfqs_pdf/
 
-
+# Ignored file types
+*.pdf
+*.txt
