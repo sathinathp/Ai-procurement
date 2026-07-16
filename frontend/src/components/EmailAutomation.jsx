@@ -15,6 +15,7 @@ export default function EmailAutomation({ redirectSupplierId, onNavigate }) {
   const [fetchingFollowups, setFetchingFollowups] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
+  const [oneClickLoading, setOneClickLoading] = useState(false);
 
   // Form compose state
   const [selectedRfqNum, setSelectedRfqNum] = useState('');
@@ -107,6 +108,40 @@ export default function EmailAutomation({ redirectSupplierId, onNavigate }) {
       });
   };
 
+  const handleOneClickSend = () => {
+    if (!selectedRfqNum || !selectedSupplierId) return;
+
+    setOneClickLoading(true);
+    setToastMsg('AI generating & sending RFQ inquiry...');
+
+    emailService.generateDraft(selectedRfqNum, selectedSupplierId)
+      .then((res) => {
+        const generatedSubject = res.data.subject;
+        const generatedBody = res.data.body;
+
+        setSubject(generatedSubject);
+        setBody(generatedBody);
+
+        return emailService.sendEmail(selectedRfqNum, selectedSupplierId, generatedSubject, generatedBody);
+      })
+      .then((res) => {
+        setToastMsg('RFQ inquiry email generated & dispatched!');
+        setOneClickLoading(false);
+        fetchFollowUps();
+
+        setTimeout(() => {
+          setToastMsg('');
+          setActiveTab('tracking');
+        }, 1500);
+      })
+      .catch((err) => {
+        console.error(err);
+        setOneClickLoading(false);
+        setToastMsg('');
+        alert('Failed to automatically generate and send email.');
+      });
+  };
+
   const handleTriggerReminder = (emailId) => {
     emailService.triggerReminder(emailId)
       .then((res) => {
@@ -188,6 +223,7 @@ export default function EmailAutomation({ redirectSupplierId, onNavigate }) {
                   value={selectedRfqNum}
                   onChange={(e) => setSelectedRfqNum(e.target.value)}
                   className="copilot-input"
+                  disabled={drafting || loading || oneClickLoading}
                 >
                   {rfqs.map((r, i) => (
                     <option key={i} value={r.rfq_number}>
@@ -203,6 +239,7 @@ export default function EmailAutomation({ redirectSupplierId, onNavigate }) {
                   value={selectedSupplierId}
                   onChange={(e) => setSelectedSupplierId(e.target.value)}
                   className="copilot-input"
+                  disabled={drafting || loading || oneClickLoading}
                 >
                   {suppliers.map((s, i) => (
                     <option key={i} value={s.id}>
@@ -212,15 +249,27 @@ export default function EmailAutomation({ redirectSupplierId, onNavigate }) {
                 </select>
               </div>
 
-              <div className="pt-2">
+              <div className="pt-2 space-y-2">
                 <button 
                   type="button"
                   onClick={handleGenerateDraft}
-                  disabled={drafting}
+                  disabled={drafting || loading || oneClickLoading}
                   className="w-full copilot-btn-secondary inline-flex items-center justify-center gap-1.5 text-xs py-2"
                 >
                   <RefreshCw size={14} className={drafting ? 'animate-spin' : ''} />
                   Re-Draft with AI
+                </button>
+
+                <button 
+                  type="button"
+                  onClick={handleOneClickSend}
+                  disabled={drafting || loading || oneClickLoading}
+                  className={`w-full text-white px-4 py-2.5 rounded-lg font-medium transition-colors duration-200 shadow-sm flex items-center justify-center gap-1.5 text-xs ${
+                    oneClickLoading ? 'bg-slate-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'
+                  }`}
+                >
+                  <Send size={14} className={oneClickLoading ? 'animate-spin' : ''} />
+                  {oneClickLoading ? 'Sending Inquiry...' : 'One-Click Send'}
                 </button>
               </div>
 
@@ -267,6 +316,7 @@ export default function EmailAutomation({ redirectSupplierId, onNavigate }) {
                     onChange={(e) => setSubject(e.target.value)}
                     placeholder="Enter email subject..."
                     className="copilot-input font-semibold text-slate-800"
+                    disabled={loading || oneClickLoading}
                     required
                   />
                 </div>
@@ -280,6 +330,7 @@ export default function EmailAutomation({ redirectSupplierId, onNavigate }) {
                     rows="12"
                     placeholder="Inquiry content details..."
                     className="copilot-input font-medium text-slate-700 leading-relaxed font-sans"
+                    disabled={loading || oneClickLoading}
                     required
                   ></textarea>
                 </div>
@@ -290,7 +341,7 @@ export default function EmailAutomation({ redirectSupplierId, onNavigate }) {
                   </span>
                   <button 
                     type="submit"
-                    disabled={loading}
+                    disabled={loading || oneClickLoading}
                     className="copilot-btn-primary px-6"
                   >
                     <Send size={14} /> Send RFQ Inquiry
