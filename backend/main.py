@@ -496,95 +496,86 @@ async def extract_rfq_upload(file: UploadFile = File(...)):
         logger.error(f"Error in RFQ document OCR extraction: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/api/rfqs/create")
-def create_rfq(data: Dict[str, Any], db: Session = Depends(get_db)):
+def create_rfq(rfq_data: dict, db: Session = Depends(get_db)):
     try:
-        # Check if RFQ number is provided or auto-generate
-        rfq_num = data.get("rfq_number")
-        if not rfq_num or rfq_num == "RFQ-2026-TEMP":
-            # Retrieve all existing RFQ numbers to find the highest index
-            rfq_idx = 1
-            existing_rfqs = db.query(models.RFQ.rfq_number).all()
-            if existing_rfqs:
-                existing_indices = []
-                for r in existing_rfqs:
-                    try:
-                        parts = r.rfq_number.split("-")
-                        if len(parts) >= 3:
-                            existing_indices.append(int(parts[-1]))
-                    except (ValueError, IndexError):
-                        pass
-                if existing_indices:
-                    rfq_idx = max(existing_indices) + 1
-                else:
-                    rfq_idx = len(existing_rfqs) + 1
-            else:
-                rfq_idx = 1
-            
-            rfq_num = f"RFQ-2026-{rfq_idx:03d}"
-            
-            # Loop to guarantee uniqueness
-            while db.query(models.RFQ).filter(models.RFQ.rfq_number == rfq_num).first() is not None:
-                rfq_idx += 1
-                rfq_num = f"RFQ-2026-{rfq_idx:03d}"
-                
-        # Parse Dates
-        def parse_date(d_str):
-            if not d_str:
+        rfq_number = rfq_data.get("rfq_number")
+        if not rfq_number or rfq_number == "RFQ-2026-TEMP":
+            import random as _rnd
+            rfq_number = f"RFQ-2026-{_rnd.randint(100, 999)}"
+
+        def _parse_date(val):
+            if not val:
                 return None
             try:
-                return datetime.strptime(d_str, "%Y-%m-%d").date()
-            except:
+                return datetime.strptime(str(val), "%Y-%m-%d").date()
+            except Exception:
                 return None
-                
-        new_rfq = models.RFQ(
-            rfq_number=rfq_num,
-            project_name=data.get("project_name", "New Project"),
-            department=data.get("department", "Procurement"),
-            required_date=parse_date(data.get("required_date")),
-            item_name=data.get("item_name", ""),
-            item_code=data.get("item_code"),
-            description=data.get("description"),
-            quantity=float(data.get("quantity", 0.0)),
-            unit=data.get("unit", "Pcs"),
-            specifications=data.get("specifications"),
-            drawing_attachment=data.get("drawing_attachment"),
-            priority=data.get("priority", "Medium"),
-            delivery_location=data.get("delivery_location"),
-            expected_delivery_date=parse_date(data.get("expected_delivery_date")),
-            remarks=data.get("remarks"),
-            status="Created",
-            created_at=datetime.utcnow()
-        )
-        
-        db.add(new_rfq)
-        
-        # Add Timeline event
-        timeline = models.RFQTimeline(
-            rfq_number=rfq_num,
-            stage="Created",
-            timestamp=datetime.utcnow(),
-            details=f"RFQ initialized manually by Procurement."
-        )
-        db.add(timeline)
-        
+
+        required_date      = _parse_date(rfq_data.get("required_date"))
+        expected_del_date  = _parse_date(rfq_data.get("expected_delivery_date"))
+
+        existing = db.query(models.RFQ).filter(models.RFQ.rfq_number == rfq_number).first()
+        if existing:
+            # Update (upsert)
+            existing.project_name         = rfq_data.get("project_name",       existing.project_name)
+            existing.department           = rfq_data.get("department",          existing.department)
+            existing.required_date        = required_date    or existing.required_date
+            existing.item_name            = rfq_data.get("item_name",           existing.item_name)
+            existing.item_code            = rfq_data.get("item_code",           existing.item_code)
+            existing.description          = rfq_data.get("description",         existing.description)
+            existing.quantity             = float(rfq_data.get("quantity",       existing.quantity))
+            existing.unit                 = rfq_data.get("unit",                existing.unit)
+            existing.specifications       = rfq_data.get("specifications",      existing.specifications)
+            existing.drawing_attachment   = rfq_data.get("drawing_attachment",  existing.drawing_attachment)
+            existing.priority             = rfq_data.get("priority",            existing.priority)
+            existing.delivery_location    = rfq_data.get("delivery_location",   existing.delivery_location)
+            existing.expected_delivery_date = expected_del_date or existing.expected_delivery_date
+            existing.remarks              = rfq_data.get("remarks",             existing.remarks)
+            new_rfq = existing
+        else:
+            # Create
+            new_rfq = models.RFQ(
+                rfq_number          = rfq_number,
+                project_name        = rfq_data.get("project_name", ""),
+                department          = rfq_data.get("department", "Procurement"),
+                required_date       = required_date,
+                item_name           = rfq_data.get("item_name", ""),
+                item_code           = rfq_data.get("item_code"),
+                description         = rfq_data.get("description"),
+                quantity            = float(rfq_data.get("quantity", 0)),
+                unit                = rfq_data.get("unit", "MT"),
+                specifications      = rfq_data.get("specifications"),
+                drawing_attachment  = rfq_data.get("drawing_attachment"),
+                priority            = rfq_data.get("priority", "Medium"),
+                delivery_location   = rfq_data.get("delivery_location", "Riyadh Warehouse"),
+                expected_delivery_date = expected_del_date,
+                remarks             = rfq_data.get("remarks"),
+                status              = "Created"
+            )
+            db.add(new_rfq)
+            db.add(models.RFQTimeline(
+                rfq_number = rfq_number,
+                stage      = "Created",
+                details    = f"RFQ initialized by {new_rfq.department} Department."
+            ))
+
         db.commit()
-        db.refresh(new_rfq)
-        
         return {
             "success": True,
             "rfq_number": new_rfq.rfq_number,
             "data": {
-                "rfq_number": new_rfq.rfq_number,
+                "rfq_number":   new_rfq.rfq_number,
                 "project_name": new_rfq.project_name,
-                "item_name": new_rfq.item_name,
-                "quantity": new_rfq.quantity,
-                "unit": new_rfq.unit,
-                "status": new_rfq.status
+                "item_name":    new_rfq.item_name,
+                "quantity":     new_rfq.quantity,
+                "unit":         new_rfq.unit,
+                "status":       new_rfq.status
             }
         }
     except Exception as e:
-        logger.error(f"Error creating RFQ: {e}")
+        logger.error(f"Error creating/updating RFQ: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -64,6 +64,12 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
 
+  // Edit Modal & More-Actions Dropdown
+  const [editModal, setEditModal] = useState(null);        // holds rfq object being edited
+  const [moreMenuRfq, setMoreMenuRfq] = useState(null);   // rfq_number of open more-menu
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+
   const fetchStats = () => {
     dashboardService.getStats()
       .then((res) => {
@@ -153,6 +159,14 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
       setShowCreate(true);
     }
   }, [initialOpenCreate]);
+
+  // Close more-menu when clicking outside
+  useEffect(() => {
+    if (moreMenuRfq === null) return;
+    const close = () => setMoreMenuRfq(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [moreMenuRfq]);
 
   const fetchRfqs = () => {
     setLoading(true);
@@ -308,7 +322,59 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
       setFormData(updatedData);
       executeCreateRfq(updatedData);
     }
-  };  const projectNames = ['All Projects', ...new Set(rfqs.map(r => r.project_name).filter(Boolean))];
+  };
+
+  // Open edit modal – pre-populate with existing row data
+  const handleEditRfq = (e, rfq) => {
+    e.stopPropagation();
+    setMoreMenuRfq(null);
+    setEditError('');
+    setEditModal({ ...rfq });
+  };
+
+  // Save edits back to the backend
+  const handleSaveEdit = () => {
+    if (!editModal?.item_name || !editModal?.quantity || !editModal?.unit) {
+      setEditError('Item Name, Quantity and Unit are required.');
+      return;
+    }
+    setEditSaving(true);
+    setEditError('');
+    rfqService.create(editModal)
+      .then(() => {
+        setEditSaving(false);
+        setEditModal(null);
+        setSuccessMsg(`RFQ ${editModal.rfq_number} updated successfully!`);
+        fetchRfqs();
+        setTimeout(() => setSuccessMsg(''), 3000);
+      })
+      .catch(() => {
+        setEditSaving(false);
+        setEditError('Save failed. Please try again.');
+      });
+  };
+
+  // Toggle more-actions dropdown
+  const handleMoreMenu = (e, rfqNumber) => {
+    e.stopPropagation();
+    setMoreMenuRfq(prev => (prev === rfqNumber ? null : rfqNumber));
+  };
+
+  // Build paginated page numbers with ellipsis
+  const buildPageNumbers = (total, current) => {
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+    const pages = [];
+    pages.push(1);
+    if (current > 4) pages.push('...');
+    const start = Math.max(2, current - 2);
+    const end   = Math.min(total - 1, current + 2);
+    for (let p = start; p <= end; p++) pages.push(p);
+    if (current < total - 3) pages.push('...');
+    pages.push(total);
+    return pages;
+  };
+
+  const projectNames = ['All Projects', ...new Set(rfqs.map(r => r.project_name).filter(Boolean))];
   const categoryNames = ['All Categories', ...new Set(rfqs.map(r => r.item_name).filter(Boolean))];
 
   const filteredRfqs = rfqs.filter(r => {
@@ -368,6 +434,150 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
         <div className="fixed top-4 right-4 bg-emerald-600 text-white px-4 py-3 rounded-lg shadow-lg z-50 flex items-center gap-2 animate-bounce">
           <CheckCircle size={20} />
           <span className="text-sm font-semibold">{successMsg}</span>
+        </div>
+      )}
+
+      {/* ── Edit RFQ Modal ── */}
+      {editModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm"
+          onClick={() => setEditModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white rounded-t-2xl">
+              <div>
+                <h2 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                  <Pencil size={15} className="text-amber-500" />
+                  Edit RFQ — <span className="text-[#0078d4]">{editModal.rfq_number}</span>
+                </h2>
+                <p className="text-[10px] text-slate-400 mt-0.5">Update the details below and save changes.</p>
+              </div>
+              <button
+                onClick={() => setEditModal(null)}
+                className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-700 transition-colors text-xs font-bold"
+              >✕</button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              {[
+                { label: 'Project Name', key: 'project_name', type: 'text' },
+                { label: 'Item Name *', key: 'item_name', type: 'text' },
+                { label: 'Item Code', key: 'item_code', type: 'text' },
+                { label: 'Quantity *', key: 'quantity', type: 'number' },
+              ].map(({ label, key, type }) => (
+                <div key={key}>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{label}</label>
+                  <input
+                    type={type}
+                    value={editModal[key] || ''}
+                    onChange={(e) => setEditModal(prev => ({ ...prev, [key]: e.target.value }))}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-semibold outline-none focus:border-[#0078d4] transition-colors bg-slate-50"
+                  />
+                </div>
+              ))}
+
+              {/* Unit dropdown */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Unit *</label>
+                <select
+                  value={editModal.unit || 'MT'}
+                  onChange={(e) => setEditModal(prev => ({ ...prev, unit: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-semibold outline-none focus:border-[#0078d4] bg-slate-50"
+                >
+                  {['MT', 'KG', 'Pcs', 'Rolls', 'L', 'Units'].map(u => <option key={u}>{u}</option>)}
+                </select>
+              </div>
+
+              {/* Priority dropdown */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Priority</label>
+                <select
+                  value={editModal.priority || 'Medium'}
+                  onChange={(e) => setEditModal(prev => ({ ...prev, priority: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-semibold outline-none focus:border-[#0078d4] bg-slate-50"
+                >
+                  {['Low', 'Medium', 'High'].map(p => <option key={p}>{p}</option>)}
+                </select>
+              </div>
+
+              {/* Required Date */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Required Date</label>
+                <input
+                  type="date"
+                  value={editModal.required_date || ''}
+                  onChange={(e) => setEditModal(prev => ({ ...prev, required_date: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-semibold outline-none focus:border-[#0078d4] bg-slate-50"
+                />
+              </div>
+
+              {/* Delivery Location */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Delivery Location</label>
+                <input
+                  type="text"
+                  value={editModal.delivery_location || ''}
+                  onChange={(e) => setEditModal(prev => ({ ...prev, delivery_location: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-semibold outline-none focus:border-[#0078d4] bg-slate-50"
+                />
+              </div>
+
+              {/* Description full width */}
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Description</label>
+                <textarea
+                  rows={3}
+                  value={editModal.description || ''}
+                  onChange={(e) => setEditModal(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-semibold outline-none focus:border-[#0078d4] bg-slate-50 resize-none"
+                />
+              </div>
+
+              {/* Remarks full width */}
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Remarks</label>
+                <textarea
+                  rows={2}
+                  value={editModal.remarks || ''}
+                  onChange={(e) => setEditModal(prev => ({ ...prev, remarks: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-semibold outline-none focus:border-[#0078d4] bg-slate-50 resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Error */}
+            {editError && (
+              <div className="mx-6 mb-3 px-3 py-2 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <AlertTriangle size={13} /> {editError}
+              </div>
+            )}
+
+            {/* Footer Buttons */}
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3 rounded-b-2xl bg-slate-50/60">
+              <button
+                onClick={() => setEditModal(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={editSaving}
+                className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-[#0078d4] hover:bg-[#106ebe] transition-colors disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {editSaving ? (
+                  <><RefreshCw size={12} className="animate-spin" /> Saving…</>
+                ) : (
+                  <><CheckCircle2 size={13} /> Save Changes</>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -507,53 +717,94 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
                             <tr 
                               key={i} 
                               onClick={() => handleSelectRfq(r.rfq_number)}
-                              className="hover:bg-slate-50/70 cursor-pointer transition-colors"
+                              className="hover:bg-blue-50/30 cursor-pointer transition-colors group"
                             >
-                              <td className="p-4 font-semibold text-[#0078d4]">{r.rfq_number}</td>
-                              <td className="p-4 text-slate-800">{r.project_name}</td>
-                              <td className="p-4 text-slate-900">{r.item_name}</td>
-                              <td className="p-4 text-right text-slate-600">{r.quantity} {r.unit}</td>
-                              <td className="p-4">
-                                <span className={`px-2.5 py-0.5 rounded text-[10px] font-extrabold ${
+                              <td className="p-3 font-bold text-[#0078d4] text-xs whitespace-nowrap">{r.rfq_number}</td>
+                              <td className="p-3 text-slate-800 max-w-[160px]">
+                                <span className="block truncate text-xs" title={r.project_name}>{r.project_name}</span>
+                              </td>
+                              <td className="p-3 text-slate-900 max-w-[130px]">
+                                <span className="block truncate text-xs font-semibold" title={r.item_name}>{r.item_name}</span>
+                              </td>
+                              <td className="p-3 text-right text-slate-600 text-xs whitespace-nowrap">{r.quantity} {r.unit}</td>
+                              <td className="p-3">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold whitespace-nowrap ${
                                   r.priority === 'High' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
                                   r.priority === 'Medium' ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-slate-50 text-slate-600 border border-slate-150'
                                 }`}>
                                   {r.priority}
                                 </span>
                               </td>
-                              <td className="p-4 text-slate-500">{r.required_date || 'N/A'}</td>
-                              <td className="p-4 text-slate-450">{r.created_at || 'N/A'}</td>
-                              <td className="p-4">
-                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${
-                                  statusLabel === 'Open' ? 'bg-emerald-50 text-emerald-700 border-emerald-150' :
-                                  statusLabel === 'Quotes Pending' ? 'bg-blue-50 text-blue-700 border-blue-150' :
-                                  statusLabel === 'Under Review' ? 'bg-purple-50 text-purple-700 border-purple-150' :
+                              <td className="p-3 text-slate-500 text-xs whitespace-nowrap">{r.required_date || '—'}</td>
+                              <td className="p-3 text-slate-450 text-xs whitespace-nowrap">{r.created_at || '—'}</td>
+                              <td className="p-3">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border whitespace-nowrap ${
+                                  statusLabel === 'Open' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                  statusLabel === 'Quotes Pending' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                  statusLabel === 'Under Review' ? 'bg-purple-50 text-purple-700 border-purple-200' :
                                   statusLabel === 'Closed' ? 'bg-slate-100 text-slate-700 border-slate-200' :
                                   'bg-slate-50 text-slate-600 border-slate-150'
                                 }`}>
                                   {statusLabel}
                                 </span>
                               </td>
-                              <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex items-center justify-center gap-1">
+                              <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-center gap-0.5 relative">
                                   <button 
                                     onClick={() => handleSelectRfq(r.rfq_number)}
-                                    className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-800 transition-colors"
+                                    className="p-1.5 hover:bg-blue-50 rounded-lg text-slate-400 hover:text-blue-600 transition-colors"
                                     title="View Details"
                                   >
                                     <Eye size={13} />
                                   </button>
                                   <button 
-                                    className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors"
-                                    title="Edit Draft"
+                                    onClick={(e) => handleEditRfq(e, r)}
+                                    className="p-1.5 hover:bg-amber-50 rounded-lg text-slate-400 hover:text-amber-600 transition-colors"
+                                    title="Edit RFQ"
                                   >
                                     <Pencil size={13} />
                                   </button>
                                   <button 
-                                    className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors"
+                                    onClick={(e) => handleMoreMenu(e, r.rfq_number)}
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-700 transition-colors"
+                                    title="More Actions"
                                   >
                                     <MoreVertical size={13} />
                                   </button>
+
+                                  {/* More-actions dropdown */}
+                                  {moreMenuRfq === r.rfq_number && (
+                                    <div
+                                      className="absolute right-0 top-7 z-50 w-44 bg-white rounded-xl shadow-xl border border-slate-150 py-1 text-xs font-semibold text-slate-700"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <button
+                                        onClick={() => { setMoreMenuRfq(null); handleSelectRfq(r.rfq_number); }}
+                                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors text-left"
+                                      >
+                                        <Eye size={12} className="text-blue-500" /> View Timeline
+                                      </button>
+                                      <button
+                                        onClick={(e) => handleEditRfq(e, r)}
+                                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors text-left"
+                                      >
+                                        <Pencil size={12} className="text-amber-500" /> Edit Draft
+                                      </button>
+                                      <div className="border-t border-slate-100 my-1" />
+                                      <button
+                                        onClick={() => { setMoreMenuRfq(null); alert(`Copied: ${r.rfq_number}`); }}
+                                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors text-left"
+                                      >
+                                        <Tag size={12} className="text-slate-400" /> Copy RFQ ID
+                                      </button>
+                                      <button
+                                        onClick={() => { setMoreMenuRfq(null); }}
+                                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-rose-50 text-rose-600 transition-colors text-left"
+                                      >
+                                        <AlertTriangle size={12} /> Flag for Review
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -580,22 +831,23 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
                         <ChevronLeft size={14} />
                       </button>
                       
-                      {Array.from({ length: totalPages }, (_, idx) => {
-                        const page = idx + 1;
-                        return (
+                      {buildPageNumbers(totalPages, currentPage).map((page, idx) =>
+                        page === '...' ? (
+                          <span key={`ellipsis-${idx}`} className="w-8 h-8 flex items-center justify-center text-slate-400 text-xs font-bold select-none">…</span>
+                        ) : (
                           <button
                             key={page}
                             onClick={() => setCurrentPage(page)}
                             className={`w-8 h-8 rounded-lg border text-xs font-bold transition-all ${
                               currentPage === page 
-                                ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm' 
+                                ? 'bg-[#0078d4] border-[#0078d4] text-white shadow-sm' 
                                 : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                             }`}
                           >
                             {page}
                           </button>
-                        );
-                      })}
+                        )
+                      )}
 
                       <button 
                         onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
