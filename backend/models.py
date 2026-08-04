@@ -166,3 +166,110 @@ class QualityDefect(Base):
     status = Column(String(100), default="Active") # Active, Resolved
 
 
+class GoodsReceiptNote(Base):
+    __tablename__ = "goods_receipt_notes"
+
+    grn_number = Column(String(100), primary_key=True, index=True)
+    po_number = Column(String(100), ForeignKey("purchase_orders.po_number"), nullable=False)
+    supplier_name = Column(String(255), nullable=False)
+    item_name = Column(String(255), nullable=False)
+    quantity_ordered = Column(Float, nullable=False)
+    quantity_received = Column(Float, nullable=False)
+    quantity_accepted = Column(Float, nullable=False)
+    quality_status = Column(String(100), default="Passed") # Passed, Rejected, QC Pending
+    grn_date = Column(DateTime, default=datetime.utcnow)
+    synced_to_erp = Column(Boolean, default=True)
+
+
+class InvoiceMatch(Base):
+    __tablename__ = "invoice_matches"
+
+    invoice_number = Column(String(100), primary_key=True, index=True)
+    po_number = Column(String(100), ForeignKey("purchase_orders.po_number"), nullable=False)
+    grn_number = Column(String(100), ForeignKey("goods_receipt_notes.grn_number"), nullable=True)
+    supplier_name = Column(String(255), nullable=False)
+    po_amount = Column(Float, nullable=False)
+    invoice_amount = Column(Float, nullable=False)
+    match_status = Column(String(100), default="Matched 3-Way") # Matched 3-Way, Price Mismatch, Quantity Mismatch, Pending
+    mismatch_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PaymentVoucher(Base):
+    __tablename__ = "payment_vouchers"
+
+    voucher_number = Column(String(100), primary_key=True, index=True)
+    invoice_number = Column(String(100), ForeignKey("invoice_matches.invoice_number"), nullable=False)
+    supplier_name = Column(String(255), nullable=False)
+    amount = Column(Float, nullable=False)
+    currency = Column(String(10), default="USD")
+    payment_status = Column(String(100), default="Approved") # Approved, Paid, Processing
+    payment_method = Column(String(100), default="Wire Transfer")
+    payment_date = Column(DateTime, default=datetime.utcnow)
+
+
+class ERPConfig(Base):
+    __tablename__ = "erp_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    erp_system = Column(String(50), default="Dynamics365") # Dynamics365, SAP_S4HANA, SAP_Ariba, Oracle
+    base_url = Column(String(500), default="https://neproplast-prod.operations.dynamics.com/data")
+    tenant_id = Column(String(255), default="72f988bf-86f1-41af-91ab-2d7cd011db47")
+    client_id = Column(String(255), default="d365-ai-procurement-app-client-id")
+    client_secret = Column(String(255), default="••••••••••••••••••••••••••••")
+    environment = Column(String(50), default="Production") # Production, Sandbox, Demo
+    sync_mode = Column(String(50), default="Live") # Live, Simulated
+    auto_sync_on_po = Column(Boolean, default=True)
+    last_connected_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(String(50), default="Connected") # Connected, Disconnected, Error
+
+
+class WorkflowNotification(Base):
+    """Human-in-the-loop notification — bot creates this when comparison is ready."""
+    __tablename__ = "workflow_notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    rfq_number = Column(String(100), nullable=False, index=True)
+    rfq_item = Column(String(255), nullable=True)
+    type = Column(String(100), default="approval_required")
+    # pending → approved → rejected
+    status = Column(String(50), default="pending")
+    # Winner supplier recommended by AI
+    recommended_supplier = Column(String(255), nullable=True)
+    recommended_price = Column(Float, nullable=True)
+    recommended_currency = Column(String(10), default="USD")
+    # Full comparison JSON blob stored as text
+    comparison_json = Column(Text, nullable=True)
+    # Short AI-written summary for the human
+    summary_message = Column(Text, nullable=True)
+    # Email notification sent to the human reviewer
+    notification_email_sent = Column(Boolean, default=False)
+    # PO number created after approval
+    po_number = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    reviewed_at = Column(DateTime, nullable=True)
+
+
+class NegotiationLog(Base):
+    """Tracks each negotiation round per supplier per RFQ."""
+    __tablename__ = "negotiation_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    rfq_number = Column(String(100), nullable=False, index=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
+    supplier_email = Column(String(255), nullable=True)
+    round_number = Column(Integer, default=1)
+    # outbound = bot sent; inbound = supplier replied
+    direction = Column(String(20), default="outbound")
+    subject = Column(String(255), nullable=True)
+    body = Column(Text, nullable=True)
+    extracted_price = Column(Float, nullable=True)
+    extracted_currency = Column(String(10), nullable=True)
+    extracted_lead_time = Column(Integer, nullable=True)
+    sent_at = Column(DateTime, default=datetime.utcnow)
+    # True once supplier has replied for this round
+    reply_received = Column(Boolean, default=False)
+    # Is this the final accepted price?
+    is_final = Column(Boolean, default=False)
+
+    supplier = relationship("Supplier")

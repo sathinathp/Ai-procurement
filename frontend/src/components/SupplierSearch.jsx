@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Search, Star, ShieldAlert, CheckCircle, Mail, Phone, 
-  MapPin, Clock, ExternalLink, Award, Sparkles, Send, Plus
+  MapPin, Clock, ExternalLink, Award, Sparkles, Send, Plus, Bot
 } from 'lucide-react';
 import { supplierService } from '../services/api';
 import SupplierProfileModal from './SupplierProfileModal';
@@ -79,204 +79,238 @@ export default function SupplierSearch({ onSendRfqRedirect }) {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50 space-y-6">
+    <div className="flex-1 overflow-y-auto p-6 bg-[#f8fafc] space-y-6">
       
-      {/* Search Header Banner */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Supplier Search Engine</h1>
-          <p className="text-xs text-slate-500 mt-1">Identify internal preferred suppliers or search external directories for raw chemicals.</p>
+      {/* Search Header Banner (Light, clean SaaS style) */}
+      <div className="bg-white border border-slate-200/80 rounded-xl p-6 shadow-sm space-y-5 relative overflow-hidden">
+        {/* Subtle top decoration line */}
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#0078d4] to-indigo-600"></div>
+        
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-2">
+              <Bot size={20} className="text-[#0078d4]" />
+              Supplier Search Engine
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">Query internal vendor records or scan global external marketplaces for industrial raw materials.</p>
+          </div>
+          <button 
+            type="button"
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-[#0078d4] hover:bg-[#106ebe] text-white text-xs font-bold rounded-lg transition-all shadow-sm"
+          >
+            <Plus size={14} /> Add Supplier
+          </button>
         </div>
 
         {/* Search Bar & Checkboxes */}
-        <form onSubmit={handleSearch} className="space-y-3">
+        <form onSubmit={handleSearch} className="space-y-4">
           <div className="flex gap-2">
             <div className="relative flex-1">
               <input 
                 type="text" 
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Enter item name, e.g. PVC Resin, HDPE Granules..."
-                className="w-full pl-10 pr-4 py-2.5 border border-slate-350 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0078d4]/30 focus:border-[#0078d4]"
+                placeholder="Search raw chemicals (e.g. PVC Resin, HDPE Granules, Stretch Film)..."
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0078d4]/20 focus:border-[#0078d4] focus:bg-white transition-all font-medium"
               />
-              <Search className="absolute left-3.5 top-3.5 text-slate-400" size={16} />
+              <Search className="absolute left-3.5 top-3.5 text-slate-400" size={14} />
             </div>
             <button 
               type="submit"
-              className="copilot-btn-primary px-6"
+              className="bg-[#0078d4] hover:bg-[#106ebe] text-white font-bold text-xs px-5 rounded-lg transition-all shadow-sm flex items-center gap-1.5"
             >
-              Search
-            </button>
-            <button 
-              type="button"
-              onClick={() => setShowAddModal(true)}
-              className="copilot-btn-secondary text-xs"
-            >
-              <Plus size={14} /> Add Supplier
+              <Search size={14} /> Search
             </button>
           </div>
 
-          {/* Sources Checkboxes */}
-          <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-slate-600 pt-1">
-            <span>Search Channels:</span>
+          {/* Sources Checkboxes (Styled as premium toggle pills) */}
+          <div className="flex flex-wrap items-center gap-2.5 text-xs font-medium text-slate-500 pt-1">
+            <span className="text-slate-400 mr-1 text-[11px] uppercase tracking-wider font-bold">Search Channels:</span>
             
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={sources.internal}
-                onChange={() => handleSourceToggle('internal')}
-                className="rounded border-slate-300 text-[#0078d4] focus:ring-[#0078d4]/30"
-              />
-              <span>Internal Suppliers (Seeded DB)</span>
-            </label>
+            <button 
+              type="button"
+              onClick={() => handleSourceToggle('internal')}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                sources.internal 
+                  ? 'bg-slate-900 border-slate-900 text-white shadow-sm' 
+                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <span>Internal Database</span>
+            </button>
 
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={sources.demo}
-                onChange={() => handleSourceToggle('demo')}
-                className="rounded border-slate-300 text-[#0078d4] focus:ring-[#0078d4]/30"
-              />
+            <button 
+              type="button"
+              onClick={() => handleSourceToggle('demo')}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                sources.demo 
+                  ? 'bg-slate-900 border-slate-900 text-white shadow-sm' 
+                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
               <span>Demo Catalog</span>
-            </label>
+            </button>
 
-            <label className="flex items-center gap-1.5 cursor-pointer flex-1 md:flex-none">
-              <input 
-                type="checkbox" 
-                checked={sources.google}
-                onChange={() => handleSourceToggle('google')}
-                className="rounded border-slate-300 text-[#0078d4] focus:ring-[#0078d4]/30"
-              />
-              <span className="text-slate-400">Google Search (Mocked Phase 2)</span>
-            </label>
+            <button 
+              type="button"
+              onClick={() => handleSourceToggle('google')}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                sources.google 
+                  ? 'bg-slate-900 border-slate-900 text-white shadow-sm' 
+                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <span>Google Search</span>
+            </button>
 
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={sources.alibaba}
-                onChange={() => handleSourceToggle('alibaba')}
-                className="rounded border-slate-300 text-[#0078d4] focus:ring-[#0078d4]/30"
-              />
-              <span className="text-slate-400">Alibaba Global (Mocked Phase 2)</span>
-            </label>
+            <button 
+              type="button"
+              onClick={() => handleSourceToggle('alibaba')}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                sources.alibaba 
+                  ? 'bg-slate-900 border-slate-900 text-white shadow-sm' 
+                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <span>Alibaba Global</span>
+            </button>
 
-            <label className="flex items-center gap-1.5 cursor-pointer text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100/70 px-2 py-1 rounded-lg transition-all shadow-sm">
-              <input 
-                type="checkbox" 
-                checked={aiSearchEnabled}
-                onChange={() => setAiSearchEnabled(!aiSearchEnabled)}
-                className="rounded border-indigo-400 text-indigo-600 focus:ring-indigo-500/30"
-              />
-              <Sparkles size={12} className="text-indigo-600 animate-pulse" />
-              <span>AI Supplier Finder (OpenAI Enabled)</span>
-            </label>
+            <button 
+              type="button"
+              onClick={() => setAiSearchEnabled(!aiSearchEnabled)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1.5 ${
+                aiSearchEnabled 
+                  ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' 
+                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <Sparkles size={11} className={aiSearchEnabled ? "text-white" : "text-indigo-500"} />
+              <span>AI Finder (GPT-4)</span>
+            </button>
           </div>
         </form>
       </div>
 
-      {/* Results grid / table */}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-          <span className="text-xs font-bold text-slate-700">Search Results</span>
-          <span className="text-[10px] bg-[#0078d4]/10 text-[#0078d4] px-2 py-0.5 rounded font-semibold">
-            {results.length} suppliers matching
-          </span>
+      {/* Results List */}
+      <div className="space-y-3.5">
+        <div className="flex justify-between items-center px-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold text-slate-400 tracking-wider uppercase">Search Results</span>
+            <span className="text-[10px] bg-slate-100 border border-slate-200/80 text-slate-600 px-2 py-0.5 rounded-md font-bold">
+              {results.length} suppliers matching
+            </span>
+          </div>
         </div>
 
         {loading ? (
-          <div className="p-12 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0078d4] mx-auto mb-2"></div>
-            <span className="text-xs text-slate-500 font-semibold">Scanning supply network databases...</span>
+          <div className="p-16 bg-white border border-slate-200 rounded-xl text-center shadow-sm">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0078d4] mx-auto mb-3"></div>
+            <span className="text-xs text-slate-500 font-bold">Scanning supply network databases...</span>
           </div>
         ) : results.length === 0 ? (
-          <div className="p-12 text-center text-slate-400 space-y-2">
+          <div className="p-16 bg-white border border-slate-200 rounded-xl text-center text-slate-400 space-y-3 shadow-sm">
             <Search className="mx-auto text-slate-300" size={32} />
-            <p className="text-xs font-semibold">No suppliers found. Search for "PVC Resin" or "HDPE Granules".</p>
+            <p className="text-xs font-bold text-slate-550">No suppliers found. Try searching for "PVC Resin" or "HDPE Granules".</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase tracking-wider text-[10px] font-semibold">
-                  <th className="p-4">Supplier Name</th>
-                  <th className="p-4">Origin</th>
-                  <th className="p-4">Contact Info</th>
-                  <th className="p-4 text-center">Rating</th>
-                  <th className="p-4 text-center">Delivery Score</th>
-                  <th className="p-4 text-center">Lead Time</th>
-                  <th className="p-4">Risk Profile</th>
-                  <th className="p-4">Channel Source</th>
-                  <th className="p-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-700">
-                {results.map((s, i) => (
-                  <tr key={i} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-4 font-semibold text-slate-800">
-                      <div className="flex items-center gap-1.5">
-                        <span>{s.name}</span>
+          <div className="space-y-3">
+            {results.map((s, i) => {
+              // Create dynamic avatar bg based on letter
+              const char = s.name.charAt(0).toUpperCase();
+              let avatarBg = "bg-indigo-50 text-indigo-700 border-indigo-100";
+              if (['A','B','C'].includes(char)) avatarBg = "bg-blue-50 text-blue-705 border-blue-100";
+              else if (['D','E','F','G'].includes(char)) avatarBg = "bg-emerald-50 text-emerald-700 border-emerald-100";
+              else if (['H','I','J','K'].includes(char)) avatarBg = "bg-violet-50 text-violet-750 border-violet-100";
+              else if (['L','M','N','O'].includes(char)) avatarBg = "bg-amber-50 text-amber-705 border-amber-100";
+
+              return (
+                <div key={i} className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm hover:shadow-[0_4px_12px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-all duration-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm border shrink-0 ${avatarBg}`}>
+                      {char}
+                    </div>
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 
+                          className="font-bold text-slate-800 text-sm hover:text-[#0078d4] hover:underline cursor-pointer truncate" 
+                          onClick={() => setSelectedSupplierId(s.id)}
+                        >
+                          {s.name}
+                        </h3>
                         {s.preferred && (
-                          <Award size={14} className="text-[#0078d4]" title="Preferred Supplier" />
+                          <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
+                            Preferred
+                          </span>
                         )}
                       </div>
-                    </td>
-                    <td className="p-4 text-slate-500">{s.country}</td>
-                    <td className="p-4 space-y-0.5">
-                      <div className="flex items-center gap-1 text-[11px] text-slate-600">
-                        <Mail size={12} className="text-slate-400" />
-                        <span>{s.email}</span>
+                      <div className="flex items-center gap-1 text-[11px] text-slate-400 font-medium">
+                        <MapPin size={10} className="text-slate-400" />
+                        <span>{s.country}</span>
                       </div>
-                      <div className="flex items-center gap-1 text-[11px] text-slate-600">
-                        <Phone size={12} className="text-slate-400" />
-                        <span>{s.phone}</span>
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] pt-0.5">
+                        <span className="flex items-center gap-1 text-slate-500">
+                          <Mail size={11} className="text-slate-400" />
+                          <span className="font-semibold truncate max-w-[170px]">{s.email}</span>
+                        </span>
+                        <span className="flex items-center gap-1 text-slate-500">
+                          <Phone size={11} className="text-slate-400" />
+                          <span className="font-semibold">{s.phone}</span>
+                        </span>
                       </div>
-                    </td>
-                    <td className="p-4 text-center font-bold text-amber-500">
-                      <div className="flex items-center justify-center gap-0.5">
-                        <Star fill="currentColor" size={12} />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 lg:gap-8 items-center border-t border-slate-50 lg:border-t-0 pt-3 lg:pt-0">
+                    <div className="text-center lg:text-left">
+                      <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block">Rating</span>
+                      <div className="flex items-center justify-center lg:justify-start gap-1 font-bold text-amber-550 text-xs mt-0.5">
+                        <Star fill="currentColor" size={11} />
                         <span>{s.rating}</span>
                       </div>
-                    </td>
-                    <td className="p-4 text-center font-semibold text-slate-800">
-                      {s.delivery_score ? `${s.delivery_score}%` : 'N/A'}
-                    </td>
-                    <td className="p-4 text-center text-slate-600 font-semibold">
-                      <div className="flex items-center justify-center gap-1">
-                        <Clock size={12} className="text-slate-400" />
+                    </div>
+
+                    <div className="text-center lg:text-left">
+                      <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block">On-Time</span>
+                      <span className="font-bold text-slate-700 text-xs mt-0.5 block">{s.delivery_score ? `${s.delivery_score}%` : 'N/A'}</span>
+                    </div>
+
+                    <div className="text-center lg:text-left">
+                      <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block">Lead Time</span>
+                      <div className="flex items-center justify-center lg:justify-start gap-1 font-bold text-slate-700 text-xs mt-0.5">
+                        <Clock size={11} className="text-slate-400" />
                         <span>{s.lead_time} days</span>
                       </div>
-                    </td>
-                    <td className="p-4">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                        s.risk_level === 'Low' ? 'bg-emerald-50 text-emerald-700' :
-                        s.risk_level === 'Medium' ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'
+                    </div>
+
+                    <div className="text-center lg:text-left">
+                      <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider block">Risk</span>
+                      <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-bold border uppercase tracking-wider mt-0.5 ${
+                        s.risk_level === 'Low' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                        s.risk_level === 'Medium' ? 'bg-amber-50 text-amber-705 border-amber-200' : 'bg-rose-50 text-rose-700 border-rose-200'
                       }`}>
                         {s.risk_level}
                       </span>
-                    </td>
-                    <td className="p-4">
-                      <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium border border-slate-150">
-                        {s.source}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right space-x-1.5">
-                      <button 
-                        onClick={() => setSelectedSupplierId(s.id)}
-                        className="text-[#0078d4] hover:text-[#106ebe] font-semibold text-xs bg-[#0078d4]/10 hover:bg-[#0078d4]/20 px-2.5 py-1.5 rounded transition-all"
-                      >
-                        View Scorecard
-                      </button>
-                      <button 
-                        onClick={() => onSendRfqRedirect(s.id)}
-                        className="copilot-btn-primary text-xs px-2.5 py-1.5 inline-flex items-center gap-1 shadow-none"
-                      >
-                        <Send size={12} /> Send RFQ
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 justify-end pt-3 border-t border-slate-50 lg:border-t-0 lg:pt-0 shrink-0">
+                    <button 
+                      onClick={() => setSelectedSupplierId(s.id)}
+                      className="px-3.5 py-1.5 bg-slate-50 border border-slate-200 text-slate-750 hover:bg-slate-100 hover:border-slate-300 text-xs font-bold rounded-lg transition-all"
+                    >
+                      View Scorecard
+                    </button>
+                    <button 
+                      onClick={() => onSendRfqRedirect(s.id)}
+                      className="px-3.5 py-1.5 bg-[#0078d4] text-white hover:bg-[#106ebe] text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5"
+                    >
+                      <Send size={11} /> Send RFQ
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

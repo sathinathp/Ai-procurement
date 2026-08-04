@@ -6,8 +6,7 @@ import re
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
-from models import Supplier, RFQ, QuoteResponse, PurchaseOrder, EmailHistory, RFQTimeline
-from openai import OpenAI
+from models import Supplier, RFQ, QuoteResponse, PurchaseOrder, EmailHistory, RFQTimeline, InventoryItem
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +41,33 @@ def get_db_context(query: str, db: Session) -> str:
                [r[0] for r in db.query(RFQ.item_name).distinct().all()]
     items_to_check = list(set([item.strip() for item in db_items if item and item.strip()]))
     
+    # Check pending approvals
+    if "approval" in lowered or "pending approval" in lowered:
+        pending_rfqs = db.query(RFQ).filter(RFQ.status.in_(["Responses Received", "Under Comparison"])).limit(5).all()
+        pending_pos = db.query(PurchaseOrder).filter(PurchaseOrder.status == "Draft").limit(5).all()
+        p_data = {
+            "pending_rfqs": [{"rfq_number": r.rfq_number, "item_name": r.item_name, "quantity": r.quantity, "unit": r.unit, "status": r.status} for r in pending_rfqs],
+            "pending_pos": [{"po_number": p.po_number, "item_name": p.item_name, "total_amount": p.total_amount, "status": p.status} for p in pending_pos]
+        }
+        context.append(f"Pending Approvals Facts: {json.dumps(p_data)}")
+
+    # Check inventory stock
+    if "inventory" in lowered or "stock" in lowered or "warehouse" in lowered:
+        inv_items = db.query(InventoryItem).all()
+        inv_data = [{"item_name": i.item_name, "stock_level": i.stock_level, "min_safety_stock": i.min_safety_stock, "unit": i.unit} for i in inv_items]
+        context.append(f"Inventory Stock Levels: {json.dumps(inv_data)}")
+
+    # Check cheapest / top rated suppliers
+    if "cheapest" in lowered or "cheapest supplier" in lowered or "lowest price" in lowered:
+        cheap_sups = db.query(Supplier).order_by(desc(Supplier.price_competitiveness)).limit(5).all()
+        cheap_data = [{"name": s.name, "price_competitiveness": s.price_competitiveness, "rating": s.rating, "products": s.products[:80] if s.products else ""} for s in cheap_sups]
+        context.append(f"Most Price-Competitive Suppliers: {json.dumps(cheap_data)}")
+
+    if "highest rating" in lowered or "top rating" in lowered or "best supplier" in lowered:
+        top_sups = db.query(Supplier).order_by(desc(Supplier.rating)).limit(5).all()
+        top_data = [{"name": s.name, "rating": s.rating, "delivery_score": s.delivery_score, "quality_score": s.quality_score, "country": s.country} for s in top_sups]
+        context.append(f"Top Rated Suppliers: {json.dumps(top_data)}")
+        
     # 1. Fuzzy match suppliers
     matched_supplier = None
     supplier_names_map = {s.name.lower(): s for s in all_suppliers}
@@ -339,6 +365,74 @@ def get_mock_copilot_response(query: str, db: Session) -> str:
     lowered = query.lower()
     words = clean_words(query)
     
+    # 1. Answer regarding Pending Approvals
+    if "approval" in lowered or "pending approval" in lowered:
+        pending_rfqs = db.query(RFQ).filter(RFQ.status.in_(["Responses Received", "Under Comparison"])).limit(5).all()
+        rfq_str = "\n".join([f"- **{r.rfq_number}**: {r.item_name} ({r.quantity} {r.unit}) — Status: **{r.status}**" for r in pending_rfqs]) if pending_rfqs else "No pending RFQ approvals."
+        return (
+            "Here are the active items currently awaiting managerial review and approval:\n\n"
+            f"**Pending RFQs for Supplier Selection:**\n{rfq_str}\n\n"
+            "**Pending Purchase Orders:**\n- **PO-2026-0512**: Ready for executive release ($120,000 Total Amount)"
+        )
+
+    # 2. Answer regarding Today's RFQs
+    if "today" in lowered and "rfq" in lowered:
+        recent_rfqs = db.query(RFQ).order_by(desc(RFQ.created_at)).limit(5).all()
+        rfq_rows = [f"- **{r.rfq_number}**: **{r.item_name}** ({r.quantity} {r.unit}) for project *{r.project_name}* — Priority: **{r.priority}**" for r in recent_rfqs]
+        return "Here are the newly registered RFQs in the system:\n\n" + "\n".join(rfq_rows)
+
+    # 3. Answer regarding Cheapest Supplier
+    if "cheapest" in lowered or "lowest price" in lowered:
+        cheap = db.query(Supplier).order_by(desc(Supplier.price_competitiveness)).limit(3).all()
+        rows = [f"- **{s.name}** ({s.country}): Price Competitiveness Score **{s.price_competitiveness}%** (Rating: {s.rating}/5.0)" for s in cheap]
+        return "The most price-competitive suppliers in our database are:\n\n" + "\n".join(rows)
+
+    # 4. Answer regarding Highest Rating
+    if "highest rating" in lowered or "top rating" in lowered or "highest rated" in lowered:
+        top = db.query(Supplier).order_by(desc(Supplier.rating)).limit(3).all()
+        rows = [f"- ⭐⭐⭐⭐⭐ **{s.name}** ({s.country}): **{s.rating} / 5.0 Rating** (Delivery Score: {s.delivery_score}%, Quality Score: {s.quality_score}%)" for s in top]
+        return "The highest rated enterprise suppliers in Neproplast's directory are:\n\n" + "\n".join(rows)
+
+    # 5. Answer regarding Inventory
+    if "inventory" in lowered or "stock" in lowered or "warehouse" in lowered:
+        inv_items = db.query(InventoryItem).all()
+        if inv_items:
+            rows = [f"- **{i.item_name}**: Stock **{i.stock_level} {i.unit}** (Safety Threshold: {i.min_safety_stock} {i.unit}) — " + ("⚠️ **BELOW SAFETY STOCK**" if i.stock_level < i.min_safety_stock else "✅ Optimal") for i in inv_items]
+            return "Here is the current live raw material inventory stock level across our plant warehouses:\n\n" + "\n".join(rows)
+        return "Raw polymer stock: PVC Resin (85 MT), HDPE Granules (35 MT - Below Safety Stock), LDPE Film (72 MT)."
+
+    # 6. Answer regarding Supplier Selection Rationale
+    if "why" in lowered and "selected" in lowered or "recommendation" in lowered:
+        return (
+            "**AI Supplier Selection Matrix Rationale:**\n\n"
+            "1. **Cost Weight (40%)**: Calculated total landed cost including shipping and tariffs.\n"
+            "2. **Delivery & Lead Time (25%)**: Prioritizes vendors with high on-time performance (>95%) and short lead times.\n"
+            "3. **Quality & Compliance (20%)**: Required ISO-9001 compliance and past batch COA inspection records.\n"
+            "4. **Financial Health & Risk (15%)**: Evaluates credit rating, geopolitical stability, and single-source dependency risk."
+        )
+
+    # 7. Answer regarding Procurement Policy
+    if "policy" in lowered or "rule" in lowered or "procurement policy" in lowered:
+        return (
+            "📜 **Neproplast Corporate AI Procurement Policy Summary:**\n\n"
+            "1. **Competitive Bidding**: All purchase requisitions above SAR 50,000 / USD 13,300 require a minimum of **3 competitive supplier quotes**.\n"
+            "2. **Approval Tiers**: Department Head sign-off for <$50k; Executive Vice President sign-off for >$50k.\n"
+            "3. **Payment Terms Standard**: Corporate standard is **Net 60 Days** or Letter of Credit (LC).\n"
+            "4. **Quality & ISO Compliance**: All raw material polymer suppliers must provide Certificate of Analysis (COA) for every shipment.\n"
+            "5. **3-Way Matching**: Automated financial release requires a 100% 3-Way Match between PO, GRN (Goods Receipt Note), and Supplier Invoice."
+        )
+
+    # 8. Answer regarding Report Generation
+    if "report" in lowered or "generate report" in lowered:
+        return (
+            "📊 **Procurement Operations Report Ready!**\n\n"
+            "- **Registered Suppliers**: 100 Active Vendors\n"
+            "- **Processed RFQs**: 500 RFQs\n"
+            "- **Released POs**: 300 Purchase Orders\n"
+            "- **Total Spend**: $4.85 Million USD\n\n"
+            "You can download the full official report in PDF format from the Operations Dashboard."
+        )
+    
     # Get all suppliers and items from DB
     all_suppliers = db.query(Supplier).all()
     db_items = [r[0] for r in db.query(PurchaseOrder.item_name).distinct().all()] + \
@@ -571,13 +665,16 @@ def get_mock_copilot_response(query: str, db: Session) -> str:
     return (
         "Hello! I am your Procurement AI Copilot. I can search through our database of suppliers, RFQs, quote responses, "
         "and purchase orders. Ask me things like:\n\n"
+        "- *Show pending approvals*\n"
         "- *What is the last purchase price of PVC Resin?*\n"
         "- *Who supplied HDPE Granules last?*\n"
-        "- *Who has the best delivery score?*\n"
-        "- *Which suppliers have delayed deliveries recently?*\n"
-        "- *How many pending RFQs do we have?*\n"
-        "- *Show suppliers from Germany.*"
+        "- *Which supplier has the highest rating?*\n"
+        "- *Show inventory stock levels*\n"
+        "- *Why was SABIC Polymers selected?*\n"
+        "- *Explain procurement policy*\n"
+        "- *Which suppliers have delayed deliveries recently?*"
     )
+
 
 def copilot_chat(messages: list, rfq_number: Optional[str], db: Session, openai_key: Optional[str] = None) -> str:
     """

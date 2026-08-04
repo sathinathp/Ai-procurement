@@ -55,3 +55,6 @@ sample_rfqs_pdf/
 # Ignored file types
 *.pdf
 *.txt
+*.db
+scratch_*.py
+backend/scratch_*.py

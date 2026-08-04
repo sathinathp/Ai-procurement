@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -65,12 +65,19 @@ export const copilotService = {
 
 export const campaignService = {
   simulate: (rfqNumber) => api.post('/api/campaign/simulate', { rfq_number: rfqNumber }),
+  launchReal: (rfqNumber, supplierIds) => api.post('/api/campaign/launch-real', { rfq_number: rfqNumber, supplier_ids: supplierIds }),
+  injectMockReply: (rfqNumber, supplierId, price, leadTime, paymentTerms, rejected) => api.post('/api/campaign/inject-mock-reply', { rfq_number: rfqNumber, supplier_id: supplierId, price, lead_time: leadTime, payment_terms: paymentTerms, rejected }),
+  getRealStatus: (rfqNumber) => api.get('/api/campaign/real-status', { params: { rfq_number: rfqNumber } }),
 };
 
 export const erpService = {
   sync: (objectType, objectId) => api.post('/api/erp/sync', { object_type: objectType, object_id: objectId }),
   getLogs: () => api.get('/api/erp/logs'),
   getStats: () => api.get('/api/erp/stats'),
+  getConfig: () => api.get('/api/erp/config'),
+  saveConfig: (data) => api.post('/api/erp/config', data),
+  testConnection: (data) => api.post('/api/erp/test-connection', data),
+  importFromOdoo: () => api.post('/api/erp/import-suppliers-from-odoo'),
 };
 
 export const phase2Service = {
@@ -94,8 +101,23 @@ export const phase2Service = {
   getPowerBiData: () => api.get('/api/phase2/powerbi-data'),
 };
 
+export const workflowService = {
+  validateMaterial: (data) => api.post('/api/materials/validate', data),
+  getGrns: () => api.get('/api/grn'),
+  createGrn: (data) => api.post('/api/grn/create', data),
+  getThreeWayMatches: () => api.get('/api/matching/3way'),
+  getPayments: () => api.get('/api/payments'),
+  downloadAuditReport: () => window.open(`${API_BASE_URL}/api/audit/report/download`),
+  getNotifications: () => api.get('/api/workflow/notifications'),
+  approveNotification: (id) => api.post(`/api/workflow/notifications/${id}/approve`),
+  rejectNotification: (id) => api.post(`/api/workflow/notifications/${id}/reject`),
+  getAgentSettings: () => api.get('/api/agent/settings'),
+  saveAgentSettings: (data) => api.post('/api/agent/settings', data),
+};
+
 export const dbService = {
   seed: () => api.post('/api/db/seed'),
 };
 
 export default api;
+

@@ -7,7 +7,7 @@ import {
   Calendar, Cpu, Eye, FileSearch, Database, BarChart2, TrendingUp, 
   Sparkles, RefreshCw, AlertTriangle, ShieldCheck, Play, ArrowRight, Upload
 } from 'lucide-react';
-import { rfqService, erpService, phase2Service } from '../services/api';
+import { rfqService, erpService, phase2Service, workflowService } from '../services/api';
 
 export default function Phase2Modules({ tab }) {
   const [loading, setLoading] = useState(false);
@@ -18,6 +18,8 @@ export default function Phase2Modules({ tab }) {
   const [erpStats, setErpStats] = useState({ synced_vendors: 0, synced_pos: 0, logs_count: 0 });
   const [erpLogs, setErpLogs] = useState([]);
   const [activeLog, setActiveLog] = useState(null);
+  const [odooSyncing, setOdooSyncing] = useState(false);
+  const [odooSyncResult, setOdooSyncResult] = useState(null);
 
   // Phase 2 state variables
   const [prodPlanning, setProdPlanning] = useState({ jobs: [], oee: [] });
@@ -26,6 +28,12 @@ export default function Phase2Modules({ tab }) {
   const [qualityVision, setQualityVision] = useState([]);
   const [drawingAnalysis, setDrawingAnalysis] = useState(null);
   const [powerBiData, setPowerBiData] = useState({ pie_data: [], line_data: [] });
+
+  // 20-Step End-to-End Workflow state variables
+  const [grns, setGrns] = useState([]);
+  const [threeWayMatches, setThreeWayMatches] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [activeMatchingSubTab, setActiveMatchingSubTab] = useState('3way');
 
   React.useEffect(() => {
     loadTabData();
@@ -79,6 +87,17 @@ export default function Phase2Modules({ tab }) {
           setLoading(false);
         })
         .catch(err => { console.error(err); setLoading(false); });
+    } else if (tab === 'grn_matching') {
+      Promise.all([
+        workflowService.getGrns(),
+        workflowService.getThreeWayMatches(),
+        workflowService.getPayments()
+      ]).then(([grnRes, matchRes, payRes]) => {
+        setGrns(grnRes.data);
+        setThreeWayMatches(matchRes.data);
+        setPayments(payRes.data);
+        setLoading(false);
+      }).catch(err => { console.error(err); setLoading(false); });
     } else {
       setLoading(false);
     }
@@ -109,6 +128,24 @@ export default function Phase2Modules({ tab }) {
       setActionSuccess('Data successfully synchronized with Dynamics 365 F&O!');
       setTimeout(() => setActionSuccess(''), 4000);
     }, 1500);
+  };
+
+  const handleOdooSync = () => {
+    setOdooSyncing(true);
+    setOdooSyncResult(null);
+    erpService.importFromOdoo()
+      .then(res => {
+        setOdooSyncing(false);
+        const { imported_count, total_found } = res.data;
+        setOdooSyncResult({ success: true, msg: `✅ Odoo Sync Complete — ${imported_count} new supplier(s) imported (${total_found} found in Odoo).` });
+        loadErpData();
+        setTimeout(() => setOdooSyncResult(null), 6000);
+      })
+      .catch(err => {
+        setOdooSyncing(false);
+        setOdooSyncResult({ success: false, msg: `❌ Odoo sync failed: ${err?.response?.data?.detail || err.message}` });
+        setTimeout(() => setOdooSyncResult(null), 6000);
+      });
   };
 
   const handleOptimizeSchedule = () => {
@@ -626,21 +663,42 @@ export default function Phase2Modules({ tab }) {
       {/* 7. LIVE ERP LINK */}
       {tab === 'erp_link' && (
         <div className="space-y-6">
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex justify-between items-center">
-            <div>
-              <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <Database className="text-[#0078d4]" /> Dynamics 365 ERP Link Console
-              </h1>
-              <p className="text-xs text-slate-500 mt-1">Synchronize local procurement database objects with Microsoft Dynamics 365 ERP.</p>
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                  <Database className="text-[#0078d4]" /> Dynamics 365 &amp; Odoo ERP Link Console
+                </h1>
+                <p className="text-xs text-slate-500 mt-1">Synchronize local procurement database objects with Microsoft Dynamics 365 and Odoo Cloud ERP.</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={handleOdooSync}
+                  disabled={odooSyncing || loading}
+                  className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-3 py-2 rounded-lg font-bold text-xs shadow-sm transition-all"
+                >
+                  <RefreshCw size={13} className={odooSyncing ? 'animate-spin' : ''} />
+                  {odooSyncing ? 'Syncing Odoo...' : '⬇ Import from Odoo'}
+                </button>
+                <button 
+                  onClick={handleForceSync}
+                  disabled={loading}
+                  className="copilot-btn-primary text-xs"
+                >
+                  <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                  {loading ? 'Transmitting...' : 'Force D365 Sync'}
+                </button>
+              </div>
             </div>
-            <button 
-              onClick={handleForceSync}
-              disabled={loading}
-              className="copilot-btn-primary text-xs"
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-              {loading ? 'Transmitting data...' : 'Force Dynamics 365 Sync'}
-            </button>
+            {odooSyncResult && (
+              <div className={`mt-3 px-4 py-2.5 rounded-lg text-xs font-semibold border ${
+                odooSyncResult.success
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-rose-50 border-rose-200 text-rose-800'
+              }`}>
+                {odooSyncResult.msg}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -822,6 +880,268 @@ export default function Phase2Modules({ tab }) {
         </div>
       )}
 
+      {/* 9. GRN, 3-WAY MATCHING & PAYMENTS (STEPS 16-18) */}
+      {tab === 'grn_matching' && (
+        <div className="space-y-6">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <ShieldCheck className="text-emerald-600" /> Goods Receipt (GRN), 3-Way Matching & Payment Audit
+              </h1>
+              <p className="text-xs text-slate-500 mt-1">Steps 16, 17, 18: Automated reconciliation between POs, Goods Receipt Notes, and Supplier Invoices with ERP settlement.</p>
+            </div>
+            <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs font-semibold">
+              <button
+                onClick={() => setActiveMatchingSubTab('3way')}
+                className={`px-3 py-1.5 rounded-md transition-all ${activeMatchingSubTab === '3way' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+              >
+                3-Way Invoice Match ({threeWayMatches.length})
+              </button>
+              <button
+                onClick={() => setActiveMatchingSubTab('grn')}
+                className={`px-3 py-1.5 rounded-md transition-all ${activeMatchingSubTab === 'grn' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+              >
+                Goods Receipt Notes ({grns.length})
+              </button>
+              <button
+                onClick={() => setActiveMatchingSubTab('payments')}
+                className={`px-3 py-1.5 rounded-md transition-all ${activeMatchingSubTab === 'payments' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+              >
+                Payment Vouchers ({payments.length})
+              </button>
+            </div>
+          </div>
+
+          {/* Subtab 1: 3-Way Matching */}
+          {activeMatchingSubTab === '3way' && (
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                <h3 className="text-sm font-bold text-slate-800">PO vs GRN vs Supplier Invoice Reconciliations</h3>
+                <span className="text-xs text-emerald-600 font-semibold bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
+                  98.2% Match Accuracy Rate
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="p-3">Invoice #</th>
+                      <th className="p-3">PO Reference</th>
+                      <th className="p-3">GRN Reference</th>
+                      <th className="p-3">Supplier Name</th>
+                      <th className="p-3">PO Amount</th>
+                      <th className="p-3">Invoice Amount</th>
+                      <th className="p-3">Match Status</th>
+                      <th className="p-3">Audit Details</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {threeWayMatches.map((m, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="p-3 font-mono font-bold text-slate-800">{m.invoice_number}</td>
+                        <td className="p-3 font-mono text-[#0078d4]">{m.po_number}</td>
+                        <td className="p-3 font-mono text-slate-600">{m.grn_number}</td>
+                        <td className="p-3 font-semibold text-slate-800">{m.supplier_name}</td>
+                        <td className="p-3 font-bold text-slate-700">${m.po_amount?.toLocaleString()}</td>
+                        <td className="p-3 font-bold text-slate-900">${m.invoice_amount?.toLocaleString()}</td>
+                        <td className="p-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            m.match_status === 'Matched 3-Way' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-300'
+                          }`}>
+                            {m.match_status}
+                          </span>
+                        </td>
+                        <td className="p-3 text-[11px] text-slate-500 max-w-xs truncate" title={m.mismatch_reason}>
+                          {m.mismatch_reason}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Subtab 2: Goods Receipt Notes */}
+          {activeMatchingSubTab === 'grn' && (
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                <h3 className="text-sm font-bold text-slate-800">Physical Warehouse Goods Receipt Notes (GRN)</h3>
+                <span className="text-xs text-blue-600 font-semibold bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200">
+                  Synced with Dynamics 365
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="p-3">GRN #</th>
+                      <th className="p-3">PO Reference</th>
+                      <th className="p-3">Supplier Name</th>
+                      <th className="p-3">Item Description</th>
+                      <th className="p-3">Qty Ordered</th>
+                      <th className="p-3">Qty Received</th>
+                      <th className="p-3">Qty Accepted</th>
+                      <th className="p-3">Quality Inspection</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {grns.map((g, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="p-3 font-mono font-bold text-slate-800">{g.grn_number}</td>
+                        <td className="p-3 font-mono text-[#0078d4]">{g.po_number}</td>
+                        <td className="p-3 font-semibold text-slate-800">{g.supplier_name}</td>
+                        <td className="p-3 text-slate-600">{g.item_name}</td>
+                        <td className="p-3 font-semibold">{g.quantity_ordered}</td>
+                        <td className="p-3 font-semibold">{g.quantity_received}</td>
+                        <td className="p-3 font-bold text-emerald-600">{g.quantity_accepted}</td>
+                        <td className="p-3">
+                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 font-bold rounded text-[10px]">
+                            {g.quality_status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Subtab 3: Payment Vouchers */}
+          {activeMatchingSubTab === 'payments' && (
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                <h3 className="text-sm font-bold text-slate-800">Financial Payment Authorization Vouchers</h3>
+                <span className="text-xs text-indigo-600 font-semibold bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-200">
+                  Net 60 Days ERP Settlement
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="p-3">Voucher #</th>
+                      <th className="p-3">Invoice #</th>
+                      <th className="p-3">Supplier Name</th>
+                      <th className="p-3">Amount (USD)</th>
+                      <th className="p-3">Payment Method</th>
+                      <th className="p-3">Payment Status</th>
+                      <th className="p-3">Release Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {payments.map((p, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="p-3 font-mono font-bold text-slate-800">{p.voucher_number}</td>
+                        <td className="p-3 font-mono text-[#0078d4]">{p.invoice_number}</td>
+                        <td className="p-3 font-semibold text-slate-800">{p.supplier_name}</td>
+                        <td className="p-3 font-bold text-slate-900">${p.amount?.toLocaleString()}</td>
+                        <td className="p-3 text-slate-600">{p.payment_method}</td>
+                        <td className="p-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            p.payment_status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {p.payment_status}
+                          </span>
+                        </td>
+                        <td className="p-3 text-slate-500 font-mono text-[11px]">{p.payment_date}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* 10. EXECUTIVE PDF PROCUREMENT AUDIT REPORT (STEP 20) */}
+      {tab === 'audit_reports' && (
+        <div className="space-y-6">
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <span className="text-[10px] font-bold text-[#0078d4] bg-blue-50 px-2.5 py-1 rounded uppercase tracking-wider">
+                Step 20 Audit Deliverable
+              </span>
+              <h1 className="text-2xl font-bold text-slate-800 mt-2 flex items-center gap-2">
+                Executive PDF Procurement Audit Report
+              </h1>
+              <p className="text-xs text-slate-500 mt-1 max-w-2xl">
+                Generate and download an official executive audit report summarizing overall polymer spend, AI negotiation savings, vendor performance, and Dynamics 365 ERP data integrity.
+              </p>
+            </div>
+            
+            <button
+              onClick={() => workflowService.downloadAuditReport()}
+              className="bg-[#0078d4] hover:bg-[#106ebe] text-white px-5 py-3 rounded-xl font-bold text-xs shadow-md hover:shadow-lg transition-all flex items-center gap-2 shrink-0"
+            >
+              <Upload size={16} className="rotate-180" />
+              <span>Download Executive PDF Audit Report</span>
+            </button>
+          </div>
+
+          {/* Audit Metrics Summary Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-1">
+              <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Total Sourced Spend</span>
+              <div className="text-2xl font-bold text-slate-800">$4,850,000.00</div>
+              <span className="text-[10px] text-emerald-600 font-bold">100% Budget Compliant</span>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-1">
+              <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Active Vendor Network</span>
+              <div className="text-2xl font-bold text-slate-800">100 Suppliers</div>
+              <span className="text-[10px] text-blue-600 font-bold">Verified & Rated</span>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-1">
+              <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">3-Way Match Rate</span>
+              <div className="text-2xl font-bold text-slate-800">98.2%</div>
+              <span className="text-[10px] text-emerald-600 font-bold">Exceeds 95.0% Benchmark</span>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-1">
+              <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">AI Negotiation Savings</span>
+              <div className="text-2xl font-bold text-[#0078d4]">12.4% Avg</div>
+              <span className="text-[10px] text-emerald-600 font-bold">$601,400 Total Savings</span>
+            </div>
+          </div>
+
+          {/* Report Preview Document Card */}
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#0078d4] flex items-center justify-center font-bold">
+                  PDF
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">Neproplast_AI_Procurement_Audit_Report.pdf</h3>
+                  <span className="text-[10px] text-slate-400">Generated on demand via ReportLab PDF Engine</span>
+                </div>
+              </div>
+              <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                Certified & Verified
+              </span>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 p-5 rounded-xl text-xs space-y-3 font-sans text-slate-700 leading-relaxed">
+              <p className="font-bold text-slate-900 text-sm">
+                Executive Audit Certificate Summary
+              </p>
+              <p>
+                This document provides an executive summary of Neproplast's AI-automated procurement operations and Microsoft Dynamics 365 ERP data synchronization. The system has governed 15 Active Requisitions, 100 Verified Polymer Suppliers, and released Purchase Orders with zero compliance errors.
+              </p>
+              <div className="pt-2 flex items-center gap-4 text-[11px] font-semibold text-slate-500">
+                <span>• Report Version: 2026.1.0-POC</span>
+                <span>• Dynamics 365 OData Protocol: Validated</span>
+                <span>• Lead Time Reduction: -42%</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      )}
+
     </div>
   );
 }
+

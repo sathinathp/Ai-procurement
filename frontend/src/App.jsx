@@ -8,14 +8,22 @@ import QuoteComparison from './components/QuoteComparison';
 import CopilotChat from './components/CopilotChat';
 import Phase2Modules from './components/Phase2Modules';
 import RfpCampaign from './components/RfpCampaign';
+import AiAgentWorkflow from './components/AiAgentWorkflow';
 import Login from './components/Login';
 import { Bot, RefreshCw, Database } from 'lucide-react';
 import { dbService } from './services/api';
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [user, setUser] = useState(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    return localStorage.getItem('isLoggedIn') === 'true';
+  });
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem('activeTab') || 'dashboard';
+  });
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem('user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
   
   // Copilot right-hand drawer state
   const [copilotOpen, setCopilotOpen] = useState(false);
@@ -26,9 +34,15 @@ export default function App() {
   const [openCreateRfq, setOpenCreateRfq] = useState(false);
   const [reseeding, setReseeding] = useState(false);
 
+  React.useEffect(() => {
+    localStorage.setItem('activeTab', activeTab);
+  }, [activeTab]);
+
   const handleLogin = (userInfo) => {
     setUser(userInfo);
     setIsLoggedIn(true);
+    localStorage.setItem('user', JSON.stringify(userInfo));
+    localStorage.setItem('isLoggedIn', 'true');
   };
 
   const handleLogout = () => {
@@ -36,6 +50,9 @@ export default function App() {
     setIsLoggedIn(false);
     setActiveTab('dashboard');
     setCopilotOpen(false);
+    localStorage.removeItem('user');
+    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('activeTab');
   };
 
   const handleNavigate = (tabId, params = {}) => {
@@ -73,6 +90,7 @@ export default function App() {
     const mapping = {
       dashboard: 'Operations Dashboard',
       rfqs: 'RFQs & Assistant',
+      ai_agent: 'Autonomous AI Agent',
       rfp_campaign: 'RFP Campaign Simulator',
       suppliers: 'Supplier Search',
       email: 'Email Automation',
@@ -85,7 +103,9 @@ export default function App() {
       quality_vision: 'Quality Vision AI Defect Scanner (Phase 2)',
       eng_copilot: 'Engineering Copilot Drawing Analyst (Phase 2)',
       erp_link: 'Dynamics 365 ERP Sync Console (Phase 2)',
-      power_bi: 'Power BI Spend Analytics (Phase 2)'
+      power_bi: 'Power BI Spend Analytics (Phase 2)',
+      grn_matching: 'Goods Receipt Note (GRN) & 3-Way Matching',
+      audit_reports: 'Executive Procurement PDF Audit Reports'
     };
     return mapping[id] || id;
   };
@@ -187,11 +207,15 @@ export default function App() {
             <RfpCampaign />
           )}
 
+          {activeTab === 'ai_agent' && (
+            <AiAgentWorkflow />
+          )}
+
           {activeTab === 'copilot' && (
             <CopilotChat inlineMode={true} />
           )}
 
-          {['prod_planning', 'demand_forecast', 'inventory_forecast', 'mfg_ai', 'quality_vision', 'eng_copilot', 'erp_link', 'power_bi'].includes(activeTab) && (
+          {['prod_planning', 'demand_forecast', 'inventory_forecast', 'mfg_ai', 'quality_vision', 'eng_copilot', 'erp_link', 'power_bi', 'grn_matching', 'audit_reports'].includes(activeTab) && (
             <Phase2Modules tab={activeTab} />
           )}
 
