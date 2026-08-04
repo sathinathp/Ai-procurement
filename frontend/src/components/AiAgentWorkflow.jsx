@@ -57,6 +57,7 @@ export default function AiAgentWorkflow() {
   const [syncStatus, setSyncStatus] = useState(() => getInitialState('syncStatus', null));
   const [realStatusRfq, setRealStatusRfq] = useState(() => getInitialState('realStatusRfq', null));
   const printedLogsRef = useRef(new Set());
+  const abortRef = useRef(false);   // set to true to kill the IMAP polling loop immediately
 
   const logsEndRef = useRef(null);
 
@@ -125,6 +126,7 @@ export default function AiAgentWorkflow() {
     setAgentStatus('running');
     setLogs([]);
     setCurrentStep(0);
+    abortRef.current = false;   // reset abort signal
     
     addLog(`[System Config] Instruction: "${systemPrompt}"`, 'system');
     addLog(`[System Config] Auto-Negotiation: ${settings.autoNegotiation ? 'ON' : 'OFF'} | Match Threshold: ${settings.matchThreshold} | Auto-Sync ERP: ${settings.autoSyncErp ? 'ON' : 'OFF'}`, 'system');
@@ -224,6 +226,14 @@ export default function AiAgentWorkflow() {
         
         let isDone = false;
         while (!isDone) {
+          // Check abort signal (Stop button pressed)
+          if (abortRef.current) {
+            addLog(`[AGENT] Workflow cancelled by user.`, 'warning');
+            setAgentStatus('idle');
+            setUploading(false);
+            abortRef.current = false;
+            return;
+          }
           // Check if user has stopped or reset the agent workflow
           const savedState = localStorage.getItem('ai_agent_state');
           const currentStatus = savedState ? JSON.parse(savedState).agentStatus : 'running';
@@ -387,6 +397,7 @@ export default function AiAgentWorkflow() {
   };
 
   const resetAgent = () => {
+    abortRef.current = true;   // signal polling loop to stop
     setAgentStatus('idle');
     setCurrentStep(-1);
     setLogs([]);
@@ -581,13 +592,23 @@ export default function AiAgentWorkflow() {
                     <AlertCircle size={12} /> Aborted / Error
                   </span>
                 )}
-                <button
-                  onClick={resetAgent}
-                  disabled={agentStatus === 'running'}
-                  className="text-xs font-bold text-slate-500 hover:text-slate-800 disabled:opacity-40"
-                >
-                  Clear & Reset
-                </button>
+
+                {/* Stop button — visible ONLY while running */}
+                {agentStatus === 'running' ? (
+                  <button
+                    onClick={resetAgent}
+                    className="text-xs font-bold text-white bg-rose-500 hover:bg-rose-600 px-3 py-1 rounded-lg transition-colors flex items-center gap-1 shadow-sm"
+                  >
+                    <AlertCircle size={12} /> Stop & Cancel
+                  </button>
+                ) : (
+                  <button
+                    onClick={resetAgent}
+                    className="text-xs font-bold text-slate-500 hover:text-slate-800"
+                  >
+                    Clear &amp; Reset
+                  </button>
+                )}
               </div>
             </div>
 
