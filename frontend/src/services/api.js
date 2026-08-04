@@ -6,6 +6,26 @@ const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
+// Auto-retry interceptor to handle Render free-tier cold starts
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const { config } = error;
+    if (!config) return Promise.reject(error);
+    
+    config.retry = config.retry ?? 3;
+    config.retryCount = config.retryCount ?? 0;
+    
+    if (config.retryCount < config.retry && (error.code === 'ECONNABORTED' || error.message === 'Network Error')) {
+      config.retryCount += 1;
+      console.warn(`API network error/timeout. Retrying request (${config.retryCount}/${config.retry})...`);
+      await new Promise(resolve => setTimeout(resolve, 4000)); // wait 4 seconds before retrying
+      return api(config);
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const dashboardService = {
   getStats: () => api.get('/api/dashboard/stats'),
 };
