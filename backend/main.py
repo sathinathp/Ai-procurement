@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv(override=True)
 import json
 import logging
 from datetime import datetime, date
@@ -816,6 +818,197 @@ def search_suppliers(
     except Exception as e:
         logger.error(f"Error in supplier search: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# =====================================================================
+# OPPORA AI — ICP-driven External Supplier Discovery
+# =====================================================================
+@app.post("/api/suppliers/oppora-search")
+def oppora_supplier_search(data: Dict[str, Any]):
+    """
+    Two-phase supplier discovery:
+    Phase 1 – OpenAI extracts ICP (industry, company types, titles) from the item/RFQ.
+    Phase 2 – Oppora API searches for real matching contacts; falls back to AI simulation.
+    """
+    item_name    = data.get("item_name", "")
+    description  = data.get("description", "")
+    icp_override = data.get("icp_override")   # user-edited ICP override
+
+    # ── Phase 1: Extract ICP via OpenAI ─────────────────────────────
+    icp = icp_override  # use user-provided if given
+    if not icp and OPENAI_API_KEY:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            icp_prompt = (
+                f"You are a B2B procurement analyst. Based on the product/material below, "
+                f"identify the ideal supplier company profile (ICP) to target for procurement outreach.\n\n"
+                f"Product: {item_name}\n"
+                f"Description: {description or 'N/A'}\n\n"
+                f"Return ONLY a raw JSON object with these exact fields:\n"
+                f"- industry: (string, e.g. 'Petrochemicals & Polymers')\n"
+                f"- company_types: (list of strings, e.g. ['Manufacturer', 'Distributor', 'Trading Company'])\n"
+                f"- job_titles: (list of strings, e.g. ['Sales Manager', 'Export Manager', 'Business Development Manager'])\n"
+                f"- keywords: (list of strings, product/trade keywords to search by)\n"
+                f"- regions: (list of strings, top 3 geographies where these suppliers are concentrated)\n"
+                f"Return ONLY the raw JSON object. No markdown, no explanation."
+            )
+            icp_res = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": icp_prompt}],
+                temperature=0.4
+            )
+            raw = icp_res.choices[0].message.content.strip()
+            if raw.startswith("```"):
+                raw = "\n".join(raw.split("\n")[1:])
+                if raw.endswith("```"):
+                    raw = raw.rsplit("\n", 1)[0]
+            icp = json.loads(raw.strip())
+        except Exception as e:
+            logger.warning(f"ICP extraction failed: {e}")
+            icp = {
+                "industry": "Chemical & Raw Materials",
+                "company_types": ["Manufacturer", "Distributor"],
+                "job_titles": ["Sales Manager", "Export Manager"],
+                "keywords": [item_name],
+                "regions": ["Middle East", "Asia", "Europe"]
+            }
+    elif not icp:
+        icp = {
+            "industry": "Chemical & Raw Materials",
+            "company_types": ["Manufacturer", "Distributor"],
+            "job_titles": ["Sales Manager", "Export Manager"],
+            "keywords": [item_name],
+            "regions": ["Middle East", "Asia", "Europe"]
+        }
+
+    # ── Phase 2: Call Oppora API ─────────────────────────────────────
+    OPPORA_API_KEY = os.getenv("OPPORA_API_KEY", "").strip()
+    logger.info(f"Oppora API Key check: '{OPPORA_API_KEY}' (Length: {len(OPPORA_API_KEY)})")
+    contacts = []
+
+    if OPPORA_API_KEY and OPPORA_API_KEY not in ("", "YOUR_OPPORA_KEY"):
+        try:
+            import requests as _req
+            
+            # Use the first job title and keywords to query /discover/people
+            target_title = icp.get("job_titles", ["Sales Manager"])[0]
+            target_keywords = icp.get("keywords", [item_name])[:3]
+            
+            oppora_payload = {
+                "title": target_title,
+                "keywords": target_keywords,
+                "limit": 10
+            }
+            if icp.get("industry"):
+                oppora_payload["company_industries"] = [icp["industry"]]
+            if icp.get("regions") and isinstance(icp.get("regions"), list) and len(icp.get("regions")) > 0:
+                # Use the first region/location as a filter
+                oppora_payload["location"] = icp["regions"][0]
+                
+            logger.info(f"Querying Oppora /discover/people: {oppora_payload}")
+            
+            oppora_res = _req.post(
+                "https://api.oppora.ai/api/v1/public/discover/people",
+                headers={
+                    "Authorization": f"Bearer {OPPORA_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json=oppora_payload,
+                timeout=25
+            )
+            if oppora_res.status_code == 200:
+                raw_data = oppora_res.json().get("data", [])
+                for item in raw_data:
+                    # Find company details from experience array
+                    experiences = item.get("experience", [])
+                    company_name = "Unknown Supplier"
+                    company_domain = None
+                    company_website = None
+                    
+                    if experiences:
+                        # Find the current experience if marked, else take the first one
+                        curr = next((e for e in experiences if e.get("is_current")), experiences[0])
+                        company_name = curr.get("company_name", company_name)
+                        company_domain = curr.get("company_domain")
+                        company_website = curr.get("company_website")
+                    
+                    # Fallback to standard domains if domain is not present but company name exists
+                    if not company_domain and company_name and company_name != "Unknown Supplier":
+                        # Clean company name to guess domain
+                        clean_name = company_name.lower().replace(" ", "").replace(",", "").replace(".", "").strip()
+                        company_domain = f"{clean_name}.com"
+                    
+                    # Extract email address or build standard format
+                    first_name = item.get("first_name", "sales")
+                    last_name = item.get("last_name", "")
+                    
+                    if company_domain:
+                        email_addr = f"{first_name.lower()}.{last_name.lower()}@{company_domain}" if last_name else f"sales@{company_domain}"
+                    else:
+                        email_addr = f"{first_name.lower()}.{last_name.lower()}@supplier.com" if last_name else "sales@supplier.com"
+                    
+                    # Clean double dots or trailing special chars
+                    email_addr = email_addr.replace("..", ".").replace(" ", "")
+
+                    contacts.append({
+                        "name":        company_name,
+                        "contact":     item.get("full_name", ""),
+                        "title":       item.get("title", target_title),
+                        "email":       email_addr,
+                        "phone":       item.get("phone", ""),
+                        "country":     item.get("location", "Global"),
+                        "linkedin":    item.get("linkedin_url", ""),
+                        "source":      "Oppora API",
+                        "industry":    icp.get("industry", "Chemical & Raw Materials"),
+                        "confidence":  90
+                    })
+            else:
+                logger.warning(f"Oppora API returned {oppora_res.status_code}: {oppora_res.text[:200]}")
+        except Exception as e:
+            logger.error(f"Oppora API call failed: {e}")
+
+    # ── Fallback: AI-simulated realistic contacts ────────────────────
+    if not contacts and OPENAI_API_KEY:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            sim_prompt = (
+                f"You are a B2B data provider. Generate a list of 8 realistic supplier company contacts "
+                f"for procurement of: '{item_name}'.\n\n"
+                f"Target ICP:\n"
+                f"- Industry: {icp.get('industry')}\n"
+                f"- Company Types: {', '.join(icp.get('company_types', []))}\n"
+                f"- Job Titles: {', '.join(icp.get('job_titles', []))}\n"
+                f"- Regions: {', '.join(icp.get('regions', []))}\n\n"
+                f"Use real company names that actually exist (e.g. Sabic, Ineos, LG Chem, Reliance Industries, etc.). "
+                f"Generate realistic email addresses matching their actual domain names.\n"
+                f"Return ONLY a raw JSON list of objects with fields:\n"
+                f"name, contact, title, email, phone, country, linkedin, industry, confidence (integer 70-98)\n"
+                f"No markdown, no explanation."
+            )
+            sim_res = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": sim_prompt}],
+                temperature=0.6
+            )
+            raw_sim = sim_res.choices[0].message.content.strip()
+            if raw_sim.startswith("```"):
+                raw_sim = "\n".join(raw_sim.split("\n")[1:])
+                if raw_sim.endswith("```"):
+                    raw_sim = raw_sim.rsplit("\n", 1)[0]
+            sim_contacts = json.loads(raw_sim.strip())
+            for c in (sim_contacts if isinstance(sim_contacts, list) else []):
+                c["source"] = "AI Simulation (Oppora not configured)"
+                contacts.append(c)
+        except Exception as e:
+            logger.error(f"AI fallback contact simulation failed: {e}")
+
+    return {
+        "icp": icp,
+        "contacts": contacts,
+        "total": len(contacts),
+        "source_used": "oppora" if (OPPORA_API_KEY and contacts and contacts[0].get("source") == "Oppora API") else "ai_simulation"
+    }
 
 @app.post("/api/suppliers")
 def add_supplier(data: Dict[str, Any], db: Session = Depends(get_db)):

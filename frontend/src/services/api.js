@@ -51,6 +51,7 @@ export const supplierService = {
   search: (query, sources, aiSearch = false) => api.get('/api/suppliers/search', { params: { query, sources, ai_search: aiSearch } }),
   getProfile: (id) => api.get(`/api/suppliers/${id}/profile`),
   add: (data) => api.post('/api/suppliers', data),
+  opporaSearch: (data) => api.post('/api/suppliers/oppora-search', data),
 };
 
 export const emailService = {

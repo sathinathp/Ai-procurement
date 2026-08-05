@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { 
-  Search, Star, ShieldAlert, CheckCircle, Mail, Phone, 
-  MapPin, Clock, ExternalLink, Award, Sparkles, Send, Plus, Bot
+  Search, Star, Mail, Phone, 
+  MapPin, Clock, Sparkles, Send, Plus, Bot,
+  RefreshCw, Zap, Building2, Users, Tag, Globe, ChevronDown, ChevronUp, Pencil, CheckCircle2
 } from 'lucide-react';
 import { supplierService } from '../services/api';
 import SupplierProfileModal from './SupplierProfileModal';
@@ -15,11 +16,22 @@ export default function SupplierSearch({ onSendRfqRedirect }) {
     alibaba: false
   });
   const [aiSearchEnabled, setAiSearchEnabled] = useState(false);
-  
+  const [activeTab, setActiveTab] = useState('search'); // 'search' | 'oppora'
+
+  // Standard search
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedSupplierId, setSelectedSupplierId] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+
+  // Oppora ICP Discovery
+  const [opporaItem, setOpporaItem] = useState('');
+  const [opporaDesc, setOpporaDesc] = useState('');
+  const [opporaLoading, setOpporaLoading] = useState(false);
+  const [opporaResult, setOpporaResult] = useState(null); // { icp, contacts }
+  const [icpEdit, setIcpEdit] = useState(null);           // editable ICP
+  const [icpExpanded, setIcpExpanded] = useState(true);
+  const [opporaError, setOpporaError] = useState('');
   
   // Add Supplier Form
   const [newSupplier, setNewSupplier] = useState({
@@ -63,6 +75,28 @@ export default function SupplierSearch({ onSendRfqRedirect }) {
     setSources(prev => ({ ...prev, [source]: !prev[source] }));
   };
 
+  const handleOpporaSearch = (useEditedIcp = false) => {
+    if (!opporaItem.trim()) return;
+    setOpporaLoading(true);
+    setOpporaError('');
+    const payload = {
+      item_name: opporaItem,
+      description: opporaDesc,
+      icp_override: useEditedIcp ? icpEdit : null
+    };
+    supplierService.opporaSearch(payload)
+      .then(res => {
+        setOpporaResult(res.data);
+        setIcpEdit(res.data.icp);
+        setOpporaLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setOpporaError('Search failed. Check your connection or API key.');
+        setOpporaLoading(false);
+      });
+  };
+
   const handleAddSupplierSubmit = (e) => {
     e.preventDefault();
     supplierService.add(newSupplier)
@@ -80,128 +114,235 @@ export default function SupplierSearch({ onSendRfqRedirect }) {
 
   return (
     <div className="flex-1 overflow-y-auto p-6 bg-[#f8fafc] space-y-6">
-      
-      {/* Search Header Banner (Light, clean SaaS style) */}
-      <div className="bg-white border border-slate-200/80 rounded-xl p-6 shadow-sm space-y-5 relative overflow-hidden">
-        {/* Subtle top decoration line */}
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#0078d4] to-indigo-600"></div>
-        
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-2">
-              <Bot size={20} className="text-[#0078d4]" />
-              Supplier Search Engine
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">Query internal vendor records or scan global external marketplaces for industrial raw materials.</p>
-          </div>
-          <button 
-            type="button"
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-[#0078d4] hover:bg-[#106ebe] text-white text-xs font-bold rounded-lg transition-all shadow-sm"
+
+      {/* ── Tab Bar ── */}
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#0078d4] to-violet-600" />
+        <div className="flex items-center gap-1 px-5 pt-4 border-b border-slate-100">
+          <button
+            onClick={() => setActiveTab('search')}
+            className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+              activeTab === 'search' ? 'border-[#0078d4] text-[#0078d4]' : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
           >
-            <Plus size={14} /> Add Supplier
+            <Search size={13} /> Internal / Web Search
           </button>
+          <button
+            onClick={() => setActiveTab('oppora')}
+            className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+              activeTab === 'oppora' ? 'border-violet-600 text-violet-700' : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <Zap size={13} /> Oppora AI Discovery
+            <span className="bg-violet-100 text-violet-700 text-[9px] px-1.5 py-0.5 rounded font-extrabold">NEW</span>
+          </button>
+          <div className="ml-auto pb-3">
+            <button
+              type="button"
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#0078d4] hover:bg-[#106ebe] text-white text-xs font-bold rounded-lg transition-all shadow-sm"
+            >
+              <Plus size={13} /> Add Supplier
+            </button>
+          </div>
         </div>
 
-        {/* Search Bar & Checkboxes */}
-        <form onSubmit={handleSearch} className="space-y-4">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <input 
-                type="text" 
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search raw chemicals (e.g. PVC Resin, HDPE Granules, Stretch Film)..."
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0078d4]/20 focus:border-[#0078d4] focus:bg-white transition-all font-medium"
-              />
-              <Search className="absolute left-3.5 top-3.5 text-slate-400" size={14} />
+        {/* ── Tab: Internal / Web Search ── */}
+        {activeTab === 'search' && (
+          <div className="p-5 space-y-4">
+            <form onSubmit={handleSearch} className="space-y-4">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search raw chemicals (e.g. PVC Resin, HDPE Granules, Stretch Film)..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:border-[#0078d4] focus:bg-white transition-all font-medium"
+                  />
+                  <Search className="absolute left-3.5 top-3" size={14} />
+                </div>
+                <button type="submit" className="bg-[#0078d4] hover:bg-[#106ebe] text-white font-bold text-xs px-5 rounded-lg transition-all shadow-sm flex items-center gap-1.5">
+                  <Search size={13} /> Search
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Channels:</span>
+                {[['internal','Internal DB'],['demo','Demo Catalog'],['google','Google'],['alibaba','Alibaba']].map(([k,label]) => (
+                  <button key={k} type="button" onClick={() => handleSourceToggle(k)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                      sources[k] ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}>{label}</button>
+                ))}
+                <button type="button" onClick={() => setAiSearchEnabled(!aiSearchEnabled)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border flex items-center gap-1 transition-all ${
+                    aiSearchEnabled ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}>
+                  <Sparkles size={11} /> AI Finder (GPT-4)
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* ── Tab: Oppora ICP Discovery ── */}
+        {activeTab === 'oppora' && (
+          <div className="p-5 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-violet-100 flex items-center justify-center shrink-0">
+                <Zap size={16} className="text-violet-700" />
+              </div>
+              <div>
+                <h2 className="text-sm font-extrabold text-slate-800">ICP-Driven External Supplier Discovery</h2>
+                <p className="text-[11px] text-slate-500 mt-0.5">AI reads your RFQ item, extracts the Ideal Company Profile (industry, company type, decision-maker titles), then searches Oppora for real matching contacts. You can edit the ICP before launching.</p>
+              </div>
             </div>
-            <button 
-              type="submit"
-              className="bg-[#0078d4] hover:bg-[#106ebe] text-white font-bold text-xs px-5 rounded-lg transition-all shadow-sm flex items-center gap-1.5"
-            >
-              <Search size={14} /> Search
-            </button>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Item / Product *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. PVC Resin, HDPE Granules"
+                  value={opporaItem}
+                  onChange={e => setOpporaItem(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-semibold outline-none focus:border-violet-500 bg-slate-50"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Description / Specs (optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Industrial grade, 250 MT, CIF Riyadh"
+                  value={opporaDesc}
+                  onChange={e => setOpporaDesc(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-semibold outline-none focus:border-violet-500 bg-slate-50"
+                />
+              </div>
+            </div>
+
+            {/* ICP Preview — shown after first search */}
+            {icpEdit && (
+              <div className="border border-violet-200 rounded-xl bg-violet-50/40 overflow-hidden">
+                <button
+                  onClick={() => setIcpExpanded(p => !p)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold text-violet-800"
+                >
+                  <span className="flex items-center gap-2"><Pencil size={12} /> Edit ICP (Ideal Company Profile)</span>
+                  {icpExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+                {icpExpanded && (
+                  <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    {[['industry','Industry',Building2],['company_types','Company Types (comma-sep)',Building2],['job_titles','Target Titles (comma-sep)',Users],['keywords','Keywords (comma-sep)',Tag],['regions','Regions (comma-sep)',Globe]].map(([key,label,Icon]) => (
+                      <div key={key}>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1"><Icon size={10}/>{label}</label>
+                        <input
+                          type="text"
+                          value={Array.isArray(icpEdit[key]) ? icpEdit[key].join(', ') : (icpEdit[key] || '')}
+                          onChange={e => {
+                            const val = Array.isArray(icpEdit[key])
+                              ? e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                              : e.target.value;
+                            setIcpEdit(prev => ({ ...prev, [key]: val }));
+                          }}
+                          className="w-full border border-violet-200 rounded-lg px-3 py-2 text-xs text-slate-800 font-semibold outline-none focus:border-violet-500 bg-white"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {opporaError && (
+              <div className="px-3 py-2 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold">{opporaError}</div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleOpporaSearch(false)}
+                disabled={!opporaItem.trim() || opporaLoading}
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm disabled:opacity-50"
+              >
+                {opporaLoading ? <><RefreshCw size={13} className="animate-spin"/> Searching…</> : <><Zap size={13}/> AI Extract ICP &amp; Search</>}
+              </button>
+              {icpEdit && (
+                <button
+                  onClick={() => handleOpporaSearch(true)}
+                  disabled={opporaLoading}
+                  className="flex items-center gap-1.5 px-4 py-2.5 bg-white border border-violet-300 text-violet-700 hover:bg-violet-50 text-xs font-bold rounded-xl transition-all disabled:opacity-50"
+                >
+                  <CheckCircle2 size={13}/> Re-launch with Edited ICP
+                </button>
+              )}
+            </div>
           </div>
-
-          {/* Sources Checkboxes (Styled as premium toggle pills) */}
-          <div className="flex flex-wrap items-center gap-2.5 text-xs font-medium text-slate-500 pt-1">
-            <span className="text-slate-400 mr-1 text-[11px] uppercase tracking-wider font-bold">Search Channels:</span>
-            
-            <button 
-              type="button"
-              onClick={() => handleSourceToggle('internal')}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                sources.internal 
-                  ? 'bg-slate-900 border-slate-900 text-white shadow-sm' 
-                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <span>Internal Database</span>
-            </button>
-
-            <button 
-              type="button"
-              onClick={() => handleSourceToggle('demo')}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                sources.demo 
-                  ? 'bg-slate-900 border-slate-900 text-white shadow-sm' 
-                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <span>Demo Catalog</span>
-            </button>
-
-            <button 
-              type="button"
-              onClick={() => handleSourceToggle('google')}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                sources.google 
-                  ? 'bg-slate-900 border-slate-900 text-white shadow-sm' 
-                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <span>Google Search</span>
-            </button>
-
-            <button 
-              type="button"
-              onClick={() => handleSourceToggle('alibaba')}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                sources.alibaba 
-                  ? 'bg-slate-900 border-slate-900 text-white shadow-sm' 
-                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <span>Alibaba Global</span>
-            </button>
-
-            <button 
-              type="button"
-              onClick={() => setAiSearchEnabled(!aiSearchEnabled)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1.5 ${
-                aiSearchEnabled 
-                  ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' 
-                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <Sparkles size={11} className={aiSearchEnabled ? "text-white" : "text-indigo-500"} />
-              <span>AI Finder (GPT-4)</span>
-            </button>
-          </div>
-        </form>
+        )}
       </div>
 
       {/* Results List */}
       <div className="space-y-3.5">
         <div className="flex justify-between items-center px-1">
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold text-slate-400 tracking-wider uppercase">Search Results</span>
+            <span className="text-[11px] font-bold text-slate-400 tracking-wider uppercase">
+              {activeTab === 'oppora' ? 'Oppora Discovery Results' : 'Search Results'}
+            </span>
             <span className="text-[10px] bg-slate-100 border border-slate-200/80 text-slate-600 px-2 py-0.5 rounded-md font-bold">
-              {results.length} suppliers matching
+              {activeTab === 'oppora' ? (opporaResult?.total ?? 0) : results.length} suppliers matching
             </span>
           </div>
         </div>
+
+        {/* ── Oppora Results ── */}
+        {activeTab === 'oppora' && opporaResult && (
+          <div className="space-y-3">
+            {opporaResult.contacts.length === 0 ? (
+              <div className="p-12 bg-white border border-slate-200 rounded-xl text-center text-slate-400 text-xs font-semibold">
+                No contacts found. Try a different item or edit the ICP.
+              </div>
+            ) : (
+              opporaResult.contacts.map((c, i) => (
+                <div key={i} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-violet-100 text-violet-700 font-extrabold text-sm flex items-center justify-center shrink-0 border border-violet-200">
+                    {(c.name || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-0.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-extrabold text-slate-800 text-sm">{c.name}</span>
+                      <span className="text-[9px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded font-bold border border-violet-200">
+                        {c.source?.includes('Oppora') ? '⚡ Oppora' : '🤖 AI Sim'}
+                      </span>
+                      <span className="text-[9px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold border border-emerald-200">
+                        {c.confidence ?? 85}% match
+                      </span>
+                    </div>
+                    {c.contact && <div className="text-xs text-slate-600 font-semibold">{c.contact} · <span className="text-slate-400">{c.title}</span></div>}
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
+                      {c.email && <span className="flex items-center gap-1 text-slate-500"><Mail size={10}/>{c.email}</span>}
+                      {c.phone && <span className="flex items-center gap-1 text-slate-500"><Phone size={10}/>{c.phone}</span>}
+                      {c.country && <span className="flex items-center gap-1 text-slate-500"><MapPin size={10}/>{c.country}</span>}
+                    </div>
+                    {c.industry && <div className="text-[10px] text-violet-600 font-semibold">{c.industry}</div>}
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    {c.linkedin && (
+                      <a href={c.linkedin} target="_blank" rel="noopener noreferrer"
+                        className="px-3 py-1.5 border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold rounded-lg transition-all">
+                        LinkedIn
+                      </a>
+                    )}
+                    <button
+                      onClick={() => onSendRfqRedirect && onSendRfqRedirect(null)}
+                      className="px-3.5 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5"
+                    >
+                      <Send size={11}/> Send RFQ
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
 
         {loading ? (
           <div className="p-16 bg-white border border-slate-200 rounded-xl text-center shadow-sm">
