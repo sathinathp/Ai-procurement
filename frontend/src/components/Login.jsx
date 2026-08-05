@@ -22,7 +22,7 @@ export default function Login({ onLogin }) {
         onLogin({
           name: 'Sathinath',
           email: email || 'admin@neproplast.com',
-          role: 'Lead Procurement Manager'
+          role: 'Junior AI Engineer'
         });
       }, 1100);
     }, 800);
