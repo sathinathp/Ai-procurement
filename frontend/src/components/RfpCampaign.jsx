@@ -517,7 +517,7 @@ export default function RfpCampaign() {
               <p className="text-[10px] text-slate-500 mt-1.5 font-semibold">{selectedPO.supplier_name} • {selectedPO.item_name} ({selectedPO.quantity} units)</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
               
               <button
                 onClick={() => syncVendorToERP(selectedPO.supplier_id)}

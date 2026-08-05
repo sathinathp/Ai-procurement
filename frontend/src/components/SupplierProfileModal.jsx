@@ -63,9 +63,8 @@ export default function SupplierProfileModal({ supplierId, onClose }) {
           <div className="p-12 text-center text-red-500 font-bold flex-1">{error}</div>
         ) : (
           <div className="overflow-y-auto flex-1 flex flex-col bg-[#f8fafc]">
-            
-            {/* Unified KPI Metric Bar (Clean, integrated divider layout) */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 p-6 bg-white border-b border-slate-150 shrink-0">
+                       {/* Unified KPI Metric Bar (Clean, integrated divider layout) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 p-6 bg-white border-b border-slate-150 shrink-0">
               
               {/* Overall Score */}
               <div className="flex items-center gap-3.5">
@@ -96,7 +95,7 @@ export default function SupplierProfileModal({ supplierId, onClose }) {
               </div>
 
               {/* Rating */}
-              <div className="flex items-center gap-3.5 md:border-l md:border-slate-100 md:pl-6">
+              <div className="flex items-center gap-3.5 sm:border-l sm:border-slate-100 sm:pl-6">
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-50 to-amber-100/50 text-amber-500 border border-amber-200/60 flex items-center justify-center shrink-0 shadow-sm">
                   <Star fill="currentColor" size={16} />
                 </div>
@@ -107,7 +106,7 @@ export default function SupplierProfileModal({ supplierId, onClose }) {
               </div>
 
               {/* Risk Level */}
-              <div className="flex items-center gap-3.5 md:border-l md:border-slate-100 md:pl-6">
+              <div className="flex items-center gap-3.5 lg:border-l lg:border-slate-100 lg:pl-6">
                 <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border shadow-sm ${
                   profile.risk_level === 'Low' ? 'bg-gradient-to-br from-emerald-50 to-emerald-100/50 text-emerald-600 border-emerald-250' :
                   profile.risk_level === 'Medium' ? 'bg-gradient-to-br from-amber-50 to-amber-100/50 text-amber-600 border-amber-205' : 'bg-gradient-to-br from-rose-50 to-rose-100/50 text-rose-600 border-rose-250'
@@ -124,7 +123,7 @@ export default function SupplierProfileModal({ supplierId, onClose }) {
               </div>
 
               {/* Response Time */}
-              <div className="flex items-center gap-3.5 md:border-l md:border-slate-100 md:pl-6">
+              <div className="flex items-center gap-3.5 sm:border-l sm:border-slate-100 sm:pl-6 lg:border-l lg:pl-6">
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 text-[#0078d4] border border-blue-200/60 flex items-center justify-center shrink-0 shadow-sm">
                   <Clock size={16} />
                 </div>

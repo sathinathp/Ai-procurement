@@ -10,7 +10,7 @@ import Phase2Modules from './components/Phase2Modules';
 import RfpCampaign from './components/RfpCampaign';
 import AiAgentWorkflow from './components/AiAgentWorkflow';
 import Login from './components/Login';
-import { Bot, RefreshCw, Database } from 'lucide-react';
+import { Bot, RefreshCw, Database, Menu } from 'lucide-react';
 import { dbService } from './services/api';
 
 export default function App() {
@@ -28,6 +28,9 @@ export default function App() {
   // Copilot right-hand drawer state
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [rfqContext, setRfqContext] = useState(null);
+  
+  // Mobile responsive sidebar open state
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   
   // Redirect params
   const [emailRedirectSupplierId, setEmailRedirectSupplierId] = useState(null);
@@ -117,25 +120,45 @@ export default function App() {
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-50">
       
-      {/* Left Sidebar */}
-      <Sidebar 
-        activeTab={activeTab} 
-        onSelectTab={(tabId) => {
-          setActiveTab(tabId);
-          setOpenCreateRfq(false);
-        }}
-        onLogout={handleLogout} 
-        user={user} 
-      />
+      {/* Left Sidebar - Collapsible on mobile */}
+      <div className={`fixed inset-y-0 left-0 z-40 transform xl:relative xl:translate-x-0 transition-transform duration-300 ease-in-out ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+      } xl:block`}>
+        <Sidebar 
+          activeTab={activeTab} 
+          onSelectTab={(tabId) => {
+            setActiveTab(tabId);
+            setOpenCreateRfq(false);
+            setSidebarOpen(false); // Close sidebar on selection (mobile)
+          }}
+          onLogout={handleLogout} 
+          user={user} 
+        />
+      </div>
+
+      {/* Backdrop overlay for mobile */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 xl:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
       {/* Main Workspace Column */}
       <div className="flex-1 flex flex-col min-w-0 h-full relative">
         
         {/* Top Header navbar */}
-        <header className="h-14 bg-white border-b border-slate-200 px-6 flex items-center justify-between shadow-sm shrink-0 z-30">
+        <header className="h-14 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between shadow-sm shrink-0 z-30">
           <div className="flex items-center gap-2">
-            <span className="text-slate-400 font-bold capitalize text-xs">workspace /</span>
-            <span className="text-slate-800 font-bold capitalize text-xs">
+            <button 
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="xl:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus:outline-none mr-1"
+              title="Toggle Sidebar Menu"
+            >
+              <Menu size={18} />
+            </button>
+            <span className="text-slate-400 font-bold capitalize text-xs hidden sm:inline">workspace /</span>
+            <span className="text-slate-800 font-bold capitalize text-xs truncate max-w-[150px] sm:max-w-none">
               {getTabTitle(activeTab)}
             </span>
           </div>

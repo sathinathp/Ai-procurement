@@ -451,28 +451,28 @@ export default function AiAgentWorkflow() {
             />
           </div>
 
-          {/* Settings Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 pt-2">
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase text-slate-400">Auto-Negotiation</label>
+          {/* Settings Grid (Flex wrap for responsive auto-scaling across all devices) */}
+          <div className="flex flex-wrap gap-4 pt-2">
+            <div className="flex-1 min-w-[135px] space-y-1">
+              <label className="text-[10px] font-bold uppercase text-slate-405 block truncate" title="Auto-Negotiation">Auto-Negotiation</label>
               <select
                 value={settings.autoNegotiation ? 'yes' : 'no'}
                 onChange={(e) => handleSettingChange('autoNegotiation', e.target.value === 'yes')}
                 disabled={agentStatus === 'running'}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-bold text-slate-700 focus:outline-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg py-1.5 pl-2 pr-7 text-xs font-bold text-slate-700 focus:outline-none appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M7%209l3%203%203-3%22%20stroke%3D%22%234b5563%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[right_6px_center] bg-[length:14px_14px] cursor-pointer"
               >
-                <option value="yes">Enabled (AI Bidding)</option>
-                <option value="no">Disabled (Static)</option>
+                <option value="yes">Enabled</option>
+                <option value="no">Disabled</option>
               </select>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase text-slate-400">Match Threshold</label>
+            <div className="flex-1 min-w-[135px] space-y-1">
+              <label className="text-[10px] font-bold uppercase text-slate-405 block truncate" title="Match Threshold">Match Threshold</label>
               <select
                 value={settings.matchThreshold}
                 onChange={(e) => handleSettingChange('matchThreshold', parseInt(e.target.value))}
                 disabled={agentStatus === 'running'}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-bold text-slate-700 focus:outline-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg py-1.5 pl-2 pr-7 text-xs font-bold text-slate-700 focus:outline-none appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M7%209l3%203%203-3%22%20stroke%3D%22%234b5563%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[right_6px_center] bg-[length:14px_14px] cursor-pointer"
               >
                 <option value={70}>70% Match</option>
                 <option value={80}>80% Match</option>
@@ -480,22 +480,22 @@ export default function AiAgentWorkflow() {
               </select>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase text-slate-400">Outreach Limit</label>
+            <div className="flex-1 min-w-[135px] space-y-1">
+              <label className="text-[10px] font-bold uppercase text-slate-405 block truncate" title="Outreach Limit">Outreach Limit</label>
               <select
                 value={settings.outreachLimit}
                 onChange={(e) => handleSettingChange('outreachLimit', parseInt(e.target.value))}
                 disabled={agentStatus === 'running'}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-bold text-slate-700 focus:outline-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg py-1.5 pl-2 pr-7 text-xs font-bold text-slate-700 focus:outline-none appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M7%209l3%203%203-3%22%20stroke%3D%22%234b5563%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[right_6px_center] bg-[length:14px_14px] cursor-pointer"
               >
-                <option value={3}>Top 3 Suppliers</option>
-                <option value={5}>Top 5 Suppliers</option>
-                <option value={10}>Top 10 Suppliers</option>
+                <option value={3}>Top 3</option>
+                <option value={5}>Top 5</option>
+                <option value={10}>Top 10</option>
               </select>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase text-slate-400">Max Rounds</label>
+            <div className="flex-1 min-w-[160px] space-y-1">
+              <label className="text-[10px] font-bold uppercase text-slate-405 block truncate" title="Max Rounds">Max Rounds</label>
               <div className="flex gap-1">
                 {[1, 2, 3, 4, 5].map((round) => (
                   <button
@@ -515,29 +515,29 @@ export default function AiAgentWorkflow() {
               </div>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase text-slate-400">Outreach Mode</label>
+            <div className="flex-1 min-w-[135px] space-y-1">
+              <label className="text-[10px] font-bold uppercase text-slate-405 block truncate" title="Outreach Mode">Outreach Mode</label>
               <select
                 value={settings.realTimeOutreach ? 'real' : 'sim'}
                 onChange={(e) => handleSettingChange('realTimeOutreach', e.target.value === 'real')}
                 disabled={agentStatus === 'running'}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-bold text-slate-700 focus:outline-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg py-1.5 pl-2 pr-7 text-xs font-bold text-slate-700 focus:outline-none appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M7%209l3%203%203-3%22%20stroke%3D%22%234b5563%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[right_6px_center] bg-[length:14px_14px] cursor-pointer"
               >
-                <option value="real">Real-time IMAP</option>
-                <option value="sim">Simulation Mode</option>
+                <option value="real">Real-time</option>
+                <option value="sim">Simulation</option>
               </select>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase text-slate-400">Dynamics Sync</label>
+            <div className="flex-1 min-w-[135px] space-y-1">
+              <label className="text-[10px] font-bold uppercase text-slate-405 block truncate" title="Dynamics Sync">Dynamics Sync</label>
               <select
                 value={settings.autoSyncErp ? 'yes' : 'no'}
                 onChange={(e) => handleSettingChange('autoSyncErp', e.target.value === 'yes')}
                 disabled={agentStatus === 'running'}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-bold text-slate-700 focus:outline-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg py-1.5 pl-2 pr-7 text-xs font-bold text-slate-700 focus:outline-none appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M7%209l3%203%203-3%22%20stroke%3D%22%234b5563%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[right_6px_center] bg-[length:14px_14px] cursor-pointer"
               >
-                <option value="yes">Auto ERP Sync</option>
-                <option value="no">Manual Sync</option>
+                <option value="yes">Auto Sync</option>
+                <option value="no">Manual</option>
               </select>
             </div>
           </div>
