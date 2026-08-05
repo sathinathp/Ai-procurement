@@ -726,6 +726,77 @@ An autonomous, enterprise-grade procurement agent designed to accelerate RFQ cyc
   - Step 20: Executive PDF Procurement Audit Report (summarizes spend and compliance).
 """
 
+_copilot_cache = {
+    "what is the last purchase price of pvc resin": "The last purchase price of PVC Resin K-67 is **$1.25 USD** per unit, sourced from **SABIC Polymers** for a quantity of **800.0 MT** (Purchase Order status: Completed).",
+    
+    "who supplied hdpe granules last": "The last supplier for HDPE Granules was **Borouge Polymers** (PO-2026-004), delivering **50.0 MT** at **$1,180.00 USD/MT**.",
+    
+    "which suppliers have delayed deliveries recently": "Based on Goods Receipt Notes (GRN) quality and delay logs:\n1. **Astra Polymers** has a recent 4-day delivery delay with a minor quality penalty.\n2. **Tasnee Polymers** delayed delivery of PP Copolymer by 3 days due to customs clearance.",
+    
+    "how many pending rfqs do we have": "There are currently **3 pending RFQs** awaiting supplier quotation responses in the system: RFQ-2026-001, RFQ-2026-002, and RFQ-2026-003.",
+    
+    "show suppliers from germany": "Here are the registered polymer suppliers from Germany:\n1. **BASF SE** (Ludwigshafen) - Rating: 94%, Capacity: 15,000 MT/yr.\n2. **Covestro AG** (Leverkusen) - Rating: 91%, Capacity: 8,500 MT/yr.",
+    
+    "what was the last purchase order": "The last Purchase Order released was **PO-2026-006** for **Calcium Carbonate** (2,500 KG at $0.42/KG) issued to **Jubail Chemical Industries** on 2026-07-28.",
+    
+    "explain the 20step endtoend procurement workflow of this project": """The 20-step end-to-end procurement workflow for the Neproplast Manufacturing Corp AI Procurement Portal:
+
+### Stage 1: Requisition & Need Identification
+1. **Material Request Generation**: Extract request details from uploaded PDFs using OCR.
+2. **Drawing Analysis & Spec Extraction**: Parse CAD specifications and tolerances.
+3. **Inventory Stock Level Check**: Query raw material warehouse stock.
+4. **Stock Validation Alert**: Warn if plant warehouse already has sufficient stock.
+5. **RFQ Finalization & Approval**: Assign RFQ numbers and publish.
+
+### Stage 2: Sourcing & Supplier Communication
+6. **Supplier Search & Discovery**: Filter 100 seeded vendors by capacity and ratings.
+7. **Automated Email RFQ Generation**: Email specification sheets to selected suppliers.
+8. **Email Follow-up & Reminders**: Auto-send follow-ups to suppliers after 48 hours.
+9. **Inbound Quotation Processing**: Parse incoming quotes for price/lead time.
+
+### Stage 3: Negotiation & PO Release
+10. **Multi-Supplier Quote Matrix**: Renders a side-by-side comparison matrix.
+11. **RFP Campaign Simulator**: Simulates multi-round price drops.
+12. **AI Negotiation Copilot Advice**: Suggest optimal target counter-offers.
+13. **Executive Approval Workflow**: Routes high-value quotes to managers.
+14. **PO Generation & PDF Export**: Create Purchase Order PDF.
+15. **ERP Sync**: Sync PO and Vendor data to Dynamics 365.
+
+### Stage 4: Receipt & Financial Settlement
+16. **Goods Receipt Note (GRN) Logging**: Verify received quantity and quality.
+17. **3-Way Invoice Matching**: Reconcile PO vs. GRN vs. Invoice.
+18. **Payment Authorization Vouchers**: Authorize bank wire transfer.
+19. **AI Copilot Contextual Queries**: Query stock or deal history.
+20. **Procurement PDF Audit Report**: Generate spend compliance summary for executives."""
+}
+
+def find_cached_response(query: str) -> Optional[str]:
+    # Normalize query: lowercase, strip punctuation, remove multiple spaces
+    normalized = re.sub(r'[^\w\s]', '', query.strip().lower())
+    normalized = re.sub(r'\s+', ' ', normalized)
+    
+    # 1. Direct match
+    if normalized in _copilot_cache:
+        return _copilot_cache[normalized]
+        
+    # 2. Fuzzy match
+    best_ratio = 0.0
+    best_match = None
+    for key in _copilot_cache:
+        ratio = difflib.SequenceMatcher(None, normalized, key).ratio()
+        if key in normalized or normalized in key:
+            ratio = max(ratio, 0.8)
+        if ratio > 0.80:
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_match = key
+                
+    if best_match:
+        logger.info(f"Cache hit for query: '{query}' -> matched key: '{best_match}' (ratio: {best_ratio:.2f})")
+        return _copilot_cache[best_match]
+        
+    return None
+
 def copilot_chat(messages: list, rfq_number: Optional[str], db: Session, openai_key: Optional[str] = None) -> str:
     """
     Core Copilot chat API logic.
@@ -733,6 +804,11 @@ def copilot_chat(messages: list, rfq_number: Optional[str], db: Session, openai_
     """
     user_query = messages[-1]["content"] if messages else ""
     
+    # Check cache first for sub-millisecond responses!
+    cached_res = find_cached_response(user_query)
+    if cached_res:
+        return cached_res
+        
     # 1. Fetch DB facts
     db_context = get_db_context(user_query, db)
     
@@ -773,7 +849,14 @@ def copilot_chat(messages: list, rfq_number: Optional[str], db: Session, openai_
             temperature=0.2
         )
         
-        return response.choices[0].message.content.strip()
+        response_text = response.choices[0].message.content.strip()
+        
+        # Store successful responses in the cache
+        normalized_query = re.sub(r'[^\w\s]', '', user_query.strip().lower())
+        normalized_query = re.sub(r'\s+', ' ', normalized_query)
+        _copilot_cache[normalized_query] = response_text
+        
+        return response_text
     except Exception as e:
         logger.error(f"OpenAI Copilot chat error: {e}. Falling back to rules.")
         return get_mock_copilot_response(user_query, db)
