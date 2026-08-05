@@ -6,6 +6,7 @@ import re
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
+from openai import OpenAI
 from models import Supplier, RFQ, QuoteResponse, PurchaseOrder, EmailHistory, RFQTimeline, InventoryItem
 
 logger = logging.getLogger(__name__)
@@ -676,6 +677,55 @@ def get_mock_copilot_response(query: str, db: Session) -> str:
     )
 
 
+PROJECT_GUIDE_TEXT = """
+NEPROPLAST MANUFACTURING CORP - AI PROCUREMENT PORTAL
+1. PROJECT OVERVIEW & MOTIVE:
+An autonomous, enterprise-grade procurement agent designed to accelerate RFQ cycles, reduce manual sourcing work, and optimize pricing through AI negotiation. It integrates React/Vite (Frontend) and FastAPI/SQLite (Backend) with Odoo and Microsoft Dynamics 365 ERP systems.
+
+2. SYSTEM ARCHITECTURE & TECH STACK:
+- Frontend: React (JSX), Vite, CSS modules, TailwindCSS (for utility layers), Lucide icons, Recharts for analytics. Core files:
+  - App.jsx: Entrypoint, handles routing, views (Dashboard, RFQ Assistant, Supplier Search, Email Follow-up, ERP Sync, Phase 2 modules).
+  - Components: Sidebar.jsx (navigation), Dashboard.jsx (main metrics & activity), RfqAssistant.jsx (extraction & creation), SupplierSearch.jsx (directory & scorecard), RfpCampaign.jsx (simulation), CopilotChat.jsx (drawer/drawer inline).
+- Backend: FastAPI, Uvicorn, SQLAlchemy ORM (SQLite: `procurement.db`). Core files:
+  - main.py: API routes for RFQs, suppliers, emails, comparison, ERP sync, and Phase 2.
+  - copilot.py: RAG context compiler, LLM integration, and chat logic.
+  - database.py: SQLite engine & session setup.
+  - models.py: SQLite schema (Supplier, RFQ, QuoteResponse, PurchaseOrder, EmailHistory, RFQTimeline, InventoryItem, ERPSyncLog).
+  - parsers.py: Document text extractor (pypdf, docx, openpyxl) and AI metadata extractor.
+  - seed.py / seed_odoo.py: Database seeders for suppliers, RFQs, POs.
+- Integrations:
+  - Microsoft Dynamics 365: OData REST API endpoint integration for sync.
+  - Odoo ERP: XML-RPC endpoint integration (syncs vendors and purchase orders).
+  - Oppora API: External B2B contact discovery integration (using `/discover/people`).
+  - SMTP/IMAP: Real-time email sending and automated replies check.
+
+3. THE 20-STEP END-TO-END WORKFLOW:
+- Stage 1: Requisition & Need Identification
+  - Step 1: Material Request Generation (OCR extraction from PDFs).
+  - Step 2: Drawing Analysis & Spec Extraction (Engineering CAD drawing parser).
+  - Step 3: Inventory Stock Level Check (checks raw material warehouse stock).
+  - Step 4: Interactive Stock Validation Alert (warning when inventory is sufficient).
+  - Step 5: RFQ Finalization & Approval (assigns RFQ number, logs timeline).
+- Stage 2: Sourcing & Supplier Communication
+  - Step 6: Supplier Search & Discovery (fuzzy search across 100 verified polymer suppliers).
+  - Step 7: Automated Email RFQ Generation (personalized specifications emails).
+  - Step 8: Email Follow-Up & Reminder Tracking (sends automatic follow-ups after 48h).
+  - Step 9: Inbound Quotation Processing (OCR parses price/terms from supplier quotes).
+- Stage 3: Analysis, Negotiation & PO Release
+  - Step 10: Multi-Supplier Quote Matrix (renders side-by-side comparison).
+  - Step 11: RFP Interactive Campaign Simulator (simulates negotiations and bulk drops).
+  - Step 12: AI Negotiation Copilot Advice (suggests counter-offer target prices).
+  - Step 13: Executive Approval Workflow (routes high-value quotes for manager sign-off).
+  - Step 14: Automated PO Generation & PDF Export (produces PO and ReportLab PDFs).
+  - Step 15: Microsoft Dynamics 365 ERP Sync (transmits PO/Vendor payloads via OData).
+- Stage 4: Receipt, 3-Way Match & Financial Settlement
+  - Step 16: Goods Receipt Note (GRN) Logging (warehouse receipts verification).
+  - Step 17: Automated 3-Way Invoice Matching (reconciles PO vs. GRN vs. Invoice).
+  - Step 18: Payment Authorization Vouchers (releases wire transfers for matched items).
+  - Step 19: AI Copilot Contextual Queries (natural language chat about stock and deals).
+  - Step 20: Executive PDF Procurement Audit Report (summarizes spend and compliance).
+"""
+
 def copilot_chat(messages: list, rfq_number: Optional[str], db: Session, openai_key: Optional[str] = None) -> str:
     """
     Core Copilot chat API logic.
@@ -694,12 +744,17 @@ def copilot_chat(messages: list, rfq_number: Optional[str], db: Session, openai_
         client = OpenAI(api_key=openai_key)
         
         system_prompt = (
-            "You are a professional, highly capable Procurement AI Copilot for Neproplast.\n"
-            "You have direct access to Neproplast's database tables (Suppliers, RFQs, Quote Responses, Purchase Orders, Email History).\n"
-            "Your answers MUST be strictly grounded in the database facts provided below. If you don't find the answer in the database facts, state that you cannot find it, rather than hallucinating.\n"
-            "Format your answers with professional markdown (e.g. bold figures, bullet lists, tables where appropriate).\n"
-            "Adopt a helpful, Microsoft-Copilot-style tone.\n\n"
-            f"--- DATABASE STATE ---\n{db_context}\n----------------------"
+            "You are a professional, highly capable Procurement AI Copilot and Project Guide for Neproplast.\n"
+            "You have two primary capabilities:\n"
+            "1. Database Sourcing Agent: You have direct access to Neproplast's database tables (Suppliers, RFQs, Quote Responses, Purchase Orders, Email History, Inventory).\n"
+            "2. Project Guide & Advisor: You have detailed information about the system architecture, file structure, technology stack, and 20-step end-to-end procurement workflow of this application.\n\n"
+            "Guidelines:\n"
+            "- For database/business queries, ground your answers in the DATABASE STATE below.\n"
+            "- For questions about the project, architecture, code files, technology stack, or 20-step workflow guidance, use the PROJECT ARCHITECTURE & WORKFLOW GUIDE details below.\n"
+            "- Format your answers with professional markdown (e.g. tables, bold figures, lists, code snippets where appropriate).\n"
+            "- Keep a professional, helpful, Microsoft-Copilot-style tone.\n\n"
+            f"--- DATABASE STATE ---\n{db_context}\n----------------------\n\n"
+            f"--- PROJECT ARCHITECTURE & WORKFLOW GUIDE ---\n{PROJECT_GUIDE_TEXT}\n--------------------------------------------"
         )
         
         # Convert incoming chat messages structure
