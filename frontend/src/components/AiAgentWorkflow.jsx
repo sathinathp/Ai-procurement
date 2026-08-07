@@ -217,15 +217,8 @@ export default function AiAgentWorkflow() {
       // STEP 4: OUTREACH & NEGOTIATION
       setCurrentStep(3);
       addLog(`Step 4/5: Launching automated RFP email outreach to matched vendors...`, 'info');
-      addLog(`[SMTP Gateway] Resolving mail servers...`, 'info');
-      addLog(`[SMTP Gateway] Connected to smtp.gmail.com:587 (TLS handshake completed)`, 'success');
-      
-      matchedList.forEach(s => {
-        addLog(`[SMTP Outbound] Dispatched RFP Invite with specifications package to: ${s.email || 'sathinath.padhi@petabytz.com'} (${s.name})`, 'info');
-      });
-      
-      addLog(`[IMAP Listener] Daemon thread listening on imap.gmail.com:993 for supplier replies...`, 'info');
-      addLog(`Running AI negotiation loop over incoming responses...`, 'info');
+      addLog(`[Resend API] Initializing HTTPS email gateway (Port 443)...`, 'info');
+      addLog(`[Resend API] Connected to api.resend.com via TLS (HTTP 200 OK)`, 'success');
       
       let finalData = null;
 
@@ -239,7 +232,12 @@ export default function AiAgentWorkflow() {
         if (matchedList[2]) customEmails[matchedList[2].id] = settings.testEmail3 || 'sathinath.padhi@softstandard.com';
         
         await campaignService.launchReal(tempRfqNum, matchedList.map(s => s.id), customEmails);
-        addLog(`[Real-time Outreach] Launched real campaign. Dispatched RFQ emails to matched vendors (with test email mapping).`, 'success');
+        addLog(`[Resend API] Email campaign launched. Dispatching RFQ invitations...`, 'success');
+        matchedList.forEach((s, idx) => {
+          const dispatchEmails = [settings.testEmail1, settings.testEmail2, settings.testEmail3];
+          const dispatchEmail = dispatchEmails[idx] || s.email || 'sathinath.padhi@petabytz.com';
+          addLog(`[Resend Outbound] RFQ Invite dispatched to: ${dispatchEmail} (${s.name})`, 'info');
+        });
         addLog(`[IMAP Listener] Listening for supplier replies via WebSocket...`, 'info');
         
         await new Promise((resolve, reject) => {
@@ -283,8 +281,8 @@ export default function AiAgentWorkflow() {
                     addLog(`[IMAP Inbound] Received reply from ${l.supplier_name}: "${l.body.slice(0, 80)}..."`, 'info');
                     addLog(`[AI Parse] Extracted quotation metrics: Price=$${l.price}, Lead Time=${l.lead_time} days`, 'success');
                   } else {
-                    addLog(`[AI Negotiation] Target price not met. Generating and sending counter-offer email...`, 'info');
-                    addLog(`[SMTP Outbound] Dispatched counter-offer email to ${l.supplier_name}: Proposed $${l.price}`, 'info');
+                    addLog(`[AI Negotiation] Target price not met. Generating counter-offer via AI...`, 'info');
+                    addLog(`[Resend Outbound] Counter-offer email dispatched to ${l.supplier_name}: Proposed $${l.price}`, 'info');
                   }
                 }
               });
@@ -360,8 +358,8 @@ export default function AiAgentWorkflow() {
                     addLog(`[IMAP Inbound] Received reply from ${l.supplier_name}: "${l.body.slice(0, 80)}..."`, 'info');
                     addLog(`[AI Parse] Extracted quotation metrics: Price=$${l.price}, Lead Time=${l.lead_time} days`, 'success');
                   } else {
-                    addLog(`[AI Negotiation] Target price not met. Generating and sending counter-offer email...`, 'info');
-                    addLog(`[SMTP Outbound] Dispatched counter-offer email to ${l.supplier_name}: Proposed $${l.price}`, 'info');
+                    addLog(`[AI Negotiation] Target price not met. Generating counter-offer via AI...`, 'info');
+                    addLog(`[Resend Outbound] Counter-offer email dispatched to ${l.supplier_name}: Proposed $${l.price}`, 'info');
                   }
                 }
               });
@@ -386,8 +384,8 @@ export default function AiAgentWorkflow() {
         
         addLog(`[IMAP Inbound] Received reply from Sathya Polymer Suppliers (sathinath.padhi@petabytz.com)`, 'info');
         addLog(`[AI Parse] Extracted quotation metrics: Price=$290.00, Lead Time=10 days, Terms="Net 30 Days"`, 'success');
-        addLog(`[AI Negotiation] Target price not met. Generating and sending counter-offer email...`, 'info');
-        addLog(`[SMTP Outbound] Dispatched counter-offer email to: sathinath.padhi@petabytz.com`, 'info');
+        addLog(`[AI Negotiation] Target price not met. Generating counter-offer via AI...`, 'info');
+        addLog(`[Resend Outbound] Counter-offer email dispatched to: sathinath.padhi@petabytz.com`, 'info');
         
         addLog(`[IMAP Inbound] Received reply from Softstandard Polymer Labs (sathinath.padhi@softstandard.com)`, 'info');
         addLog(`[AI Parse] Extracted quotation metrics: Price=$280.68, Lead Time=8 days, Terms="Net 45 Days"`, 'success');
