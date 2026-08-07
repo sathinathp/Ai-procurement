@@ -48,7 +48,54 @@ def save_agent_settings(settings):
 
 
 def send_real_email_direct(to_email: str, subject: str, body: str, attachment_path: str = None) -> bool:
-    """SMTP Helper to send real emails with optional attachments using SMTP credentials in env."""
+    """Send real emails with optional attachments using Resend API if configured, otherwise fallback to SMTP."""
+    resend_key = os.getenv("RESEND_API_KEY")
+    if resend_key and "YOUR_" not in resend_key and resend_key.strip():
+        try:
+            import requests
+            import base64
+            
+            resend_from = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev")
+            if not resend_from or not resend_from.strip():
+                resend_from = "onboarding@resend.dev"
+                
+            from_display = "Neproplast Procurement Copilot"
+            from_header = f'"{from_display}" <{resend_from}>'
+            
+            payload = {
+                "from": from_header,
+                "to": [to_email],
+                "subject": subject,
+                "text": body,
+            }
+            
+            if attachment_path and os.path.exists(attachment_path):
+                filename = os.path.basename(attachment_path)
+                with open(attachment_path, "rb") as f:
+                    content_base64 = base64.b64encode(f.read()).decode("utf-8")
+                payload["attachments"] = [{
+                    "filename": filename,
+                    "content": content_base64
+                }]
+                
+            headers = {
+                "Authorization": f"Bearer {resend_key.strip()}",
+                "Content-Type": "application/json"
+            }
+            
+            logger.info(f"[Resend] Attempting to send email to {to_email} via Resend API")
+            response = requests.post("https://api.resend.com/emails", json=payload, headers=headers)
+            if response.status_code in [200, 201]:
+                logger.info(f"[Resend] Email successfully sent to {to_email}")
+                return True
+            else:
+                logger.error(f"[Resend] Failed to send email via API: {response.text}")
+                # Fallback to SMTP
+        except Exception as e:
+            logger.error(f"[Resend] Exception sending email via API: {e}")
+            # Fallback to SMTP
+
+    # SMTP Fallback
     smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
     try:
         smtp_port = int(os.getenv("SMTP_PORT", "587"))

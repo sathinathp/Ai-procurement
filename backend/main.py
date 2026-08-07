@@ -152,6 +152,42 @@ def generate_negotiation_dialogue(rfq_item: str, supplier_name: str, orig_price:
 def send_real_email(to_email: str, subject: str, body: str) -> bool:
     from dotenv import load_dotenv
     load_dotenv(override=True)
+
+    resend_key = os.getenv("RESEND_API_KEY")
+    if resend_key and "YOUR_" not in resend_key and resend_key.strip():
+        try:
+            import requests
+            resend_from = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev")
+            if not resend_from or not resend_from.strip():
+                resend_from = "onboarding@resend.dev"
+                
+            from_display = "Neproplast Procurement Copilot"
+            from_header = f'"{from_display}" <{resend_from}>'
+            
+            payload = {
+                "from": from_header,
+                "to": [to_email],
+                "subject": subject,
+                "text": body,
+            }
+            
+            headers = {
+                "Authorization": f"Bearer {resend_key.strip()}",
+                "Content-Type": "application/json"
+            }
+            
+            logger.info(f"[Resend] Attempting to send real-time email to {to_email} via Resend API")
+            response = requests.post("https://api.resend.com/emails", json=payload, headers=headers)
+            if response.status_code in [200, 201]:
+                logger.info(f"[Resend] Real-time email sent successfully to {to_email}")
+                return True
+            else:
+                logger.error(f"[Resend] Failed to send real-time email via API: {response.text}")
+                # Fallback to SMTP
+        except Exception as e:
+            logger.error(f"[Resend] Exception sending real-time email via API: {e}")
+            # Fallback to SMTP
+
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
