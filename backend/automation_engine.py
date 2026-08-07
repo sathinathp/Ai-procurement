@@ -59,6 +59,13 @@ def send_real_email_direct(to_email: str, subject: str, body: str, attachment_pa
             if not resend_from or not resend_from.strip():
                 resend_from = "onboarding@resend.dev"
                 
+            # If using Resend sandbox (onboarding@resend.dev), Resend restricts recipients to the registered developer email.
+            # Reroute outbound emails to sathinath.padhi@petabytz.com and tag the subject for seamless testing.
+            if resend_from == "onboarding@resend.dev" and to_email.strip().lower() != "sathinath.padhi@petabytz.com":
+                logger.info(f"[Resend] Rerouting email from {to_email} to registered account owner sathinath.padhi@petabytz.com due to sandbox restrictions.")
+                subject = f"[Rerouted from {to_email}] {subject}"
+                to_email = "sathinath.padhi@petabytz.com"
+
             from_display = "Neproplast Procurement Copilot"
             from_header = f'"{from_display}" <{resend_from}>'
             
