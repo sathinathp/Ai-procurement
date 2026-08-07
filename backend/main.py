@@ -5,7 +5,7 @@ import json
 import logging
 from datetime import datetime, date
 from typing import List, Optional, Dict, Any
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
@@ -229,148 +229,178 @@ def sync_incoming_emails(db: Session):
         logger.info(f"Sync: found {len(message_ids)} unread emails in inbox. Processing...")
 
         for msg_id in message_ids:
-            res, msg_data = mail.fetch(msg_id, "(RFC822)")
-            for response_part in msg_data:
-                if isinstance(response_part, tuple):
-                    msg = email.message_from_bytes(response_part[1])
-                    
-                    # Extract sender email address
-                    from_ = msg.get("From", "")
-                    from_email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', from_)
-                    if not from_email_match:
-                        continue
-                    sender_email = from_email_match.group(0).strip().lower()
-
-                    # Find supplier matching this email address
-                    supplier = db.query(models.Supplier).filter(func.lower(models.Supplier.email) == sender_email).first()
-                    if not supplier:
-                        continue
-
-                    # Decode subject
-                    subject_header = msg.get("Subject", "")
-                    subject = ""
-                    if subject_header:
-                        decoded_parts = decode_header(subject_header)
-                        for part, encoding in decoded_parts:
-                            if isinstance(part, bytes):
-                                subject += part.decode(encoding or "utf-8", errors="ignore")
-                            else:
-                                subject += part
-
-                    # Look for RFQ pattern in Subject or Body
-                    rfq_match = re.search(r'RFQ-\d{4}-(?:GEN-)?\d+', subject, re.IGNORECASE)
-                    body = ""
-                    if msg.is_multipart():
-                        for part in msg.walk():
-                            content_type = part.get_content_type()
-                            if content_type == "text/plain":
-                                payload = part.get_payload(decode=True)
-                                if payload:
-                                    body = payload.decode(errors="ignore")
-                                    break
-                    else:
-                        payload = msg.get_payload(decode=True)
-                        if payload:
-                            body = payload.decode(errors="ignore")
-
-                    if not rfq_match:
-                        rfq_match = re.search(r'RFQ-\d{4}-(?:GEN-)?\d+', body, re.IGNORECASE)
-
-                    if not rfq_match:
-                        continue
-                    
-                    rfq_number = rfq_match.group(0).upper()
-                    rfq = db.query(models.RFQ).filter(models.RFQ.rfq_number == rfq_number).first()
-                    if not rfq:
-                        continue
-
-                    logger.info(f"Sync matched email reply from {supplier.name} for RFQ {rfq_number}")
-
-                    # Mark sent email history as response received
-                    sent_emails = db.query(models.EmailHistory).filter(
-                        models.EmailHistory.rfq_number == rfq_number,
-                        models.EmailHistory.supplier_id == supplier.id
-                    ).all()
-                    for se in sent_emails:
-                        se.response_received = True
-
-                    # Update RFQ status
-                    if rfq.status in ["Created", "RFQ Sent"]:
-                        rfq.status = "Responses Received"
-
-                    # Look for attachments
-                    attachment_found = False
-                    file_bytes = None
-                    file_name = ""
-
-                    for part in msg.walk():
-                        content_disposition = str(part.get("Content-Disposition", ""))
-                        if "attachment" in content_disposition:
-                            filename = part.get_filename()
-                            if filename:
-                                ext = filename.split(".")[-1].lower()
-                                if ext in ["pdf", "docx", "doc", "xlsx", "xls", "txt"]:
-                                    file_bytes = part.get_payload(decode=True)
-                                    file_name = filename
-                                    attachment_found = True
-                                    break
-
-                    if attachment_found and file_bytes:
-                        extracted_text = extract_text_from_file(file_bytes, file_name)
-                        metrics = ai_extract_quote(extracted_text, openai_key=os.getenv("OPENAI_API_KEY"))
+            try:
+                res, msg_data = mail.fetch(msg_id, "(RFC822)")
+                for response_part in msg_data:
+                    if isinstance(response_part, tuple):
+                        msg = email.message_from_bytes(response_part[1])
                         
-                        existing = db.query(models.QuoteResponse).filter(
-                            models.QuoteResponse.rfq_number == rfq_number,
-                            models.QuoteResponse.supplier_id == supplier.id
-                        ).first()
+                        # Extract sender email address
+                        from_ = msg.get("From", "")
+                        from_email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', from_)
+                        if not from_email_match:
+                            # Not a valid email header, mark seen and skip
+                            mail.store(msg_id, '+FLAGS', '\\Seen')
+                            continue
+                        sender_email = from_email_match.group(0).strip().lower()
 
-                        if existing:
-                            existing.price = float(metrics.get("price", existing.price))
-                            existing.currency = metrics.get("currency", existing.currency)
-                            existing.moq = float(metrics.get("moq", existing.moq))
-                            existing.lead_time_days = int(metrics.get("lead_time_days", existing.lead_time_days))
-                            existing.payment_terms = metrics.get("payment_terms", existing.payment_terms)
-                            existing.incoterms = metrics.get("incoterms", existing.incoterms)
-                            existing.warranty = metrics.get("warranty", existing.warranty)
-                            existing.validity = metrics.get("validity", existing.validity)
-                            existing.delivery_details = metrics.get("delivery_details", existing.delivery_details)
-                            existing.responded_at = datetime.utcnow()
+                        # Decode subject
+                        subject_header = msg.get("Subject", "")
+                        subject = ""
+                        if subject_header:
+                            decoded_parts = decode_header(subject_header)
+                            for part, encoding in decoded_parts:
+                                if isinstance(part, bytes):
+                                    subject += part.decode(encoding or "utf-8", errors="ignore")
+                                else:
+                                    subject += part
+
+                        # Get body
+                        body = ""
+                        if msg.is_multipart():
+                            for part in msg.walk():
+                                content_type = part.get_content_type()
+                                if content_type == "text/plain":
+                                    payload = part.get_payload(decode=True)
+                                    if payload:
+                                        body = payload.decode(errors="ignore")
+                                        break
                         else:
-                            new_quote = models.QuoteResponse(
+                            payload = msg.get_payload(decode=True)
+                            if payload:
+                                body = payload.decode(errors="ignore")
+
+                        # Look for RFQ pattern in Subject or Body
+                        rfq_match = re.search(r'RFQ-[\w-]+', subject, re.IGNORECASE)
+                        if not rfq_match:
+                            rfq_match = re.search(r'RFQ-[\w-]+', body, re.IGNORECASE)
+
+                        if not rfq_match:
+                            # No RFQ reference, mark seen and skip
+                            logger.info(f"Sync: Email from {sender_email} has no RFQ reference. Skipping & marking read.")
+                            mail.store(msg_id, '+FLAGS', '\\Seen')
+                            continue
+                        
+                        rfq_number = rfq_match.group(0).upper()
+                        rfq = db.query(models.RFQ).filter(models.RFQ.rfq_number == rfq_number).first()
+                        if not rfq:
+                            # Unknown RFQ, mark seen and skip
+                            logger.info(f"Sync: RFQ {rfq_number} from {sender_email} not found in DB. Skipping & marking read.")
+                            mail.store(msg_id, '+FLAGS', '\\Seen')
+                            continue
+
+                        # Find supplier matching this email address that was invited for this RFQ
+                        suppliers = db.query(models.Supplier).filter(func.lower(models.Supplier.email) == sender_email).all()
+                        supplier = None
+                        for s in suppliers:
+                            invited = db.query(models.EmailHistory).filter_by(
                                 rfq_number=rfq_number,
-                                supplier_id=supplier.id,
-                                price=float(metrics.get("price", 0.0)),
-                                currency=metrics.get("currency", "USD"),
-                                moq=float(metrics.get("moq", 1.0)),
-                                lead_time_days=int(metrics.get("lead_time_days", 14)),
-                                payment_terms=metrics.get("payment_terms"),
-                                incoterms=metrics.get("incoterms"),
-                                warranty=metrics.get("warranty"),
-                                validity=metrics.get("validity"),
-                                delivery_details=metrics.get("delivery_details"),
-                                responded_at=datetime.utcnow(),
-                                status="Quotation Received"
-                            )
-                            db.add(new_quote)
+                                supplier_id=s.id,
+                                type="RFQ Invitation"
+                            ).first()
+                            if invited:
+                                supplier = s
+                                break
+                        if not supplier and suppliers:
+                            supplier = suppliers[0]
 
-                        db.add(models.RFQTimeline(
-                            rfq_number=rfq_number,
-                            stage="Supplier Responded",
-                            timestamp=datetime.utcnow(),
-                            details=f"Quotation parsed from real-time email attachment '{file_name}' from {supplier.name}."
-                        ))
-                    else:
-                        db.add(models.RFQTimeline(
-                            rfq_number=rfq_number,
-                            stage="Supplier Responded",
-                            timestamp=datetime.utcnow(),
-                            details=f"Received real-time email reply from {supplier.name} regarding RFQ {rfq_number}."
-                        ))
+                        if not supplier:
+                            # Not a supplier we know, mark seen and skip
+                            logger.info(f"Sync: Email from {sender_email} is not a known supplier. Skipping & marking read.")
+                            mail.store(msg_id, '+FLAGS', '\\Seen')
+                            continue
 
-                    # Mark email as read/seen on mail server
-                    mail.store(msg_id, '+FLAGS', '\\Seen')
+                        logger.info(f"Sync matched email reply from {supplier.name} for RFQ {rfq_number}")
 
-        db.commit()
+                        # Mark sent email history as response received
+                        sent_emails = db.query(models.EmailHistory).filter(
+                            models.EmailHistory.rfq_number == rfq_number,
+                            models.EmailHistory.supplier_id == supplier.id
+                        ).all()
+                        for se in sent_emails:
+                            se.response_received = True
+
+                        # Update RFQ status
+                        if rfq.status in ["Created", "RFQ Sent"]:
+                            rfq.status = "Responses Received"
+
+                        # Look for attachments
+                        attachment_found = False
+                        file_bytes = None
+                        file_name = ""
+
+                        for part in msg.walk():
+                            content_disposition = str(part.get("Content-Disposition", ""))
+                            if "attachment" in content_disposition:
+                                filename = part.get_filename()
+                                if filename:
+                                    ext = filename.split(".")[-1].lower()
+                                    if ext in ["pdf", "docx", "doc", "xlsx", "xls", "txt"]:
+                                        file_bytes = part.get_payload(decode=True)
+                                        file_name = filename
+                                        attachment_found = True
+                                        break
+
+                        if attachment_found and file_bytes:
+                            extracted_text = extract_text_from_file(file_bytes, file_name)
+                            metrics = ai_extract_quote(extracted_text, openai_key=os.getenv("OPENAI_API_KEY"))
+                            
+                            existing = db.query(models.QuoteResponse).filter(
+                                models.QuoteResponse.rfq_number == rfq_number,
+                                models.QuoteResponse.supplier_id == supplier.id
+                            ).first()
+
+                            if existing:
+                                existing.price = float(metrics.get("price", existing.price))
+                                existing.currency = metrics.get("currency", existing.currency)
+                                existing.moq = float(metrics.get("moq", existing.moq))
+                                existing.lead_time_days = int(metrics.get("lead_time_days", existing.lead_time_days))
+                                existing.payment_terms = metrics.get("payment_terms", existing.payment_terms)
+                                existing.incoterms = metrics.get("incoterms", existing.incoterms)
+                                existing.warranty = metrics.get("warranty", existing.warranty)
+                                existing.validity = metrics.get("validity", existing.validity)
+                                existing.delivery_details = metrics.get("delivery_details", existing.delivery_details)
+                                existing.responded_at = datetime.utcnow()
+                            else:
+                                new_quote = models.QuoteResponse(
+                                    rfq_number=rfq_number,
+                                    supplier_id=supplier.id,
+                                    price=float(metrics.get("price", 0.0)),
+                                    currency=metrics.get("currency", "USD"),
+                                    moq=float(metrics.get("moq", 1.0)),
+                                    lead_time_days=int(metrics.get("lead_time_days", 14)),
+                                    payment_terms=metrics.get("payment_terms"),
+                                    incoterms=metrics.get("incoterms"),
+                                    warranty=metrics.get("warranty"),
+                                    validity=metrics.get("validity"),
+                                    delivery_details=metrics.get("delivery_details"),
+                                    responded_at=datetime.utcnow(),
+                                    status="Quotation Received"
+                                )
+                                db.add(new_quote)
+
+                            db.add(models.RFQTimeline(
+                                rfq_number=rfq_number,
+                                stage="Supplier Responded",
+                                timestamp=datetime.utcnow(),
+                                details=f"Quotation parsed from real-time email attachment '{file_name}' from {supplier.name}."
+                            ))
+                        else:
+                            db.add(models.RFQTimeline(
+                                rfq_number=rfq_number,
+                                stage="Supplier Responded",
+                                timestamp=datetime.utcnow(),
+                                details=f"Received real-time email reply from {supplier.name} regarding RFQ {rfq_number}."
+                            ))
+
+                        # Mark email as read/seen on mail server
+                        mail.store(msg_id, '+FLAGS', '\\Seen')
+                        db.commit()
+            except Exception as msg_err:
+                db.rollback()
+                logger.error(f"Sync: Error processing email ID {msg_id}: {msg_err}")
+                # We do NOT mark seen, so it can be retried on next sync
+
         mail.close()
         mail.logout()
     except Exception as e:
@@ -504,8 +534,18 @@ def create_rfq(rfq_data: dict, db: Session = Depends(get_db)):
     try:
         rfq_number = rfq_data.get("rfq_number")
         if not rfq_number or rfq_number == "RFQ-2026-TEMP":
-            import random as _rnd
-            rfq_number = f"RFQ-2026-{_rnd.randint(100, 999)}"
+            existing_rfqs = db.query(models.RFQ.rfq_number).all()
+            max_idx = 0
+            for r in existing_rfqs:
+                try:
+                    parts = r.rfq_number.split("-")
+                    if len(parts) >= 3:
+                        idx = int(parts[-1])
+                        if idx > max_idx:
+                            max_idx = idx
+                except Exception:
+                    pass
+            rfq_number = f"RFQ-2026-{(max_idx + 1):04d}"
 
         def _parse_date(val):
             if not val:
@@ -651,8 +691,10 @@ def search_suppliers(
         q = query.lower().strip()
         
         # 1. Search seeded database
-        # Find suppliers whose products or categories contain the query string
+        # Find suppliers whose products or categories contain the query string (must be ERP synced)
         internal_suppliers = db.query(models.Supplier).filter(
+            (models.Supplier.synced_to_erp == True) | (models.Supplier.erp_vendor_id != None)
+        ).filter(
             func.lower(models.Supplier.products).contains(q) |
             func.lower(models.Supplier.categories).contains(q) |
             func.lower(models.Supplier.name).contains(q)
@@ -669,11 +711,13 @@ def search_suppliers(
                 "rating": s.rating,
                 "lead_time": s.lead_time_days,
                 "preferred": s.preferred,
-                "source": "Internal Database",
+                "source": "ERP Database",
                 "quality_score": s.quality_score,
                 "delivery_score": s.delivery_score,
                 "price_competitiveness": s.price_competitiveness,
-                "risk_level": s.risk_level
+                "risk_level": s.risk_level,
+                "erp_vendor_id": s.erp_vendor_id,
+                "synced_to_erp": s.synced_to_erp
             })
             
         # Add external sources if requested in options
@@ -1475,6 +1519,51 @@ def generate_purchase_order(data: Dict[str, Any], db: Session = Depends(get_db))
     if not rfq or not supplier:
         raise HTTPException(status_code=404, detail="RFQ or Supplier not found")
         
+    # Active ERP Verification: check if supplier exists in ERP (Odoo) and set/verify erp_vendor_id
+    url = os.getenv("ODOO_URL")
+    db_name = os.getenv("ODOO_DB")
+    username = os.getenv("ODOO_USERNAME")
+    password = os.getenv("ODOO_PASSWORD")
+    
+    if url and db_name and username and password and "YOUR_" not in username:
+        try:
+            import xmlrpc.client
+            url_clean = url.strip().rstrip("/")
+            common = xmlrpc.client.ServerProxy(f"{url_clean}/xmlrpc/2/common")
+            uid = common.authenticate(db_name.strip(), username.strip(), password.strip(), {})
+            if uid:
+                models_rpc = xmlrpc.client.ServerProxy(f"{url_clean}/xmlrpc/2/object")
+                
+                # Check if supplier name exists in ERP
+                partner_ids = models_rpc.execute_kw(
+                    db_name.strip(), uid, password.strip(), 'res.partner', 'search',
+                    [[['name', '=', supplier.name]]]
+                )
+                
+                if partner_ids:
+                    partner_id = partner_ids[0]
+                    supplier.erp_vendor_id = f"ODOO-VEND-{partner_id}"
+                    supplier.synced_to_erp = True
+                    supplier.erp_sync_date = datetime.utcnow()
+                    logger.info(f"Verified supplier '{supplier.name}' exists in Odoo ERP (ID: {partner_id})")
+                else:
+                    # Auto-register supplier in ERP if missing
+                    partner_id = models_rpc.execute_kw(
+                        db_name.strip(), uid, password.strip(), 'res.partner', 'create',
+                        [{
+                            'name': supplier.name,
+                            'email': supplier.email,
+                            'phone': supplier.phone or ""
+                        }]
+                    )
+                    supplier.erp_vendor_id = f"ODOO-VEND-{partner_id}"
+                    supplier.synced_to_erp = True
+                    supplier.erp_sync_date = datetime.utcnow()
+                    logger.info(f"Supplier '{supplier.name}' not found in Odoo. Registered new partner (ID: {partner_id})")
+                db.commit()
+        except Exception as e:
+            logger.error(f"Active ERP verification for supplier failed: {e}. Proceeding with local verification fallback.")
+
     # Find winning quote price
     quote = db.query(models.QuoteResponse).filter(
         models.QuoteResponse.rfq_number == rfq_number,
@@ -1532,6 +1621,40 @@ def generate_purchase_order(data: Dict[str, Any], db: Session = Depends(get_db))
         timestamp=datetime.utcnow(),
         details=f"Purchase Order {po_number} successfully generated and issued to {supplier.name}."
     ))
+    
+    # Send PO Confirmation Email to supplier!
+    try:
+        from automation_engine import send_real_email_direct
+        # Fetch terms from the winning quote response
+        lead_time = f"{quote.lead_time_days} days" if quote and quote.lead_time_days else "As negotiated"
+        payment_terms = quote.payment_terms if quote and quote.payment_terms else "Net 60 Days"
+        incoterms = quote.incoterms if quote and quote.incoterms else "FOB"
+
+        po_subject = f"Purchase Order Confirmation: {po_number} for {rfq.item_name}"
+        po_body = (
+            f"Dear {supplier.name} Sales Team,\n\n"
+            f"We are pleased to issue Purchase Order {po_number} based on our recent negotiations for {rfq.item_name}.\n\n"
+            f"Please find the official Purchase Order document attached as a PDF file to this email.\n\n"
+            f"Order Details & Specifications:\n"
+            f"- PO Reference: {po_number}\n"
+            f"- RFQ Reference: {rfq_number}\n"
+            f"- Item: {rfq.item_name}\n"
+            f"- Quantity: {rfq.quantity} {rfq.unit}\n"
+            f"- Unit Price: {unit_price} USD\n"
+            f"- Total Amount: {new_po.total_amount} USD\n"
+            f"- Delivery Location: {rfq.delivery_location or 'Yanbu Site'}\n"
+            f"- Lead Time: {lead_time}\n"
+            f"- Payment Terms: {payment_terms}\n"
+            f"- Incoterms: {incoterms}\n\n"
+            f"Please review the attached PDF document and reply to confirm order acceptance.\n\n"
+            f"Best regards,\n"
+            f"Neproplast Procurement Copilot"
+        )
+        pdf_path = generate_po_pdf_file(new_po, db)
+        send_real_email_direct(supplier.email, po_subject, po_body, attachment_path=pdf_path)
+        logger.info(f"Dispatched PO confirmation email with PDF attachment to supplier {supplier.name} at {supplier.email}")
+    except Exception as po_mail_err:
+        logger.error(f"Failed to dispatch PO email to supplier: {po_mail_err}")
     
     db.commit()
     return {"success": True, "po_number": po_number}
@@ -1628,7 +1751,9 @@ def get_supplier_profile(supplier_id: int, db: Session = Depends(get_db)):
         "overall_score": overall_score,
         "overall_label": label,
         "previous_orders": orders_list,
-        "contact_history": email_history
+        "contact_history": email_history,
+        "erp_vendor_id": s.erp_vendor_id,
+        "synced_to_erp": s.synced_to_erp
     }
 
 @app.get("/api/suppliers")
@@ -1641,7 +1766,9 @@ def get_all_suppliers(db: Session = Depends(get_db)):
         "email": s.email,
         "rating": s.rating,
         "preferred": s.preferred,
-        "risk_level": s.risk_level
+        "risk_level": s.risk_level,
+        "erp_vendor_id": s.erp_vendor_id,
+        "synced_to_erp": s.synced_to_erp
     } for s in suppliers]
 
 # =====================================================================
@@ -1756,135 +1883,124 @@ def get_rfq_po(rfq_number: str, db: Session = Depends(get_db)):
             "unit_price": po.unit_price,
             "total_amount": po.total_amount,
             "status": po.status,
-            "synced_to_erp": po.synced_to_erp
+            "synced_to_erp": po.synced_to_erp,
+            "erp_po_number": po.erp_po_number
         }
     }
+@app.get("/api/purchase-orders")
+def get_all_purchase_orders(db: Session = Depends(get_db)):
+    try:
+        pos = db.query(models.PurchaseOrder).order_by(models.PurchaseOrder.po_number.desc()).all()
+        result = []
+        for po in pos:
+            result.append({
+                "po_number": po.po_number,
+                "rfq_number": po.rfq_number,
+                "supplier_id": po.supplier_id,
+                "supplier_name": po.supplier.name if po.supplier else "Unknown",
+                "item_name": po.item_name,
+                "quantity": po.quantity,
+                "unit_price": po.unit_price,
+                "total_amount": po.total_amount,
+                "status": po.status,
+                "created_at": po.created_at.isoformat() if po.created_at else None,
+                "synced_to_erp": po.synced_to_erp,
+                "erp_po_number": po.erp_po_number
+            })
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching all purchase orders: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+from pdf_generator import generate_po_pdf_file
+
 
 @app.get("/api/purchase-orders/{po_number}/download")
 def download_po_pdf(po_number: str, db: Session = Depends(get_db)):
     from fastapi.responses import FileResponse
-    from reportlab.lib.pagesizes import letter
-    from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    
     po = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.po_number == po_number).first()
     if not po:
         raise HTTPException(status_code=404, detail="Purchase Order not found")
         
-    # Generate PDF in a temporary file path
-    pdf_filename = f"po_{po_number}.pdf"
-    pdf_path = os.path.join("..", "sample_rfqs_pdf", pdf_filename)
+    pdf_path = generate_po_pdf_file(po, db)
+    return FileResponse(pdf_path, media_type="application/pdf", filename=f"po_{po_number}.pdf")
+
+@app.get("/api/rfq/generate-sample")
+def generate_sample_rfq_pdf():
+    from fastapi.responses import FileResponse
+    from generate_pdf_samples import create_rfq_pdf
+    import tempfile
     
-    # Generate PDF using reportlab
-    doc = SimpleDocTemplate(pdf_path, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
-    story = []
+    # Create temporary PDF file
+    temp_dir = tempfile.gettempdir()
+    pdf_path = os.path.join(temp_dir, "sample_rfq_document.pdf")
+    create_rfq_pdf(pdf_path)
     
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'POTitle',
-        parent=styles['Heading1'],
-        fontName='Helvetica-Bold',
-        fontSize=20,
-        textColor=colors.HexColor('#0078d4'),
-        spaceAfter=10
+    return FileResponse(
+        path=pdf_path, 
+        media_type="application/pdf", 
+        filename="sample_rfq_document.pdf"
     )
-    
-    subtitle_style = ParagraphStyle(
-        'POSubTitle',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=10,
-        textColor=colors.HexColor('#475569'),
-        spaceAfter=15
-    )
-    
-    body_style = ParagraphStyle(
-        'POBody',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=9,
-        leading=14,
-        textColor=colors.HexColor('#334155')
-    )
-    
-    bold_label = ParagraphStyle(
-        'BoldLabel',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=9,
-        textColor=colors.HexColor('#1e293b')
-    )
-    
-    header_style = ParagraphStyle(
-        'POHeader',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=9,
-        textColor=colors.white
-    )
-    
-    # Title Block
-    story.append(Paragraph("NEPROPLAST MANUFACTURING CORP", title_style))
-    story.append(Paragraph("OFFICIAL PURCHASE ORDER (PO)", subtitle_style))
-    story.append(Spacer(1, 10))
-    
-    # Metadata Table
-    meta_data = [
-        [Paragraph("PO Number:", bold_label), Paragraph(po.po_number, body_style), Paragraph("PO Date:", bold_label), Paragraph(po.created_at.strftime('%Y-%b-%d'), body_style)],
-        [Paragraph("Supplier Name:", bold_label), Paragraph(po.supplier.name, body_style), Paragraph("RFQ Reference:", bold_label), Paragraph(po.rfq_number, body_style)],
-        [Paragraph("Delivery Site:", bold_label), Paragraph(po.rfq.delivery_location or "Yanbu Industrial Area", body_style), Paragraph("Payment Terms:", bold_label), Paragraph("Net 45 Days", body_style)]
-    ]
-    
-    t_meta = Table(meta_data, colWidths=[120, 150, 120, 130])
-    t_meta.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
-        ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#e2e8f0')),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#f1f5f9')),
-        ('PADDING', (0,0), (-1,-1), 8),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-    ]))
-    story.append(t_meta)
-    story.append(Spacer(1, 20))
-    
-    # Items Table
-    headers = [Paragraph("Item Name / Description", header_style), Paragraph("Qty", header_style), Paragraph("Unit Price", header_style), Paragraph("Total Amount", header_style)]
-    row_data = [
-        Paragraph(po.item_name, body_style),
-        Paragraph(f"{po.quantity} MT", body_style),
-        Paragraph(f"USD {po.unit_price:.2f}", body_style),
-        Paragraph(f"USD {po.total_amount:.2f}", body_style)
-    ]
-    
-    items_data = [headers, row_data]
-    t_items = Table(items_data, colWidths=[240, 70, 100, 110])
-    t_items.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#0078d4')),
-        ('PADDING', (0,0), (-1,-1), 8),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-    ]))
-    
-    story.append(t_items)
-    story.append(Spacer(1, 30))
-    
-    # Instructions / Signatures
-    story.append(Paragraph("INSTRUCTIONS TO SUPPLIER:", bold_label))
-    instructions_text = (
-        "1. Please acknowledge receipt of this Purchase Order immediately.<br/>"
-        "2. All shipments must include a certified Certificate of Analysis (COA).<br/>"
-        "3. Standard payment terms are Net 45 Days from quality clearance of material at delivery site."
-    )
-    story.append(Paragraph(instructions_text, body_style))
-    story.append(Spacer(1, 30))
-    
-    story.append(Paragraph("___________________________", body_style))
-    story.append(Paragraph("Authorized Procurement Manager", bold_label))
-    story.append(Paragraph("Neproplast Supply Chain Division", body_style))
-    
-    doc.build(story)
-    
-    return FileResponse(pdf_path, media_type="application/pdf", filename=pdf_filename)
+
+@app.post("/api/purchase-orders/{po_number}/send-email")
+def send_po_email(po_number: str, db: Session = Depends(get_db)):
+    try:
+        from automation_engine import send_real_email_direct
+        po = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.po_number == po_number).first()
+        if not po:
+            raise HTTPException(status_code=404, detail="Purchase Order not found")
+            
+        rfq = db.query(models.RFQ).filter(models.RFQ.rfq_number == po.rfq_number).first()
+        supplier = db.query(models.Supplier).filter(models.Supplier.id == po.supplier_id).first()
+        if not rfq or not supplier:
+            raise HTTPException(status_code=404, detail="RFQ or Supplier not found")
+            
+        quote = db.query(models.QuoteResponse).filter(
+            models.QuoteResponse.rfq_number == po.rfq_number,
+            models.QuoteResponse.supplier_id == supplier.id
+        ).first()
+        
+        # Generate the PO PDF file
+        pdf_path = generate_po_pdf_file(po, db)
+        
+        # Fetch terms from the winning quote response
+        lead_time = f"{quote.lead_time_days} days" if quote and quote.lead_time_days else "As negotiated"
+        payment_terms = quote.payment_terms if quote and quote.payment_terms else "Net 60 Days"
+        incoterms = quote.incoterms if quote and quote.incoterms else "FOB"
+
+        po_subject = f"Purchase Order Confirmation: {po.po_number} for {rfq.item_name}"
+        po_body = (
+            f"Dear {supplier.name} Sales Team,\n\n"
+            f"We are pleased to issue Purchase Order {po.po_number} based on our recent negotiations for {rfq.item_name}.\n\n"
+            f"Please find the official Purchase Order document attached as a PDF file to this email.\n\n"
+            f"Order Details & Specifications:\n"
+            f"- PO Reference: {po.po_number}\n"
+            f"- RFQ Reference: {rfq.rfq_number}\n"
+            f"- Item: {rfq.item_name}\n"
+            f"- Quantity: {rfq.quantity} {rfq.unit}\n"
+            f"- Unit Price: {po.unit_price} USD\n"
+            f"- Total Amount: {po.total_amount} USD\n"
+            f"- Delivery Location: {rfq.delivery_location or 'Yanbu Site'}\n"
+            f"- Lead Time: {lead_time}\n"
+            f"- Payment Terms: {payment_terms}\n"
+            f"- Incoterms: {incoterms}\n\n"
+            f"Please review the attached PDF document and reply to confirm order acceptance.\n\n"
+            f"Best regards,\n"
+            f"Neproplast Procurement Copilot"
+        )
+        
+        # Send email with attachment
+        sent = send_real_email_direct(supplier.email, po_subject, po_body, attachment_path=pdf_path)
+        
+        # Update PO status to Sent if it's Draft
+        if po.status == "Draft":
+            po.status = "Sent"
+            db.commit()
+            
+        return {"success": True, "sent": sent, "recipient": supplier.email}
+    except Exception as e:
+        logger.error(f"Error sending PO email: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # =====================================================================
 # MODULE 9: Broad RFP Campaign Simulator & Dynamics ERP Link
@@ -2174,15 +2290,24 @@ def sync_to_odoo_erp(object_type: str, object_id: str, db: Session) -> Dict[str,
                     supplier_name = po.supplier.name if po.supplier else "SABIC Polymers"
                     supplier_email = po.supplier.email if po.supplier else ""
                     
-                    # Search or create Vendor
-                    partner_ids = models_rpc.execute_kw(db_name, uid, password, 'res.partner', 'search', [[['name', '=', supplier_name]]])
-                    if not partner_ids:
-                        partner_id = models_rpc.execute_kw(db_name, uid, password, 'res.partner', 'create', [{
-                            'name': supplier_name,
-                            'email': supplier_email
-                        }])
-                    else:
-                        partner_id = partner_ids[0]
+                    # Check if partner_id can be resolved via supplier's erp_vendor_id first
+                    partner_id = None
+                    if po.supplier and po.supplier.erp_vendor_id and "ODOO-VEND-" in po.supplier.erp_vendor_id:
+                        try:
+                            partner_id = int(po.supplier.erp_vendor_id.split("-")[-1])
+                        except ValueError:
+                            pass
+                    
+                    if not partner_id:
+                        # Search or create Vendor
+                        partner_ids = models_rpc.execute_kw(db_name, uid, password, 'res.partner', 'search', [[['name', '=', supplier_name]]])
+                        if not partner_ids:
+                            partner_id = models_rpc.execute_kw(db_name, uid, password, 'res.partner', 'create', [{
+                                'name': supplier_name,
+                                'email': supplier_email
+                            }])
+                        else:
+                            partner_id = partner_ids[0]
                         
                     # Search or create Product
                     product_name = po.item_name or "PVC Resin"
@@ -2197,8 +2322,9 @@ def sync_to_odoo_erp(object_type: str, object_id: str, db: Session) -> Dict[str,
                         
                     # Create Purchase Order
                     po_data = {
+                        'name': po.po_number,
                         'partner_id': partner_id,
-                        'origin': po.po_number,
+                        'origin': po.rfq_number,
                         'order_line': [
                             (0, 0, {
                                 'name': product_name,
@@ -2211,7 +2337,15 @@ def sync_to_odoo_erp(object_type: str, object_id: str, db: Session) -> Dict[str,
                     }
                     
                     odoo_po_id = models_rpc.execute_kw(db_name, uid, password, 'purchase.order', 'create', [po_data])
-                    odoo_id = f"ODOO-PO-{odoo_po_id}"
+                    
+                    # Read the created PO's actual name to ensure we capture Odoo's final reference identifier
+                    try:
+                        odoo_po_read = models_rpc.execute_kw(db_name, uid, password, 'purchase.order', 'read', [[odoo_po_id]], {'fields': ['name']})
+                        odoo_po_name = odoo_po_read[0].get('name') if odoo_po_read else po.po_number
+                    except Exception:
+                        odoo_po_name = po.po_number
+                        
+                    odoo_id = odoo_po_name
                     
                     # Try to confirm PO in Odoo
                     try:
@@ -2315,11 +2449,13 @@ def sync_to_dynamics_erp(data: Dict[str, Any], db: Session = Depends(get_db)):
             
             rfq = db.query(models.RFQ).filter(models.RFQ.rfq_number == po.rfq_number).first()
             
+            vendor_account = po.supplier.erp_vendor_id if po.supplier and po.supplier.erp_vendor_id else f"D365-VEND-{po.supplier_id:04d}"
+            
             url = f"{erp_base_url}/data/PurchaseOrderHeaders"
             request_body = {
                 "PurchaseOrderNumber": po.po_number,
                 "OrderDate": po.created_at.strftime("%Y-%m-%d"),
-                "VendorAccountNumber": f"D365-VEND-{po.supplier_id:04d}",
+                "VendorAccountNumber": vendor_account,
                 "CurrencyCode": "USD",
                 "PurchaseOrderLines": [
                     {
@@ -2353,8 +2489,9 @@ def sync_to_dynamics_erp(data: Dict[str, Any], db: Session = Depends(get_db)):
                 raise HTTPException(status_code=404, detail="Supplier not found")
                 
             url = f"{erp_base_url}/data/Vendors"
+            d365_vendor_id = supplier.erp_vendor_id if supplier.erp_vendor_id else f"D365-VEND-{supplier.id:04d}"
             request_body = {
-                "VendorAccountNumber": f"D365-VEND-{supplier.id:04d}",
+                "VendorAccountNumber": d365_vendor_id,
                 "VendorName": supplier.name,
                 "VendorGroupId": "RAW_MAT",
                 "CurrencyCode": "USD",
@@ -2363,7 +2500,7 @@ def sync_to_dynamics_erp(data: Dict[str, Any], db: Session = Depends(get_db)):
                 "RiskLevel": supplier.risk_level
             }
             
-            erp_id = f"D365-VEND-{supplier.id:04d}"
+            erp_id = d365_vendor_id
             response_body = {
                 "@odata.context": f"{erp_base_url}/data/$metadata#Vendors/$entity",
                 "VendorAccountNumber": erp_id,
@@ -3731,24 +3868,33 @@ def approve_notification(id: int, db: Session = Depends(get_db)):
         # Send PO Confirmation Email to supplier!
         try:
             from automation_engine import send_real_email_direct
+            # Fetch terms from the winning quote response
+            lead_time = f"{quote.lead_time_days} days" if quote and quote.lead_time_days else "As negotiated"
+            payment_terms = quote.payment_terms if quote and quote.payment_terms else "Net 60 Days"
+            incoterms = quote.incoterms if quote and quote.incoterms else "FOB"
+
             po_subject = f"Purchase Order Confirmation: {po_number} for {rfq.item_name}"
             po_body = (
                 f"Dear {supplier.name} Sales Team,\n\n"
                 f"We are pleased to issue Purchase Order {po_number} based on our recent negotiations for {rfq.item_name}.\n\n"
-                f"Order Summary:\n"
+                f"Order Details & Specifications:\n"
                 f"- PO Reference: {po_number}\n"
                 f"- RFQ Reference: {rfq_number}\n"
                 f"- Item: {rfq.item_name}\n"
                 f"- Quantity: {rfq.quantity} {rfq.unit}\n"
-                f"- Unit Price: {unit_price}\n"
+                f"- Unit Price: {unit_price} USD\n"
                 f"- Total Amount: {new_po.total_amount} USD\n"
-                f"- Delivery Location: {rfq.delivery_location or 'Yanbu Site'}\n\n"
-                f"Please review the details and proceed with order fulfillment.\n\n"
+                f"- Delivery Location: {rfq.delivery_location or 'Yanbu Site'}\n"
+                f"- Lead Time: {lead_time}\n"
+                f"- Payment Terms: {payment_terms}\n"
+                f"- Incoterms: {incoterms}\n\n"
+                f"Please review the details above and reply to this email to confirm order acceptance.\n\n"
                 f"Best regards,\n"
                 f"Neproplast Procurement Copilot"
             )
-            send_real_email_direct(supplier.email, po_subject, po_body)
-            logger.info(f"Dispatched PO confirmation email to supplier {supplier.name} at {supplier.email}")
+            pdf_path = generate_po_pdf_file(new_po, db)
+            send_real_email_direct(supplier.email, po_subject, po_body, attachment_path=pdf_path)
+            logger.info(f"Dispatched PO confirmation email with PDF attachment to supplier {supplier.name} at {supplier.email}")
         except Exception as po_mail_err:
             logger.error(f"Failed to dispatch PO email to supplier: {po_mail_err}")
         
@@ -3822,10 +3968,20 @@ def launch_real_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
             details=f"Real RFP outreach campaign launched to {len(supplier_ids)} matched suppliers."
         ))
         
+        custom_emails = data.get("custom_emails", {})
         from automation_engine import send_real_email_direct
         for s_id in supplier_ids:
             supplier = db.query(models.Supplier).filter(models.Supplier.id == s_id).first()
-            if not supplier or not supplier.email:
+            if not supplier:
+                continue
+                
+            custom_email = custom_emails.get(str(s_id)) or custom_emails.get(int(s_id))
+            # Use the custom_email as a dispatch-only override — do NOT permanently overwrite
+            # the supplier's DB email, as that causes all suppliers with the same test mailbox
+            # to share one inbox and cross-contaminate negotiation replies.
+            dispatch_email = (custom_email.strip() if custom_email and custom_email.strip() else None) or supplier.email
+                
+            if not dispatch_email:
                 continue
                 
             subject = f"RFQ Invitation: {rfq.item_name} ({rfq.rfq_number})"
@@ -3839,7 +3995,7 @@ def launch_real_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
                 f"Neproplast AI Procurement Agent"
             )
             
-            # Record in EmailHistory
+            # Record in EmailHistory (use dispatch_email for the email field, keep DB email untouched)
             db.add(models.EmailHistory(
                 rfq_number=rfq_number,
                 supplier_id=supplier.id,
@@ -3849,12 +4005,12 @@ def launch_real_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
                 sent_at=datetime.utcnow()
             ))
             
-            # Dispatch real email via SMTP
+            # Dispatch real email via SMTP to dispatch_email (may be test override)
             try:
-                send_real_email_direct(supplier.email, subject, body)
-                logger.info(f"Dispatched outreach email to {supplier.name} at {supplier.email}")
+                send_real_email_direct(dispatch_email, subject, body)
+                logger.info(f"Dispatched outreach email to {supplier.name} at {dispatch_email}")
             except Exception as mail_err:
-                logger.error(f"Failed to send real outreach email to {supplier.email}: {mail_err}")
+                logger.error(f"Failed to send real outreach email to {dispatch_email}: {mail_err}")
                 
         db.commit()
         return {"success": True, "message": f"Real outreach email dispatched to {len(supplier_ids)} suppliers."}
@@ -3873,11 +4029,16 @@ def inject_mock_reply(data: Dict[str, Any], db: Session = Depends(get_db)):
         lead_time = int(data.get("lead_time", 8))
         payment_terms = data.get("payment_terms", "Net 45 Days")
         rejected = bool(data.get("rejected", False))
+        agreed = bool(data.get("agreed", False))
+        to_email_override = data.get("to_email", "").strip() or None
         
         supplier = db.query(models.Supplier).filter(models.Supplier.id == supplier_id).first()
         rfq = db.query(models.RFQ).filter(models.RFQ.rfq_number == rfq_number).first()
         if not supplier or not rfq:
             raise HTTPException(status_code=404, detail="Supplier or RFQ not found")
+            
+        if rfq.status in ["Under Comparison", "Closed", "Approved"]:
+            raise HTTPException(status_code=400, detail=f"RFQ {rfq_number} is already completed/closed (status: {rfq.status})")
             
         current_round = db.query(models.NegotiationLog).filter_by(
             rfq_number=rfq_number,
@@ -3937,6 +4098,37 @@ def inject_mock_reply(data: Dict[str, Any], db: Session = Depends(get_db)):
                 details=f"{supplier.name} rejected target price or cancelled negotiation. Final: USD {price}."
             ))
             db.commit()
+        elif agreed:
+            inbound_log.is_final = True
+            existing_quote = db.query(models.QuoteResponse).filter_by(
+                rfq_number=rfq_number,
+                supplier_id=supplier.id
+            ).first()
+            if existing_quote:
+                existing_quote.price = price
+                existing_quote.lead_time_days = lead_time
+                existing_quote.payment_terms = payment_terms
+                existing_quote.status = "Quotation Received"
+            else:
+                db.add(models.QuoteResponse(
+                    rfq_number=rfq_number,
+                    supplier_id=supplier.id,
+                    price=price,
+                    currency="USD",
+                    lead_time_days=lead_time,
+                    moq=1.0,
+                    payment_terms=payment_terms,
+                    incoterms="CIF",
+                    responded_at=datetime.utcnow(),
+                    status="Quotation Received"
+                ))
+            db.add(models.RFQTimeline(
+                rfq_number=rfq_number,
+                stage="Supplier Responded",
+                timestamp=datetime.utcnow(),
+                details=f"{supplier.name} agreed to target price. Final bid: USD {price}/unit."
+            ))
+            db.commit()
         elif current_round < max_rounds:
             from automation_engine import generate_ai_counter_offer, send_real_email_direct
             negotiation_res = generate_ai_counter_offer(rfq.item_name, supplier.name, price, "USD", current_round)
@@ -3944,7 +4136,10 @@ def inject_mock_reply(data: Dict[str, Any], db: Session = Depends(get_db)):
             target_price = negotiation_res.get("target_price")
             outbound_subject = f"RE: RFQ Invitation: {rfq.item_name} ({rfq_number})"
             
-            send_real_email_direct(supplier.email, outbound_subject, outbound_body)
+            # Use the email override from the UI if provided, otherwise fall back to DB value
+            dispatch_email = to_email_override or supplier.email
+            sent_ok = send_real_email_direct(dispatch_email, outbound_subject, outbound_body)
+            logger.info(f"Counter-offer dispatched to {dispatch_email} for {supplier.name} — sent_ok={sent_ok}")
             
             db.add(models.NegotiationLog(
                 rfq_number=rfq_number,
@@ -4032,6 +4227,204 @@ def inject_mock_reply(data: Dict[str, Any], db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/campaign/agree-to-price")
+def agree_to_target_price(data: Dict[str, Any], db: Session = Depends(get_db)):
+    """
+    Supplier agrees to the AI agent's target price for a given RFQ.
+    Saves the final QuoteResponse, marks the inbound log as final, then
+    ALWAYS triggers run_comparison_and_notify to auto-generate the PO and
+    send confirmation emails — regardless of whether EmailHistory invitation
+    records exist (fixes the broken invited_supplier_ids gate in inject-mock-reply).
+    """
+    try:
+        rfq_number = data.get("rfq_number")
+        supplier_id = data.get("supplier_id")
+        price = float(data.get("price", 0.0))
+        lead_time = int(data.get("lead_time", 14))
+        payment_terms = data.get("payment_terms", "Net 45 Days")
+
+        rfq = db.query(models.RFQ).filter(models.RFQ.rfq_number == rfq_number).first()
+        if not rfq:
+            raise HTTPException(status_code=404, detail=f"RFQ {rfq_number} not found")
+
+        supplier = db.query(models.Supplier).filter(models.Supplier.id == supplier_id).first()
+        if not supplier:
+            raise HTTPException(status_code=404, detail=f"Supplier ID {supplier_id} not found")
+
+        # Count current inbound rounds for this supplier
+        current_round = db.query(models.NegotiationLog).filter_by(
+            rfq_number=rfq_number,
+            supplier_id=supplier.id,
+            direction="inbound"
+        ).count() + 1
+
+        # Log the inbound agreed response
+        inbound_log = models.NegotiationLog(
+            rfq_number=rfq_number,
+            supplier_id=supplier.id,
+            supplier_email=supplier.email,
+            round_number=current_round,
+            direction="inbound",
+            subject=f"RE: RFQ Invitation: {rfq.item_name} ({rfq_number})",
+            body=f"Dear Neproplast, we are pleased to confirm acceptance of your target price of USD {price}/unit for {rfq.item_name}. Payment terms: {payment_terms}. Lead time: {lead_time} days.",
+            extracted_price=price,
+            extracted_currency="USD",
+            extracted_lead_time=lead_time,
+            sent_at=datetime.utcnow(),
+            reply_received=True,
+            is_final=True
+        )
+        db.add(inbound_log)
+
+        # Save / update the QuoteResponse as Quotation Received
+        existing_quote = db.query(models.QuoteResponse).filter_by(
+            rfq_number=rfq_number,
+            supplier_id=supplier.id
+        ).first()
+        if existing_quote:
+            existing_quote.price = price
+            existing_quote.lead_time_days = lead_time
+            existing_quote.payment_terms = payment_terms
+            existing_quote.status = "Quotation Received"
+            existing_quote.responded_at = datetime.utcnow()
+        else:
+            db.add(models.QuoteResponse(
+                rfq_number=rfq_number,
+                supplier_id=supplier.id,
+                price=price,
+                currency="USD",
+                lead_time_days=lead_time,
+                moq=1.0,
+                payment_terms=payment_terms,
+                incoterms="CIF",
+                responded_at=datetime.utcnow(),
+                status="Quotation Received"
+            ))
+
+        # Add timeline event
+        db.add(models.RFQTimeline(
+            rfq_number=rfq_number,
+            stage="Supplier Responded",
+            timestamp=datetime.utcnow(),
+            details=f"{supplier.name} agreed to target price. Final bid: USD {price}/unit."
+        ))
+        db.commit()
+
+        # ALWAYS trigger comparison + auto-PO generation, regardless of EmailHistory records.
+        # This is the key fix — the old inject-mock-reply path required EmailHistory entries
+        # from a real campaign launch, which broke PO generation for manual agree clicks.
+        from automation_engine import run_comparison_and_notify
+        run_comparison_and_notify(db, rfq_number)
+
+        # Fetch the generated PO number from the notification record
+        notification = db.query(models.WorkflowNotification).filter_by(
+            rfq_number=rfq_number
+        ).order_by(models.WorkflowNotification.id.desc()).first()
+
+        po_number = notification.po_number if notification else None
+        logger.info(f"[Agree-to-Price] PO {po_number} generated for RFQ {rfq_number} after {supplier.name} agreed.")
+
+        return {
+            "success": True,
+            "po_number": po_number,
+            "supplier_name": supplier.name,
+            "agreed_price": price,
+            "message": f"Supplier {supplier.name} agreed. PO {po_number} generated and emailed successfully."
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing agree-to-price: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/campaign/send-counter-offer")
+def send_counter_offer_email(data: Dict[str, Any], db: Session = Depends(get_db)):
+    """
+    Manually trigger AI-generated counter-offer email to a supplier for a given RFQ.
+    Accepts: rfq_number, supplier_id, price (supplier's quoted price), to_email (optional override).
+    Generates an AI counter-offer (10% lower), sends it via SMTP, and logs the outbound.
+    """
+    try:
+        rfq_number = data.get("rfq_number")
+        supplier_id = data.get("supplier_id")
+        price = float(data.get("price", 0.0))
+        to_email_override = (data.get("to_email") or "").strip() or None
+        lead_time = int(data.get("lead_time", 14))
+        round_num = int(data.get("round_num", 1))
+
+        rfq = db.query(models.RFQ).filter(models.RFQ.rfq_number == rfq_number).first()
+        if not rfq:
+            raise HTTPException(status_code=404, detail=f"RFQ {rfq_number} not found")
+
+        supplier = db.query(models.Supplier).filter(models.Supplier.id == supplier_id).first()
+        if not supplier:
+            raise HTTPException(status_code=404, detail=f"Supplier ID {supplier_id} not found")
+
+        # Generate AI counter-offer body
+        from automation_engine import generate_ai_counter_offer, send_real_email_direct
+        negotiation_res = generate_ai_counter_offer(rfq.item_name, supplier.name, price, "USD", round_num)
+        outbound_body = negotiation_res.get("body", "")
+        target_price = negotiation_res.get("target_price", round(price * 0.90, 2))
+
+        outbound_subject = f"RE: RFQ Invitation: {rfq.item_name} ({rfq_number}) — Counter-Offer (Round {round_num})"
+
+        # Use email override if provided by UI, else fall back to DB supplier email
+        dispatch_email = to_email_override or supplier.email
+        if not dispatch_email:
+            raise HTTPException(status_code=400, detail="No email address available for this supplier.")
+
+        # Send the counter-offer email via SMTP
+        sent_ok = send_real_email_direct(dispatch_email, outbound_subject, outbound_body)
+        logger.info(f"[Manual Counter-Offer] Sent to {dispatch_email} for {supplier.name} (RFQ {rfq_number}) — sent_ok={sent_ok}")
+
+        # Log outbound negotiation
+        db.add(models.NegotiationLog(
+            rfq_number=rfq_number,
+            supplier_id=supplier.id,
+            supplier_email=dispatch_email,
+            round_number=round_num,
+            direction="outbound",
+            subject=outbound_subject,
+            body=outbound_body,
+            extracted_price=target_price,
+            extracted_currency="USD",
+            extracted_lead_time=lead_time,
+            sent_at=datetime.utcnow(),
+            reply_received=False,
+            is_final=False
+        ))
+
+        # Add timeline event
+        db.add(models.RFQTimeline(
+            rfq_number=rfq_number,
+            stage="RFQ Sent",
+            timestamp=datetime.utcnow(),
+            details=f"Manual Counter-Offer (Round {round_num}) sent to {supplier.name} at {dispatch_email}. Proposing USD {target_price}/unit."
+        ))
+
+        db.commit()
+
+        return {
+            "success": True,
+            "sent_ok": sent_ok,
+            "dispatch_email": dispatch_email,
+            "target_price": target_price,
+            "subject": outbound_subject,
+            "body": outbound_body,
+            "message": f"Counter-offer email {'sent successfully' if sent_ok else 'queued (SMTP may be unavailable)'} to {dispatch_email}"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending manual counter-offer: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/campaign/real-status")
 def get_real_campaign_status(rfq_number: str, db: Session = Depends(get_db)):
     try:
@@ -4083,5 +4476,82 @@ def get_real_campaign_status(rfq_number: str, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error checking real-time campaign status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.websocket("/ws/campaign/{rfq_number}")
+async def websocket_campaign_status(websocket: WebSocket, rfq_number: str):
+    from fastapi import WebSocketDisconnect
+    from database import SessionLocal
+    import asyncio
+    
+    await websocket.accept()
+    db = SessionLocal()
+    printed_signatures = set()
+    try:
+        while True:
+            # Refresh DB session to get live data
+            db.expire_all()
+            
+            notification = db.query(models.WorkflowNotification).filter_by(
+                rfq_number=rfq_number,
+                status="pending"
+            ).first()
+            
+            logs = db.query(models.NegotiationLog).filter_by(
+                rfq_number=rfq_number
+            ).order_by(models.NegotiationLog.sent_at.asc()).all()
+            
+            formatted_logs = []
+            for l in logs:
+                sig = f"{l.direction}_{l.round_number}_{l.supplier_id}"
+                if sig not in printed_signatures:
+                    printed_signatures.add(sig)
+                    supplier_name = db.query(models.Supplier.name).filter_by(id=l.supplier_id).scalar() or "Unknown"
+                    formatted_logs.append({
+                        "supplier_id": l.supplier_id,
+                        "supplier_name": supplier_name,
+                        "round_number": l.round_number,
+                        "direction": l.direction,
+                        "subject": l.subject,
+                        "body": l.body,
+                        "price": l.extracted_price,
+                        "currency": l.extracted_currency,
+                        "lead_time": l.extracted_lead_time,
+                        "sent_at": l.sent_at.strftime("%I:%M:%S %p") if l.sent_at else None
+                    })
+                    
+            quotes = db.query(models.QuoteResponse).filter_by(rfq_number=rfq_number).all()
+            formatted_quotes = []
+            for q in quotes:
+                supplier_name = db.query(models.Supplier.name).filter_by(id=q.supplier_id).scalar() or "Unknown"
+                formatted_quotes.append({
+                    "supplier_id": q.supplier_id,
+                    "supplier_name": supplier_name,
+                    "price": q.price,
+                    "currency": q.currency,
+                    "lead_time": q.lead_time_days,
+                    "payment_terms": q.payment_terms,
+                    "status": q.status
+                })
+                
+            completed = notification is not None
+            if formatted_logs or completed:
+                await websocket.send_json({
+                    "completed": completed,
+                    "notification_id": notification.id if notification else None,
+                    "logs": formatted_logs,
+                    "quotes": formatted_quotes
+                })
+                
+            if completed:
+                break
+                
+            await asyncio.sleep(0.5)
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket client disconnected for campaign {rfq_number}")
+    except Exception as e:
+        logger.error(f"Error in campaign WebSocket: {e}")
+    finally:
+        db.close()
 
 

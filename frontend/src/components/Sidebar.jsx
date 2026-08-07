@@ -1,7 +1,6 @@
-import React from 'react';
 import { 
   BarChart2, FileText, Search, Mail, Sparkles, 
-  Bot, Clock, HelpCircle, Lock, ShieldAlert, LogOut
+  Bot, Clock, HelpCircle, Lock, ShieldAlert, LogOut, ShoppingCart
 } from 'lucide-react';
 
 export default function Sidebar({ activeTab, onSelectTab, onLogout, user }) {
@@ -12,6 +11,7 @@ export default function Sidebar({ activeTab, onSelectTab, onLogout, user }) {
     { id: 'suppliers', label: 'Supplier Search', icon: <Search size={16} /> },
     { id: 'email', label: 'Email Automation', icon: <Mail size={16} /> },
     { id: 'comparison', label: 'Quote Comparison', icon: <Sparkles size={16} /> },
+    { id: 'purchase_orders', label: 'Purchase Orders', icon: <ShoppingCart size={16} className="text-emerald-400" /> },
     { id: 'copilot', label: 'AI Copilot Chat', icon: <Bot size={16} /> },
     { id: 'grn_matching', label: 'GRN & 3-Way Matching', icon: <ShieldAlert size={16} className="text-emerald-400" /> },
     { id: 'audit_reports', label: 'PDF Audit Reports', icon: <FileText size={16} className="text-[#0078d4]" /> }

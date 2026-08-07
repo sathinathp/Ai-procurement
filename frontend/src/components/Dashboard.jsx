@@ -318,11 +318,17 @@ export default function Dashboard({ onNavigate, onOpenCopilot, onImportTrigger }
                               </td>
                               <td className="p-2">
                                 {isWinner ? (
-                                  <span className="text-emerald-600 flex items-center gap-1">
+                                  <span className="text-emerald-600 flex items-center gap-1 font-bold">
                                     <CheckCircle2 size={10} /> Recommended Winner
                                   </span>
                                 ) : (
-                                  <span className="text-slate-450">Negotiated</span>
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                    comp.status === 'Cancelled' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                                    comp.status === 'Quotation Received' ? 'bg-emerald-50 text-emerald-700 border border-emerald-250' :
+                                    'bg-slate-50 text-slate-600 border border-slate-200'
+                                  }`}>
+                                    {comp.status || 'Negotiated'}
+                                  </span>
                                 )}
                               </td>
                             </tr>

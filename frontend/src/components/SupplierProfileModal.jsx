@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Star, Shield, Mail, Phone, Clock } from 'lucide-react';
+import { X, Star, Shield, Mail, Phone, Clock, Database } from 'lucide-react';
 import { supplierService } from '../services/api';
 
 export default function SupplierProfileModal({ supplierId, onClose }) {
@@ -208,6 +208,21 @@ export default function SupplierProfileModal({ supplierId, onClose }) {
                       <div className="flex items-center gap-2.5 text-slate-655">
                         <Clock size={14} className="text-slate-400 shrink-0" />
                         <span className="font-semibold text-slate-700">Average Lead Time: <strong className="text-slate-800">{profile.lead_time} days</strong></span>
+                      </div>
+                      <div className="flex items-center gap-2.5 text-slate-655 border-t border-slate-100 pt-2.5 mt-2.5">
+                        <Database size={14} className="text-slate-400 shrink-0" />
+                        <span className="font-semibold text-slate-700">
+                          ERP Account:{' '}
+                          {profile.synced_to_erp ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono text-[10px] font-bold">
+                              {profile.erp_vendor_id || 'Synced'}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-bold">
+                              Not Synced
+                            </span>
+                          )}
+                        </span>
                       </div>
                     </div>
                   </div>

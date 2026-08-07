@@ -61,7 +61,9 @@ export default function RfpCampaign() {
               item_name: po.item_name,
               quantity: po.quantity,
               price: po.unit_price,
-              total_amount: po.total_amount
+              total_amount: po.total_amount,
+              synced_to_erp: po.synced_to_erp,
+              erp_po_number: po.erp_po_number
             });
             setPoNumber(po.po_number);
             setPoSynced(po.synced_to_erp);
@@ -180,6 +182,9 @@ export default function RfpCampaign() {
     erpService.sync('po', poNum).then(res => {
       setPoSynced(true);
       setSyncingPO(false);
+      if (res.data && res.data.erp_id) {
+        setSelectedPO(prev => prev ? { ...prev, synced_to_erp: true, erp_po_number: res.data.erp_id } : null);
+      }
       setSuccessMsg(`Purchase Order ${poNum} synced with Dynamics 365 Finance & Operations!`);
       setTimeout(() => setSuccessMsg(''), 4000);
       fetchErpLogs();
@@ -504,7 +509,13 @@ export default function RfpCampaign() {
             <div>
               <div className="flex justify-between items-start">
                 <div>
-                  <span className="text-[9px] bg-blue-50 text-blue-700 font-extrabold px-2 py-0.5 rounded border border-blue-100 font-sans">Pending Sync PO</span>
+                  {poSynced ? (
+                    <span className="text-[9px] bg-emerald-50 text-emerald-700 font-extrabold px-2 py-0.5 rounded border border-emerald-100 font-mono">
+                      ERP Ref: {selectedPO.erp_po_number || 'Synced'}
+                    </span>
+                  ) : (
+                    <span className="text-[9px] bg-blue-50 text-blue-700 font-extrabold px-2 py-0.5 rounded border border-blue-100 font-sans">Pending Sync PO</span>
+                  )}
                   <h3 className="text-xs font-black text-slate-800 mt-1.5">{selectedPO.po_number}</h3>
                 </div>
                 <button

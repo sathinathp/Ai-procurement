@@ -86,9 +86,26 @@ export const copilotService = {
 
 export const campaignService = {
   simulate: (rfqNumber) => api.post('/api/campaign/simulate', { rfq_number: rfqNumber }),
-  launchReal: (rfqNumber, supplierIds) => api.post('/api/campaign/launch-real', { rfq_number: rfqNumber, supplier_ids: supplierIds }),
-  injectMockReply: (rfqNumber, supplierId, price, leadTime, paymentTerms, rejected) => api.post('/api/campaign/inject-mock-reply', { rfq_number: rfqNumber, supplier_id: supplierId, price, lead_time: leadTime, payment_terms: paymentTerms, rejected }),
+  launchReal: (rfqNumber, supplierIds, customEmails) => api.post('/api/campaign/launch-real', { rfq_number: rfqNumber, supplier_ids: supplierIds, custom_emails: customEmails }),
+  injectMockReply: (rfqNumber, supplierId, price, leadTime, paymentTerms, rejected, agreed, toEmail) => api.post('/api/campaign/inject-mock-reply', { rfq_number: rfqNumber, supplier_id: supplierId, price, lead_time: leadTime, payment_terms: paymentTerms, rejected, agreed, to_email: toEmail || '' }),
+  agreeToPrice: (rfqNumber, supplierId, price, leadTime, paymentTerms) =>
+    api.post('/api/campaign/agree-to-price', {
+      rfq_number: rfqNumber,
+      supplier_id: supplierId,
+      price,
+      lead_time: leadTime,
+      payment_terms: paymentTerms || 'Net 45 Days',
+    }),
   getRealStatus: (rfqNumber) => api.get('/api/campaign/real-status', { params: { rfq_number: rfqNumber } }),
+  sendCounterOffer: (rfqNumber, supplierId, price, leadTime, roundNum, toEmail) =>
+    api.post('/api/campaign/send-counter-offer', {
+      rfq_number: rfqNumber,
+      supplier_id: supplierId,
+      price,
+      lead_time: leadTime,
+      round_num: roundNum,
+      to_email: toEmail || '',
+    }),
 };
 
 export const erpService = {
@@ -134,6 +151,11 @@ export const workflowService = {
   rejectNotification: (id) => api.post(`/api/workflow/notifications/${id}/reject`),
   getAgentSettings: () => api.get('/api/agent/settings'),
   saveAgentSettings: (data) => api.post('/api/agent/settings', data),
+};
+
+export const purchaseOrderService = {
+  getAll: () => api.get('/api/purchase-orders'),
+  sendEmail: (poNumber) => api.post(`/api/purchase-orders/${poNumber}/send-email`),
 };
 
 export const dbService = {

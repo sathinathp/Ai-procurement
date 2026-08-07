@@ -9,6 +9,7 @@ import CopilotChat from './components/CopilotChat';
 import Phase2Modules from './components/Phase2Modules';
 import RfpCampaign from './components/RfpCampaign';
 import AiAgentWorkflow from './components/AiAgentWorkflow';
+import PurchaseOrders from './components/PurchaseOrders';
 import Login from './components/Login';
 import { Bot, RefreshCw, Database, Menu } from 'lucide-react';
 import { dbService } from './services/api';
@@ -98,6 +99,7 @@ export default function App() {
       suppliers: 'Supplier Search',
       email: 'Email Automation',
       comparison: 'Quote Comparison',
+      purchase_orders: 'Purchase Orders',
       copilot: 'AI Copilot Chat',
       prod_planning: 'Production Planning & Scheduling (Phase 2)',
       demand_forecast: 'Sales & Demand Forecasting (Phase 2)',
@@ -224,6 +226,10 @@ export default function App() {
 
           {activeTab === 'comparison' && (
             <QuoteComparison />
+          )}
+
+          {activeTab === 'purchase_orders' && (
+            <PurchaseOrders />
           )}
 
           {activeTab === 'rfp_campaign' && (

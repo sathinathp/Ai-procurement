@@ -13,14 +13,19 @@ export default function AiAgentWorkflow() {
   const [systemPrompt, setSystemPrompt] = useState(
     "You are an autonomous procurement AI agent. Upon RFQ upload, extract parameters, perform stock verification, match the top 3 suppliers, generate outreach emails, simulate best-price negotiations, automatically create a purchase order, and sync the PO directly to the Dynamics 365 ERP gateway."
   );
+  const [mockInputs, setMockInputs] = useState({});
+  const [counterOfferStatus, setCounterOfferStatus] = useState({}); // { [supplierId]: 'idle' | 'sending' | 'success' | 'error' }
   
   const [settings, setSettings] = useState({
     autoNegotiation: true,
     matchThreshold: 80,
     autoSyncErp: true,
-    outreachLimit: 5,
+    outreachLimit: 3,
     maxNegotiationRounds: 3,
-    realTimeOutreach: true
+    realTimeOutreach: true,
+    testEmail1: 'sathinath.padhi@petabytz.com',
+    testEmail2: 'ashok@petabytz.com',
+    testEmail3: 'sathinath.padhi@softstandard.com'
   });
 
   const [activeRightTab, setActiveRightTab] = useState('logs');
@@ -56,9 +61,12 @@ export default function AiAgentWorkflow() {
   const [negotiationResult, setNegotiationResult] = useState(() => getInitialState('negotiationResult', null));
   const [syncStatus, setSyncStatus] = useState(() => getInitialState('syncStatus', null));
   const [realStatusRfq, setRealStatusRfq] = useState(() => getInitialState('realStatusRfq', null));
+  const [realQuotes, setRealQuotes] = useState(() => getInitialState('realQuotes', []));
+  const [campaignLogs, setCampaignLogs] = useState(() => getInitialState('campaignLogs', []));
   const printedLogsRef = useRef(new Set());
   const abortRef = useRef(false);   // set to true to kill the IMAP polling loop immediately
-
+  const completedByAgreeRef = useRef(false); // set to true when Agree-to-Price completes the workflow
+  
   const logsEndRef = useRef(null);
 
   useEffect(() => {
@@ -79,11 +87,13 @@ export default function AiAgentWorkflow() {
       negotiationResult,
       syncStatus,
       realStatusRfq,
+      realQuotes,
+      campaignLogs,
       status: agentStatus, // for compatibility with RfqAssistant listener
       timestamp: new Date().toLocaleTimeString()
     }));
     window.dispatchEvent(new Event('ai_agent_update'));
-  }, [agentStatus, currentStep, parsedData, logs, inventoryStatus, matchedSuppliers, negotiationResult, syncStatus, uploading, realStatusRfq]);
+  }, [agentStatus, currentStep, parsedData, logs, inventoryStatus, matchedSuppliers, negotiationResult, syncStatus, uploading, realStatusRfq, realQuotes, campaignLogs]);
 
   const addLog = (message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
@@ -125,8 +135,11 @@ export default function AiAgentWorkflow() {
     setUploading(true);
     setAgentStatus('running');
     setLogs([]);
+    setRealQuotes([]);
+    setCampaignLogs([]);
     setCurrentStep(0);
     abortRef.current = false;   // reset abort signal
+    completedByAgreeRef.current = false; // reset agree completion signal
     
     addLog(`[System Config] Instruction: "${systemPrompt}"`, 'system');
     addLog(`[System Config] Auto-Negotiation: ${settings.autoNegotiation ? 'ON' : 'OFF'} | Match Threshold: ${settings.matchThreshold} | Auto-Sync ERP: ${settings.autoSyncErp ? 'ON' : 'OFF'}`, 'system');
@@ -220,60 +233,152 @@ export default function AiAgentWorkflow() {
         setRealStatusRfq(tempRfqNum);
         printedLogsRef.current.clear();
         
-        await campaignService.launchReal(tempRfqNum, matchedList.map(s => s.id));
-        addLog(`[Real-time Outreach] Launched real campaign. Dispatched RFQ emails to matched vendors.`, 'success');
-        addLog(`[IMAP Listener] Polling inbox imap.gmail.com for supplier replies...`, 'info');
+        const customEmails = {};
+        if (matchedList[0]) customEmails[matchedList[0].id] = settings.testEmail1 || 'sathinath.padhi@petabytz.com';
+        if (matchedList[1]) customEmails[matchedList[1].id] = settings.testEmail2 || 'ashok@petabytz.com';
+        if (matchedList[2]) customEmails[matchedList[2].id] = settings.testEmail3 || 'sathinath.padhi@softstandard.com';
         
-        let isDone = false;
-        while (!isDone) {
-          // Check abort signal (Stop button pressed)
-          if (abortRef.current) {
+        await campaignService.launchReal(tempRfqNum, matchedList.map(s => s.id), customEmails);
+        addLog(`[Real-time Outreach] Launched real campaign. Dispatched RFQ emails to matched vendors (with test email mapping).`, 'success');
+        addLog(`[IMAP Listener] Listening for supplier replies via WebSocket...`, 'info');
+        
+        await new Promise((resolve, reject) => {
+          const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001';
+          const wsUrl = `${API_BASE_URL.replace(/^http/, 'ws')}/ws/campaign/${tempRfqNum}`;
+          
+          addLog(`[WebSocket] Connecting to real-time status channel...`, 'info');
+          const ws = new WebSocket(wsUrl);
+          
+          const abortCheckInterval = setInterval(() => {
+            if (abortRef.current) {
+              clearInterval(abortCheckInterval);
+              ws.close();
+              reject(new Error("aborted"));
+            }
+            const savedState = localStorage.getItem('ai_agent_state');
+            const currentStatus = savedState ? JSON.parse(savedState).agentStatus : 'running';
+            if (currentStatus !== 'running') {
+              clearInterval(abortCheckInterval);
+              ws.close();
+              resolve();
+            }
+          }, 500);
+
+          ws.onmessage = async (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              const { completed, logs: statusLogs, quotes } = data;
+              if (quotes) {
+                setRealQuotes(quotes);
+              }
+              if (statusLogs) {
+                setCampaignLogs(statusLogs);
+              }
+              
+              statusLogs.forEach(l => {
+                const signature = `${l.direction}_${l.round_number}_${l.supplier_id}`;
+                if (!printedLogsRef.current.has(signature)) {
+                  printedLogsRef.current.add(signature);
+                  if (l.direction === 'inbound') {
+                    addLog(`[IMAP Inbound] Received reply from ${l.supplier_name}: "${l.body.slice(0, 80)}..."`, 'info');
+                    addLog(`[AI Parse] Extracted quotation metrics: Price=$${l.price}, Lead Time=${l.lead_time} days`, 'success');
+                  } else {
+                    addLog(`[AI Negotiation] Target price not met. Generating and sending counter-offer email...`, 'info');
+                    addLog(`[SMTP Outbound] Dispatched counter-offer email to ${l.supplier_name}: Proposed $${l.price}`, 'info');
+                  }
+                }
+              });
+              
+              if (completed) {
+                clearInterval(abortCheckInterval);
+                ws.close();
+                
+                addLog(`[SUCCESS] Negotiation completed. Finalizing comparison report.`, 'success');
+                
+                const simRes = await campaignService.simulate(tempRfqNum);
+                setNegotiationResult(simRes.data);
+                finalData = simRes.data;
+                resolve();
+              }
+            } catch (err) {
+              console.error("Error processing WebSocket message:", err);
+            }
+          };
+
+          ws.onerror = (err) => {
+            console.error("WebSocket error, falling back to HTTP polling", err);
+            clearInterval(abortCheckInterval);
+            ws.close();
+            reject(err);
+          };
+
+          ws.onclose = () => {
+            clearInterval(abortCheckInterval);
+          };
+        }).catch(async (err) => {
+          if (err.message === "aborted") {
             addLog(`[AGENT] Workflow cancelled by user.`, 'warning');
             setAgentStatus('idle');
             setUploading(false);
             abortRef.current = false;
             return;
           }
-          // Check if user has stopped or reset the agent workflow
-          const savedState = localStorage.getItem('ai_agent_state');
-          const currentStatus = savedState ? JSON.parse(savedState).agentStatus : 'running';
-          if (currentStatus !== 'running') {
-            break;
-          }
           
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          
-          try {
-            const statusRes = await campaignService.getRealStatus(tempRfqNum);
-            const { completed, logs: statusLogs } = statusRes.data;
-            
-            statusLogs.forEach(l => {
-              const signature = `${l.direction}_${l.round_number}_${l.supplier_id}`;
-              if (!printedLogsRef.current.has(signature)) {
-                printedLogsRef.current.add(signature);
-                if (l.direction === 'inbound') {
-                  addLog(`[IMAP Inbound] Received reply from ${l.supplier_name}: "${l.body.slice(0, 80)}..."`, 'info');
-                  addLog(`[AI Parse] Extracted quotation metrics: Price=$${l.price}, Lead Time=${l.lead_time} days`, 'success');
-                } else {
-                  addLog(`[AI Negotiation] Target price not met. Generating and sending counter-offer email...`, 'info');
-                  addLog(`[SMTP Outbound] Dispatched counter-offer email to ${l.supplier_name}: Proposed $${l.price}`, 'info');
-                }
-              }
-            });
-            
-            if (completed) {
-              isDone = true;
-              addLog(`[SUCCESS] Negotiation completed. Finalizing comparison report.`, 'success');
-              
-              // Load the campaign comparison shortlist
-              const simRes = await campaignService.simulate(tempRfqNum);
-              setNegotiationResult(simRes.data);
-              finalData = simRes.data;
+          addLog(`[WebSocket Sync] Connection failed. Falling back to HTTP polling.`, 'warning');
+          let isDone = false;
+          while (!isDone) {
+            if (abortRef.current) {
+              addLog(`[AGENT] Workflow cancelled by user.`, 'warning');
+              setAgentStatus('idle');
+              setUploading(false);
+              abortRef.current = false;
+              return;
             }
-          } catch (pollErr) {
-            console.error("Error polling real campaign status:", pollErr);
+            const savedState = localStorage.getItem('ai_agent_state');
+            const currentStatus = savedState ? JSON.parse(savedState).agentStatus : 'running';
+            if (currentStatus !== 'running') {
+              break;
+            }
+            
+            await new Promise(r => setTimeout(r, 3000));
+            
+            try {
+              const statusRes = await campaignService.getRealStatus(tempRfqNum);
+              const { completed, logs: statusLogs, quotes } = statusRes.data;
+              if (quotes) {
+                setRealQuotes(quotes);
+              }
+              if (statusLogs) {
+                setCampaignLogs(statusLogs);
+              }
+              
+              statusLogs.forEach(l => {
+                const signature = `${l.direction}_${l.round_number}_${l.supplier_id}`;
+                if (!printedLogsRef.current.has(signature)) {
+                  printedLogsRef.current.add(signature);
+                  if (l.direction === 'inbound') {
+                    addLog(`[IMAP Inbound] Received reply from ${l.supplier_name}: "${l.body.slice(0, 80)}..."`, 'info');
+                    addLog(`[AI Parse] Extracted quotation metrics: Price=$${l.price}, Lead Time=${l.lead_time} days`, 'success');
+                  } else {
+                    addLog(`[AI Negotiation] Target price not met. Generating and sending counter-offer email...`, 'info');
+                    addLog(`[SMTP Outbound] Dispatched counter-offer email to ${l.supplier_name}: Proposed $${l.price}`, 'info');
+                  }
+                }
+              });
+              
+              if (completed) {
+                isDone = true;
+                addLog(`[SUCCESS] Negotiation completed. Finalizing comparison report.`, 'success');
+                
+                const simRes = await campaignService.simulate(tempRfqNum);
+                setNegotiationResult(simRes.data);
+                finalData = simRes.data;
+              }
+            } catch (pollErr) {
+              console.error("Error polling real campaign status:", pollErr);
+            }
           }
-        }
+        });
       } else {
         const simRes = await campaignService.simulate(tempRfqNum);
         setNegotiationResult(simRes.data);
@@ -291,9 +396,13 @@ export default function AiAgentWorkflow() {
         addLog(`[SUCCESS] Sourcing completed. Received 30 candidate bids. Auto-negotiation active.`, 'success');
       }
 
-      if (!finalData) {
+      // If agentStatus was already set to 'completed' by the Agree-to-Price
+      // button handler, the workflow finished successfully — don't throw.
+      if (!finalData && !completedByAgreeRef.current) {
         throw new Error("Workflow aborted or negotiation failed.");
       }
+      // If the agree path already completed the workflow, exit gracefully.
+      if (!finalData) return;
       
       const bestBid = finalData.shortlist[0];
       addLog(`[Negotiation Win] Top bid awarded to "${bestBid.supplier_name}" (${bestBid.country}).`, 'success');
@@ -383,6 +492,11 @@ export default function AiAgentWorkflow() {
     if (file) {
       startAutonomousWorkflow(file);
     }
+  };
+
+  const handleGenerateSampleRfqPdf = () => {
+    const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001';
+    window.open(`${apiBaseUrl}/api/rfq/generate-sample`);
   };
 
   const handleDownloadLogs = () => {
@@ -566,6 +680,15 @@ export default function AiAgentWorkflow() {
               <span className="text-xs font-bold text-slate-600 block">Drag & Drop RFQ Document Here</span>
               <span className="text-[10px] text-slate-400 font-semibold block mt-1">Accepts PDF, DOCX, XLSX, TXT</span>
             </div>
+
+            <div className="pt-2">
+              <button
+                onClick={handleGenerateSampleRfqPdf}
+                className="text-xs font-bold text-[#0078d4] hover:text-[#106ebe] hover:underline flex items-center gap-1.5 mx-auto mt-2 cursor-pointer bg-transparent border-none outline-none"
+              >
+                <Download size={14} /> Generate and Download Sample RFQ PDF
+              </button>
+            </div>
           </div>
         )}
 
@@ -695,41 +818,276 @@ export default function AiAgentWorkflow() {
             <p className="text-[11px] text-slate-500 font-medium">
               The AI Agent is currently waiting for real supplier email responses. You can reply from a real email account, or click below to immediately mock a reply to advance the negotiation loop:
             </p>
-            <div className="flex flex-col gap-2">
-              {matchedSuppliers.map((s) => (
-                <div key={s.id} className="flex justify-between items-center bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
-                  <div className="flex flex-col">
-                    <span className="text-xs font-bold text-slate-700">{s.name}</span>
-                    <span className="text-[9px] text-slate-400 font-medium">{s.email || 'No email configured'}</span>
+            <div className="flex flex-col gap-3">
+              {matchedSuppliers.map((s, idx) => {
+                const sInputs = mockInputs[s.id] || { price: 280.68, leadTime: 8 };
+                let displayEmail = s.email;
+                if (settings.realTimeOutreach) {
+                  if (idx === 0) displayEmail = settings.testEmail1 || s.email;
+                  else if (idx === 1) displayEmail = settings.testEmail2 || s.email;
+                  else if (idx === 2) displayEmail = settings.testEmail3 || s.email;
+                }
+                const quoteForSupplier = realQuotes.find(q => q.supplier_id === s.id);
+                const isCancelled = quoteForSupplier?.status === 'Cancelled';
+                return (
+                  <div key={s.id} className={`flex flex-col gap-2 bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm ${isCancelled ? 'opacity-70 bg-slate-50/50' : ''}`}>
+                    <div className="flex justify-between items-start">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold text-slate-700">{s.name}</span>
+                        <span className="text-[9px] text-slate-400 font-medium">{displayEmail || 'No email configured'}</span>
+                      </div>
+                      <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono font-bold">ID: {s.id}</span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2 mt-1">
+                      <div>
+                        <label className="text-[9px] font-bold text-slate-500 block mb-1">PRICE (USD)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={sInputs.price}
+                          disabled={isCancelled}
+                          onChange={(e) => setMockInputs(prev => ({
+                            ...prev,
+                            [s.id]: { ...sInputs, price: parseFloat(e.target.value) || 0 }
+                          }))}
+                          className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:border-[#0078d4] font-medium disabled:bg-slate-100 disabled:text-slate-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-slate-500 block mb-1">LEAD TIME (DAYS)</label>
+                        <input
+                          type="number"
+                          value={sInputs.leadTime}
+                          disabled={isCancelled}
+                          onChange={(e) => setMockInputs(prev => ({
+                            ...prev,
+                            [s.id]: { ...sInputs, leadTime: parseInt(e.target.value) || 0 }
+                          }))}
+                          className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:border-[#0078d4] font-medium disabled:bg-slate-100 disabled:text-slate-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-1.5 mt-2 justify-end">
+                      {isCancelled ? (
+                        <span className="text-[10px] font-extrabold text-rose-600 bg-rose-50 border border-rose-100 px-2.5 py-1 rounded-md">
+                          Cancelled / Bid Withdrawn
+                        </span>
+                      ) : (
+                        <>
+                          <button
+                            disabled={counterOfferStatus[s.id] === 'sending'}
+                            onClick={async () => {
+                              // Determine the correct dispatch email (test email override from settings)
+                              let dispatchEmail = s.email;
+                              if (settings.realTimeOutreach) {
+                                if (idx === 0) dispatchEmail = settings.testEmail1 || s.email;
+                                else if (idx === 1) dispatchEmail = settings.testEmail2 || s.email;
+                                else if (idx === 2) dispatchEmail = settings.testEmail3 || s.email;
+                              }
+
+                              // Calculate current round from existing outbound logs
+                              const existingOutbound = campaignLogs.filter(
+                                l => l.supplier_id === s.id && l.direction === 'outbound'
+                              ).length;
+                              const roundNum = existingOutbound + 1;
+
+                              setCounterOfferStatus(prev => ({ ...prev, [s.id]: 'sending' }));
+                              try {
+                                const res = await campaignService.sendCounterOffer(
+                                  realStatusRfq,
+                                  s.id,
+                                  sInputs.price,
+                                  sInputs.leadTime,
+                                  roundNum,
+                                  dispatchEmail
+                                );
+                                addLog(`[SMTP Outbound] Counter-offer (Round ${roundNum}) sent to ${s.name} at ${res.data.dispatch_email}. Proposing $${res.data.target_price}`, 'success');
+                                setCounterOfferStatus(prev => ({ ...prev, [s.id]: 'success' }));
+                                // Refresh campaign logs
+                                try {
+                                  const statusRes = await campaignService.getRealStatus(realStatusRfq);
+                                  if (statusRes.data.logs) setCampaignLogs(statusRes.data.logs);
+                                } catch (_) {}
+                                setTimeout(() => setCounterOfferStatus(prev => ({ ...prev, [s.id]: 'idle' })), 4000);
+                              } catch (err) {
+                                console.error('[Counter-Offer Error]', err);
+                                addLog(`[ERROR] Failed to send counter-offer to ${s.name}: ${err?.response?.data?.detail || err.message}`, 'error');
+                                setCounterOfferStatus(prev => ({ ...prev, [s.id]: 'error' }));
+                                setTimeout(() => setCounterOfferStatus(prev => ({ ...prev, [s.id]: 'idle' })), 4000);
+                              }
+                            }}
+                            className={`text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors shadow-sm flex items-center gap-1 ${
+                              counterOfferStatus[s.id] === 'sending'
+                                ? 'bg-slate-400 cursor-not-allowed'
+                                : counterOfferStatus[s.id] === 'success'
+                                ? 'bg-emerald-600 cursor-default'
+                                : counterOfferStatus[s.id] === 'error'
+                                ? 'bg-rose-500 cursor-pointer hover:bg-rose-600'
+                                : 'bg-[#0078d4] hover:bg-[#106ebe] cursor-pointer'
+                            }`}
+                          >
+                            {counterOfferStatus[s.id] === 'sending' && (
+                              <svg className="animate-spin w-2.5 h-2.5" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                              </svg>
+                            )}
+                            {counterOfferStatus[s.id] === 'success' ? '✓ Sent!' : counterOfferStatus[s.id] === 'error' ? '✗ Retry' : counterOfferStatus[s.id] === 'sending' ? 'Sending...' : 'Send Counter-Offer'}
+                          </button>
+                          <button
+                            disabled={counterOfferStatus[s.id] === 'agreeing'}
+                            onClick={async () => {
+                              setCounterOfferStatus(prev => ({ ...prev, [s.id]: 'agreeing' }));
+                              addLog(`[AI Agent] ${s.name} clicked "Agree to Target Price". Processing acceptance...`, 'info');
+                              try {
+                                const agreeRes = await campaignService.agreeToPrice(
+                                  realStatusRfq,
+                                  s.id,
+                                  sInputs.price,
+                                  sInputs.leadTime,
+                                  'Net 45 Days'
+                                );
+                                const poNum = agreeRes.data?.po_number || 'PO-AUTO';
+                                addLog(`[SUCCESS] ${s.name} accepted target price of $${sInputs.price}/unit.`, 'success');
+                                addLog(`[Negotiation Win] Top bid awarded to "${s.name}".`, 'success');
+                                addLog(`  -> Negotiated Price: $${sInputs.price}/unit | Lead Time: ${sInputs.leadTime} days`, 'success');
+
+                                // PO was already generated by the agreeToPrice backend via run_comparison_and_notify.
+                                // Use the po_number returned from that call — do NOT call generatePO again.
+                                const finalPoNum = poNum;
+                                addLog(`[SUCCESS] Released Purchase Order: ${finalPoNum}`, 'success');
+
+                                // ERP Sync
+                                setCurrentStep(4);
+                                if (settings.autoSyncErp) {
+                                  addLog(`Step 5/5: Initiating OData REST link with Dynamics 365 F&O...`, 'info');
+                                  try {
+                                    await erpService.sync('vendor', s.id);
+                                    addLog(`[SUCCESS] Supplier record verified in Dynamics 365.`, 'success');
+                                    await erpService.sync('po', finalPoNum);
+                                    addLog(`[SUCCESS] Purchase Order ${finalPoNum} status updated to "Synced" in ERP.`, 'success');
+                                  } catch (_) {
+                                    addLog(`[WARN] ERP sync encountered an issue but PO was generated.`, 'warning');
+                                  }
+                                  setSyncStatus('synced');
+                                } else {
+                                  addLog(`Step 5/5: ERP Sync skipped based on Agent settings.`, 'warning');
+                                  setSyncStatus('skipped');
+                                }
+
+                                // Set negotiation result for display
+                                try {
+                                  const simRes = await campaignService.simulate(realStatusRfq);
+                                  if (simRes.data) setNegotiationResult(simRes.data);
+                                } catch (_) {}
+
+                                setAgentStatus('completed');
+                                setUploading(false);
+                                completedByAgreeRef.current = true; // signal to the outer flow
+                                addLog(`[AGENT STATUS] Workflow execution finished successfully. All objectives met.`, 'success');
+                                setCounterOfferStatus(prev => ({ ...prev, [s.id]: 'agreed' }));
+
+                                // Save to run history
+                                try {
+                                  const runHistoryItem = {
+                                    rfqNumber: realStatusRfq,
+                                    poNumber: finalPoNum,
+                                    item: s.name,
+                                    quantity: 'As per RFQ',
+                                    supplier: s.name,
+                                    savings: `$${sInputs.price}/unit (Agreed)`,
+                                    erpStatus: settings.autoSyncErp ? 'Synced (D365)' : 'Skipped',
+                                    status: 'completed',
+                                    timestamp: new Date().toLocaleTimeString()
+                                  };
+                                  setHistoryList(prev => {
+                                    const updated = [runHistoryItem, ...prev];
+                                    localStorage.setItem('ai_agent_history', JSON.stringify(updated));
+                                    return updated;
+                                  });
+                                } catch (_) {}
+
+                              } catch (err) {
+                                console.error('[Agree-to-Price Error]', err);
+                                addLog(`[ERROR] Failed to process price agreement for ${s.name}: ${err?.response?.data?.detail || err.message}`, 'error');
+                                setCounterOfferStatus(prev => ({ ...prev, [s.id]: 'idle' }));
+                              }
+                            }}
+                            className={`text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors shadow-sm flex items-center gap-1 ${
+                              counterOfferStatus[s.id] === 'agreeing'
+                                ? 'bg-emerald-400 cursor-not-allowed'
+                                : counterOfferStatus[s.id] === 'agreed'
+                                ? 'bg-emerald-700 cursor-default'
+                                : 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer'
+                            }`}
+                          >
+                            {counterOfferStatus[s.id] === 'agreeing' && (
+                              <svg className="animate-spin w-2.5 h-2.5" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                              </svg>
+                            )}
+                            {counterOfferStatus[s.id] === 'agreeing' ? 'Processing...' : counterOfferStatus[s.id] === 'agreed' ? '✓ Agreed & PO Released' : 'Agree to Target Price'}
+                          </button>
+                          <button
+                            onClick={async () => {
+                              try {
+                                await campaignService.injectMockReply(realStatusRfq, s.id, 0.0, 0, "Cancelled", true, false);
+                              } catch (err) {
+                                console.error(err);
+                              }
+                            }}
+                            className="bg-rose-500 text-white hover:bg-rose-600 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors shadow-sm cursor-pointer"
+                          >
+                            Cancel Bid
+                          </button>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Render actual email exchanges for this supplier */}
+                    {(() => {
+                      const supplierLogs = campaignLogs.filter(l => l.supplier_id === s.id);
+                      if (supplierLogs.length > 0) {
+                        return (
+                          <div className="mt-3 border-t border-slate-100 pt-2.5 space-y-2">
+                            <span className="text-[9px] font-bold text-slate-450 uppercase tracking-wider block">
+                              Email History with {s.name}
+                            </span>
+                            <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+                              {supplierLogs.map((log, logIdx) => (
+                                <div key={logIdx} className={`p-2 rounded text-[10px] border ${
+                                  log.direction === 'inbound' 
+                                    ? 'bg-slate-50 border-slate-200 text-slate-700' 
+                                    : 'bg-blue-50/40 border-blue-100 text-slate-700'
+                                }`}>
+                                  <div className="flex justify-between items-center font-bold text-[9px] mb-1">
+                                    <span className={log.direction === 'inbound' ? 'text-amber-700' : 'text-blue-700'}>
+                                      {log.direction === 'inbound' ? '← Inbound (Supplier)' : '→ Outbound (AI Agent)'}
+                                    </span>
+                                    <span className="text-slate-400 font-mono font-medium">{log.sent_at}</span>
+                                  </div>
+                                  {log.subject && <div className="font-semibold text-slate-600 truncate">Subj: {log.subject}</div>}
+                                  <div className="text-slate-650 mt-1 font-mono text-[9px] bg-white p-1.5 rounded border border-slate-100 max-h-[60px] overflow-y-auto whitespace-pre-wrap">
+                                    {log.body}
+                                  </div>
+                                  <div className="flex gap-2.5 mt-1 text-[9px] font-bold text-[#0078d4]">
+                                    {log.price > 0 && <span>Negotiated Price: ${log.price}</span>}
+                                    {log.lead_time > 0 && <span>Lead Time: {log.lead_time} Days</span>}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
-                  <div className="flex gap-1.5">
-                    <button
-                      onClick={async () => {
-                        try {
-                          await campaignService.injectMockReply(realStatusRfq, s.id, 280.68, 8, "Net 45 Days", false);
-                        } catch (err) {
-                          console.error(err);
-                        }
-                      }}
-                      className="bg-[#0078d4] text-white hover:bg-[#106ebe] text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors shadow-sm"
-                    >
-                      Send Offer ($280.68)
-                    </button>
-                    <button
-                      onClick={async () => {
-                        try {
-                          await campaignService.injectMockReply(realStatusRfq, s.id, 0.0, 0, "Cancelled", true);
-                        } catch (err) {
-                          console.error(err);
-                        }
-                      }}
-                      className="bg-rose-500 text-white hover:bg-rose-600 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors shadow-sm"
-                    >
-                      Cancel Bid
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
