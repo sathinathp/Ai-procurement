@@ -107,6 +107,7 @@ class EmailHistory(Base):
     id = Column(Integer, primary_key=True, index=True)
     rfq_number = Column(String(100), ForeignKey("rfqs.rfq_number"), nullable=False)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
+    supplier_email = Column(String(255), nullable=True)
     subject = Column(String(255), nullable=False)
     body = Column(Text, nullable=False)
     type = Column(String(100), default="RFQ Invitation") # RFQ Invitation, Reminder, Follow-up

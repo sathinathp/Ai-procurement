@@ -35,7 +35,7 @@ export default function SupplierProfileModal({ supplierId, onClose }) {
               <h2 className="text-base font-bold text-slate-800">{loading ? 'Loading Supplier Profile...' : profile?.name}</h2>
               {profile?.preferred ? (
                 <span className="bg-amber-50 text-amber-705 border border-amber-200 text-[9px] font-bold px-2 py-0.5 rounded">
-                  Preferred Partner
+                  Approved Supplier
                 </span>
               ) : (
                 <span className="bg-emerald-50 text-emerald-700 border border-emerald-250 text-[9px] font-bold px-2 py-0.5 rounded">
@@ -83,12 +83,12 @@ export default function SupplierProfileModal({ supplierId, onClose }) {
                       strokeLinecap="round" 
                     />
                   </svg>
-                  <span className="absolute text-[11px] font-black text-slate-800">{profile.overall_score}%</span>
+                  <span className="absolute text-[11px] font-bold text-slate-800">{profile.overall_score}%</span>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Overall Score</span>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-sm font-extrabold text-slate-800">{profile.overall_label}</span>
+                    <span className="text-sm font-bold text-slate-800">{profile.overall_label}</span>
                     <span className="bg-emerald-50 text-emerald-700 text-[8px] font-bold px-1.5 py-0.5 rounded-full border border-emerald-200/50">Pass</span>
                   </div>
                 </div>
@@ -118,7 +118,7 @@ export default function SupplierProfileModal({ supplierId, onClose }) {
                   <span className={`text-sm font-extrabold mt-0.5 block ${
                     profile.risk_level === 'Low' ? 'text-emerald-650' :
                     profile.risk_level === 'Medium' ? 'text-amber-650' : 'text-rose-650'
-                  }`}>{profile.risk_level} Risk</span>
+                  }`}>{profile.risk_level === 'High' ? 'Critical Delivery Risk' : profile.risk_level === 'Medium' ? 'Moderate Delivery Risk' : profile.risk_level === 'Low' ? 'Minimal Delivery Risk' : `${profile.risk_level} Risk`}</span>
                 </div>
               </div>
 
@@ -285,7 +285,7 @@ export default function SupplierProfileModal({ supplierId, onClose }) {
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Historical Purchase Orders</h3>
-                  <span className="text-[10px] bg-slate-100 text-slate-500 border border-slate-200/60 px-2 py-0.5 rounded font-black">{profile.previous_orders.length} Orders</span>
+                  <span className="text-[10px] bg-slate-100 text-slate-500 border border-slate-200/60 px-2 py-0.5 rounded font-semibold">{profile.previous_orders.length} Orders</span>
                 </div>
                 
                 <div className="bg-white border border-slate-200/80 rounded-xl overflow-hidden shadow-sm">
@@ -314,9 +314,9 @@ export default function SupplierProfileModal({ supplierId, onClose }) {
                               <td className="p-3.5 font-medium text-slate-450">{po.rfq_number}</td>
                               <td className="p-3.5 font-bold text-slate-800">{po.item_name}</td>
                               <td className="p-3.5 text-right font-semibold text-slate-600">{po.quantity}</td>
-                              <td className="p-3.5 text-right font-black text-slate-800">${po.total_amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                              <td className="p-3.5 text-right font-bold text-slate-800">${po.total_amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                               <td className="p-3.5">
-                                <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-black border uppercase tracking-wider ${
+                                <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-semibold border uppercase tracking-wider ${
                                   po.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                                   po.status === 'Delayed' ? 'bg-rose-50 text-rose-700 border-rose-250' : 'bg-blue-50 text-blue-700 border-blue-200'
                                 }`}>

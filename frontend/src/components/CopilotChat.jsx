@@ -3,15 +3,57 @@ import { Bot, Send, User, Sparkles, Clipboard, HelpCircle, Trash2, ArrowRight } 
 import { copilotService } from '../services/api';
 
 export default function CopilotChat({ inlineMode = false, rfqContextNumber = null }) {
-  const [messages, setMessages] = useState([
-    {
-      role: 'assistant',
-      content: "Hello! I am your **Procurement AI Copilot** connected directly to Neproplast's database tables (Suppliers, RFQs, Quote Responses, Purchase Orders). \n\nAsk me queries about last purchase prices, supplier scorecard ratings, quote comparisons, or delayed deliveries."
+  const [messages, setMessages] = useState(() => {
+    const saved = localStorage.getItem('copilot_messages');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse stored copilot messages:", e);
+      }
     }
-  ]);
+    return [
+      {
+        role: 'assistant',
+        content: "Hello! I am your **Procurement AI Copilot** connected directly to the database tables (Suppliers, RFQs, Quote Responses, Purchase Orders). \n\nAsk me queries about last purchase prices, supplier scorecard ratings, quote comparisons, or delayed deliveries."
+      }
+    ];
+  });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem('copilot_messages', JSON.stringify(messages));
+  }, [messages]);
+
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'copilot_messages' && e.newValue) {
+        try {
+          setMessages(JSON.parse(e.newValue));
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    const handleFocus = () => {
+      const saved = localStorage.getItem('copilot_messages');
+      if (saved) {
+        try {
+          setMessages(JSON.parse(saved));
+        } catch (e) {}
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
 
   // Quick Chips
   const promptChips = [
@@ -55,12 +97,14 @@ export default function CopilotChat({ inlineMode = false, rfqContextNumber = nul
   };
 
   const handleClearChat = () => {
-    setMessages([
+    const cleared = [
       {
         role: 'assistant',
         content: "Chat history cleared. I am ready for your next procurement query."
       }
-    ]);
+    ];
+    setMessages(cleared);
+    localStorage.setItem('copilot_messages', JSON.stringify(cleared));
   };
 
   // Helper to parse inline markdown formatting (bold, code, italics)

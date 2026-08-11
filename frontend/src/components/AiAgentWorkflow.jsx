@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { 
   rfqService, workflowService, supplierService, 
-  campaignService, comparisonService, erpService 
+  campaignService, comparisonService, erpService, emailBotService
 } from '../services/api';
 
 export default function AiAgentWorkflow() {
@@ -15,6 +15,8 @@ export default function AiAgentWorkflow() {
   );
   const [mockInputs, setMockInputs] = useState({});
   const [counterOfferStatus, setCounterOfferStatus] = useState({}); // { [supplierId]: 'idle' | 'sending' | 'success' | 'error' }
+  const [agreedPrices, setAgreedPrices] = useState({}); // { [supplierId]: { target: number, original: number } }
+  const [lastLogCount, setLastLogCount] = useState({});
   
   const [settings, setSettings] = useState({
     autoNegotiation: true,
@@ -95,6 +97,30 @@ export default function AiAgentWorkflow() {
     window.dispatchEvent(new Event('ai_agent_update'));
   }, [agentStatus, currentStep, parsedData, logs, inventoryStatus, matchedSuppliers, negotiationResult, syncStatus, uploading, realStatusRfq, realQuotes, campaignLogs]);
 
+  // Watch for new inbound emails — detect new arrivals for notifications only
+  // NOTE: We do NOT auto-fill the price input anymore. The amber badge shows the supplier's quoted price.
+  useEffect(() => {
+    if (!campaignLogs || !Array.isArray(campaignLogs) || campaignLogs.length === 0) return;
+    
+    matchedSuppliers.forEach(s => {
+      const supplierInboundLogs = campaignLogs.filter(l => l.supplier_id === s.id && l.direction === 'inbound');
+      const currentCount = supplierInboundLogs.length;
+      const prevCount = lastLogCount[s.id] || 0;
+      
+      if (currentCount > prevCount && currentCount > 0) {
+        // A new inbound message arrived! Show notification in logs
+        const latestInbound = supplierInboundLogs[supplierInboundLogs.length - 1];
+        if (latestInbound && latestInbound.price > 0) {
+          addLog(`[📬 New Reply] ${s.name} sent a new quote: $${latestInbound.price}/unit, ${latestInbound.lead_time} days lead time. Check the amber badge and enter your counter-offer price.`, 'info');
+        }
+        setLastLogCount(prev => ({ ...prev, [s.id]: currentCount }));
+      } else if (currentCount > 0 && prevCount === 0) {
+        // Initialize the log count tracker on first load
+        setLastLogCount(prev => ({ ...prev, [s.id]: currentCount }));
+      }
+    });
+  }, [campaignLogs, matchedSuppliers, lastLogCount]);
+
   const addLog = (message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [...prev, { timestamp, message, type }]);
@@ -127,6 +153,72 @@ export default function AiAgentWorkflow() {
     };
     loadSettings();
   }, []);
+
+  // Pre-populate printedLogsRef with existing signatures from loaded campaignLogs on mount
+  useEffect(() => {
+    if (campaignLogs && campaignLogs.length > 0) {
+      campaignLogs.forEach(l => {
+        const signature = `${l.direction}_${l.round_number}_${l.supplier_id}`;
+        printedLogsRef.current.add(signature);
+      });
+    }
+  }, []);
+
+  // Shared helper to format and print new incoming/outbound logs to the console log terminal
+  const processNewLogs = (statusLogs) => {
+    if (!statusLogs) return;
+    statusLogs.forEach(l => {
+      const signature = `${l.direction}_${l.round_number}_${l.supplier_id}`;
+      if (!printedLogsRef.current.has(signature)) {
+        printedLogsRef.current.add(signature);
+        if (l.direction === 'inbound') {
+          addLog(`[IMAP Inbound] Received reply from ${l.supplier_name}: "${l.body.slice(0, 80)}..."`, 'info');
+          addLog(`[AI Parse] Extracted quotation metrics: Price=$${l.price}, Lead Time=${l.lead_time} days`, 'success');
+        } else {
+          addLog(`[AI Negotiation] Target price not met. Generating counter-offer via AI...`, 'info');
+          addLog(`[Resend Outbound] Counter-offer email dispatched to ${l.supplier_name}: Proposed $${l.price}`, 'info');
+        }
+      }
+    });
+  };
+
+  // Fetch campaign status on mount or when active RFQ changes
+  useEffect(() => {
+    if (!realStatusRfq) return;
+    const fetchInitialCampaignState = async () => {
+      try {
+        const res = await campaignService.getRealStatus(realStatusRfq);
+        const { logs: allLogs, quotes } = res.data;
+        if (allLogs) {
+          setCampaignLogs(allLogs);
+          processNewLogs(allLogs);
+        }
+        if (quotes) {
+          setRealQuotes(quotes);
+        }
+      } catch (err) {
+        console.error("Failed to load initial campaign state:", err);
+      }
+    };
+    fetchInitialCampaignState();
+  }, [realStatusRfq]);
+
+  // Auto-refresh campaign logs every 5s whenever there is an active RFQ (running OR waiting for supplier reply)
+  useEffect(() => {
+    if (!realStatusRfq) return;
+    const interval = setInterval(async () => {
+      try {
+        const statusRes = await campaignService.getRealStatus(realStatusRfq);
+        const { logs: allLogs, quotes } = statusRes.data;
+        if (allLogs) {
+          setCampaignLogs(allLogs);
+          processNewLogs(allLogs);
+        }
+        if (quotes) setRealQuotes(quotes);
+      } catch (_) {}
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [realStatusRfq]);
 
   // Run the full autonomous workflow
   const startAutonomousWorkflow = async (file) => {
@@ -211,7 +303,7 @@ export default function AiAgentWorkflow() {
       setMatchedSuppliers(matchedList);
       addLog(`[SUCCESS] Agent matched ${matchedList.length} qualified suppliers. Score threshold > ${settings.matchThreshold}% met.`, 'success');
       matchedList.forEach(s => {
-        addLog(`  -> Supplier: ${s.name || 'N/A'} | Reliability Score: ${s.compliance_score || (s.rating ? (s.rating * 20).toFixed(0) : 95)}% | Status: Active`, 'info');
+        addLog(`  -> Supplier: ${s.name || 'N/A'} | Reliability Score: ${s.compliance_score ? Math.min(Number(s.compliance_score), 100) : (s.rating ? Math.min(Math.round(s.rating * 20), 100) : 95)}% | Status: Active`, 'info');
       });
 
       // STEP 4: OUTREACH & NEGOTIATION
@@ -241,7 +333,7 @@ export default function AiAgentWorkflow() {
         addLog(`[IMAP Listener] Listening for supplier replies via WebSocket...`, 'info');
         
         await new Promise((resolve, reject) => {
-          const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001';
+          const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
           const wsUrl = `${API_BASE_URL.replace(/^http/, 'ws')}/ws/campaign/${tempRfqNum}`;
           
           addLog(`[WebSocket] Connecting to real-time status channel...`, 'info');
@@ -265,27 +357,18 @@ export default function AiAgentWorkflow() {
           ws.onmessage = async (event) => {
             try {
               const data = JSON.parse(event.data);
-              const { completed, logs: statusLogs, quotes } = data;
+              const { completed, logs: statusLogs, all_logs: allLogs, quotes } = data;
               if (quotes) {
                 setRealQuotes(quotes);
               }
-              if (statusLogs) {
-                setCampaignLogs(statusLogs);
+              // Use all_logs for full email thread panel state (if available), else fallback to statusLogs
+              const fullLogs = allLogs || statusLogs;
+              if (fullLogs && fullLogs.length > 0) {
+                setCampaignLogs(fullLogs);
               }
               
-              statusLogs.forEach(l => {
-                const signature = `${l.direction}_${l.round_number}_${l.supplier_id}`;
-                if (!printedLogsRef.current.has(signature)) {
-                  printedLogsRef.current.add(signature);
-                  if (l.direction === 'inbound') {
-                    addLog(`[IMAP Inbound] Received reply from ${l.supplier_name}: "${l.body.slice(0, 80)}..."`, 'info');
-                    addLog(`[AI Parse] Extracted quotation metrics: Price=$${l.price}, Lead Time=${l.lead_time} days`, 'success');
-                  } else {
-                    addLog(`[AI Negotiation] Target price not met. Generating counter-offer via AI...`, 'info');
-                    addLog(`[Resend Outbound] Counter-offer email dispatched to ${l.supplier_name}: Proposed $${l.price}`, 'info');
-                  }
-                }
-              });
+              // Use statusLogs (new only) for addLog dedup
+              processNewLogs(statusLogs);
               
               if (completed) {
                 clearInterval(abortCheckInterval);
@@ -350,19 +433,7 @@ export default function AiAgentWorkflow() {
                 setCampaignLogs(statusLogs);
               }
               
-              statusLogs.forEach(l => {
-                const signature = `${l.direction}_${l.round_number}_${l.supplier_id}`;
-                if (!printedLogsRef.current.has(signature)) {
-                  printedLogsRef.current.add(signature);
-                  if (l.direction === 'inbound') {
-                    addLog(`[IMAP Inbound] Received reply from ${l.supplier_name}: "${l.body.slice(0, 80)}..."`, 'info');
-                    addLog(`[AI Parse] Extracted quotation metrics: Price=$${l.price}, Lead Time=${l.lead_time} days`, 'success');
-                  } else {
-                    addLog(`[AI Negotiation] Target price not met. Generating counter-offer via AI...`, 'info');
-                    addLog(`[Resend Outbound] Counter-offer email dispatched to ${l.supplier_name}: Proposed $${l.price}`, 'info');
-                  }
-                }
-              });
+              processNewLogs(statusLogs);
               
               if (completed) {
                 isDone = true;
@@ -493,7 +564,7 @@ export default function AiAgentWorkflow() {
   };
 
   const handleGenerateSampleRfqPdf = () => {
-    const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001';
+    const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
     window.open(`${apiBaseUrl}/api/rfq/generate-sample`);
   };
 
@@ -818,7 +889,14 @@ export default function AiAgentWorkflow() {
             </p>
             <div className="flex flex-col gap-3">
               {matchedSuppliers.map((s, idx) => {
-                const sInputs = mockInputs[s.id] || { price: 280.68, leadTime: 8 };
+                // Get latest inbound price and lead time for this supplier — shown as READ-ONLY reference
+                const supplierInboundLogs = campaignLogs.filter(l => l.supplier_id === s.id && l.direction === 'inbound' && l.price > 0);
+                const latestInboundPrice = supplierInboundLogs.length > 0 ? supplierInboundLogs[supplierInboundLogs.length - 1].price : null;
+                const latestInboundLeadTime = supplierInboundLogs.length > 0 ? supplierInboundLogs[supplierInboundLogs.length - 1].lead_time : null;
+
+                // Price inputs start EMPTY — user must type their counter-offer price manually
+                // Do NOT auto-fill with supplier's quoted price
+                const sInputs = mockInputs[s.id] || { price: '', leadTime: '' };
                 let displayEmail = s.email;
                 if (settings.realTimeOutreach) {
                   if (idx === 0) displayEmail = settings.testEmail1 || s.email;
@@ -827,42 +905,82 @@ export default function AiAgentWorkflow() {
                 }
                 const quoteForSupplier = realQuotes.find(q => q.supplier_id === s.id);
                 const isCancelled = quoteForSupplier?.status === 'Cancelled';
+                const firstInboundPrice = supplierInboundLogs.length > 0 ? supplierInboundLogs[0].price : null;
+                const agreedInfo = agreedPrices[s.id];
+                const displayPrice = agreedInfo ? agreedInfo.target : latestInboundPrice;
+                const targetPrice = parseFloat(sInputs.price) || null;
+                const priceIsGood = displayPrice !== null && targetPrice !== null && displayPrice <= targetPrice;
+                const priceDiff = firstInboundPrice && displayPrice ? (firstInboundPrice - displayPrice).toFixed(2) : null;
+                
+                const finalPriceToAgree = sInputs.price ? parseFloat(sInputs.price) : latestInboundPrice;
+                const finalLeadTimeToAgree = sInputs.leadTime ? parseInt(sInputs.leadTime) : (latestInboundLeadTime || 14);
+                const canAgree = finalPriceToAgree !== null && !isNaN(finalPriceToAgree) && finalPriceToAgree > 0;
                 return (
-                  <div key={s.id} className={`flex flex-col gap-2 bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm ${isCancelled ? 'opacity-70 bg-slate-50/50' : ''}`}>
+                  <div key={s.id} className={`flex flex-col gap-2 bg-white p-3.5 rounded-xl border shadow-sm transition-all ${
+                    agreedInfo ? 'border-emerald-300 bg-emerald-50/30' : isCancelled ? 'border-rose-200 opacity-70 bg-slate-50/50' : 'border-slate-200'
+                  }`}>
                     <div className="flex justify-between items-start">
                       <div className="flex flex-col">
                         <span className="text-xs font-bold text-slate-700">{s.name}</span>
                         <span className="text-[9px] text-slate-400 font-medium">{displayEmail || 'No email configured'}</span>
                       </div>
-                      <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono font-bold">ID: {s.id}</span>
+                      <div className="flex items-center gap-1.5">
+                        {displayPrice !== null && (
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                            priceIsGood
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-rose-50 text-rose-600 border-rose-200'
+                          }`}>
+                            {priceIsGood ? '↓' : '↑'} ${displayPrice}/unit
+                            {priceDiff && parseFloat(priceDiff) > 0 && (
+                              <span className="text-emerald-600 font-semibold">(-${priceDiff})</span>
+                            )}
+                          </span>
+                        )}
+                        <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono font-bold">ID: {s.id}</span>
+                      </div>
                     </div>
                     
+                    {/* Supplier's quoted price — shown as read-only reference */}
+                    {latestInboundPrice !== null && (
+                      <div className="flex items-center gap-2 mt-1 mb-1 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                        <span className="text-[9px] font-bold text-amber-700 uppercase tracking-wider">Supplier Quoted:</span>
+                        <span className="text-[11px] font-extrabold text-amber-800">${latestInboundPrice}/unit</span>
+                        {latestInboundLeadTime && (
+                          <span className="text-[9px] text-amber-600 ml-1">· {latestInboundLeadTime} days</span>
+                        )}
+                        <span className="text-[8px] text-amber-500 ml-auto italic">extracted from email</span>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-2 mt-1">
                       <div>
-                        <label className="text-[9px] font-bold text-slate-500 block mb-1">PRICE (USD)</label>
+                        <label className="text-[9px] font-bold text-[#0078d4] block mb-1">YOUR COUNTER-OFFER PRICE (USD)</label>
                         <input
                           type="number"
                           step="0.01"
+                          placeholder="Enter your price..."
                           value={sInputs.price}
                           disabled={isCancelled}
                           onChange={(e) => setMockInputs(prev => ({
                             ...prev,
-                            [s.id]: { ...sInputs, price: parseFloat(e.target.value) || 0 }
+                            [s.id]: { ...sInputs, price: e.target.value }
                           }))}
-                          className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:border-[#0078d4] font-medium disabled:bg-slate-100 disabled:text-slate-400"
+                          className="w-full text-xs px-2.5 py-1.5 border-2 border-[#0078d4] rounded-lg focus:outline-none focus:border-blue-700 font-bold disabled:bg-slate-100 disabled:text-slate-400 placeholder:text-slate-300 placeholder:font-normal"
                         />
                       </div>
                       <div>
                         <label className="text-[9px] font-bold text-slate-500 block mb-1">LEAD TIME (DAYS)</label>
                         <input
                           type="number"
+                          placeholder="Enter days..."
                           value={sInputs.leadTime}
                           disabled={isCancelled}
                           onChange={(e) => setMockInputs(prev => ({
                             ...prev,
-                            [s.id]: { ...sInputs, leadTime: parseInt(e.target.value) || 0 }
+                            [s.id]: { ...sInputs, leadTime: e.target.value }
                           }))}
-                          className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:border-[#0078d4] font-medium disabled:bg-slate-100 disabled:text-slate-400"
+                          className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:border-[#0078d4] font-medium disabled:bg-slate-100 disabled:text-slate-400 placeholder:text-slate-300 placeholder:font-normal"
                         />
                       </div>
                     </div>
@@ -875,8 +993,15 @@ export default function AiAgentWorkflow() {
                       ) : (
                         <>
                           <button
-                            disabled={counterOfferStatus[s.id] === 'sending'}
+                            disabled={counterOfferStatus[s.id] === 'sending' || !sInputs.price}
                             onClick={async () => {
+                              // Validate price entry
+                              const counterPrice = parseFloat(sInputs.price);
+                              if (!counterPrice || counterPrice <= 0) {
+                                addLog(`[WARN] Enter your counter-offer price for ${s.name} before sending.`, 'warning');
+                                return;
+                              }
+
                               // Determine the correct dispatch email (test email override from settings)
                               let dispatchEmail = s.email;
                               if (settings.realTimeOutreach) {
@@ -886,28 +1011,53 @@ export default function AiAgentWorkflow() {
                               }
 
                               // Calculate current round from existing outbound logs
-                              const existingOutbound = campaignLogs.filter(
+                              const existingOutbound = (campaignLogs || []).filter(
                                 l => l.supplier_id === s.id && l.direction === 'outbound'
                               ).length;
                               const roundNum = existingOutbound + 1;
+
+                              const leadTimeVal = parseInt(sInputs.leadTime) || 14;
 
                               setCounterOfferStatus(prev => ({ ...prev, [s.id]: 'sending' }));
                               try {
                                 const res = await campaignService.sendCounterOffer(
                                   realStatusRfq,
                                   s.id,
-                                  sInputs.price,
-                                  sInputs.leadTime,
+                                  counterPrice,
+                                  leadTimeVal,
                                   roundNum,
                                   dispatchEmail
                                 );
-                                addLog(`[SMTP Outbound] Counter-offer (Round ${roundNum}) sent to ${s.name} at ${res.data.dispatch_email}. Proposing $${res.data.target_price}`, 'success');
+                                const targetPriceVal = res?.data?.target_price !== undefined ? res.data.target_price : counterPrice;
+                                const dispatchEmailVal = res?.data?.dispatch_email || dispatchEmail;
+                                addLog(`[SMTP Outbound] Counter-offer (Round ${roundNum}) sent to ${s.name} at ${dispatchEmailVal}. Proposing $${targetPriceVal}/unit`, 'success');
+                                addLog(`[\u23f3 Waiting] Now monitoring inbox for ${s.name}'s reply. The amber badge will update automatically when they respond.`, 'info');
                                 setCounterOfferStatus(prev => ({ ...prev, [s.id]: 'success' }));
-                                // Refresh campaign logs
+                                // Clear the price input so user can type next round's offer
+                                setMockInputs(prev => ({ ...prev, [s.id]: { price: '', leadTime: '' } }));
+                                // Immediately refresh campaign logs
                                 try {
                                   const statusRes = await campaignService.getRealStatus(realStatusRfq);
                                   if (statusRes.data.logs) setCampaignLogs(statusRes.data.logs);
+                                  if (statusRes.data.quotes) setRealQuotes(statusRes.data.quotes);
                                 } catch (_) {}
+                                // Trigger IMAP inbox check on backend so reply is detected immediately
+                                try { await emailBotService.triggerCheck(); } catch (_) {}
+                                // Schedule multiple refreshes at 15s, 30s, 60s, 90s to catch supplier reply
+                                const refreshDelays = [15000, 30000, 60000, 90000];
+                                refreshDelays.forEach(delay => {
+                                  setTimeout(async () => {
+                                    try {
+                                      await emailBotService.triggerCheck();
+                                      const refreshRes = await campaignService.getRealStatus(realStatusRfq);
+                                      if (refreshRes.data.logs) {
+                                        setCampaignLogs(refreshRes.data.logs);
+                                        processNewLogs(refreshRes.data.logs);
+                                      }
+                                      if (refreshRes.data.quotes) setRealQuotes(refreshRes.data.quotes);
+                                    } catch (_) {}
+                                  }, delay);
+                                });
                                 setTimeout(() => setCounterOfferStatus(prev => ({ ...prev, [s.id]: 'idle' })), 4000);
                               } catch (err) {
                                 console.error('[Counter-Offer Error]', err);
@@ -935,22 +1085,34 @@ export default function AiAgentWorkflow() {
                             {counterOfferStatus[s.id] === 'success' ? '✓ Sent!' : counterOfferStatus[s.id] === 'error' ? '✗ Retry' : counterOfferStatus[s.id] === 'sending' ? 'Sending...' : 'Send Counter-Offer'}
                           </button>
                           <button
-                            disabled={counterOfferStatus[s.id] === 'agreeing'}
+                            disabled={counterOfferStatus[s.id] === 'agreeing' || !canAgree}
                             onClick={async () => {
+                              const agreePriceVal = finalPriceToAgree;
+                              const agreeLeadTime = finalLeadTimeToAgree;
+                              if (!agreePriceVal || agreePriceVal <= 0) {
+                                addLog(`[WARN] Enter the agreed price for ${s.name} before confirming.`, 'warning');
+                                setCounterOfferStatus(prev => ({ ...prev, [s.id]: 'idle' }));
+                                return;
+                              }
                               setCounterOfferStatus(prev => ({ ...prev, [s.id]: 'agreeing' }));
-                              addLog(`[AI Agent] ${s.name} clicked "Agree to Target Price". Processing acceptance...`, 'info');
+                              addLog(`[AI Agent] ${s.name} - Agreeing to $${agreePriceVal}/unit. Processing acceptance...`, 'info');
                               try {
                                 const agreeRes = await campaignService.agreeToPrice(
                                   realStatusRfq,
                                   s.id,
-                                  sInputs.price,
-                                  sInputs.leadTime,
+                                  agreePriceVal,
+                                  agreeLeadTime,
                                   'Net 45 Days'
                                 );
                                 const poNum = agreeRes.data?.po_number || 'PO-AUTO';
-                                addLog(`[SUCCESS] ${s.name} accepted target price of $${sInputs.price}/unit.`, 'success');
+                                // Track agreed price + original quote price for color coding
+                                const supplierLogs = campaignLogs.filter(l => l.supplier_id === s.id && l.direction === 'inbound');
+                                const originalQuotePrice = supplierLogs.length > 0 ? supplierLogs[0].price : agreePriceVal;
+                                setAgreedPrices(prev => ({ ...prev, [s.id]: { target: agreePriceVal, original: originalQuotePrice } }));
+                                const savedPerUnit = (originalQuotePrice - agreePriceVal).toFixed(2);
+                                addLog(`[SUCCESS] ${s.name} accepted target price of $${agreePriceVal}/unit.`, 'success');
                                 addLog(`[Negotiation Win] Top bid awarded to "${s.name}".`, 'success');
-                                addLog(`  -> Negotiated Price: $${sInputs.price}/unit | Lead Time: ${sInputs.leadTime} days`, 'success');
+                                addLog(`  -> Negotiated Price: $${agreePriceVal}/unit | Lead Time: ${agreeLeadTime} days | Savings: $${savedPerUnit}/unit`, 'success');
 
                                 // PO was already generated by the agreeToPrice backend via run_comparison_and_notify.
                                 // Use the po_number returned from that call — do NOT call generatePO again.
@@ -995,7 +1157,7 @@ export default function AiAgentWorkflow() {
                                     item: s.name,
                                     quantity: 'As per RFQ',
                                     supplier: s.name,
-                                    savings: `$${sInputs.price}/unit (Agreed)`,
+                                    savings: `$${agreePriceVal}/unit (Agreed)`,
                                     erpStatus: settings.autoSyncErp ? 'Synced (D365)' : 'Skipped',
                                     status: 'completed',
                                     timestamp: new Date().toLocaleTimeString()
@@ -1027,7 +1189,7 @@ export default function AiAgentWorkflow() {
                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
                               </svg>
                             )}
-                            {counterOfferStatus[s.id] === 'agreeing' ? 'Processing...' : counterOfferStatus[s.id] === 'agreed' ? '✓ Agreed & PO Released' : 'Agree to Target Price'}
+                            {counterOfferStatus[s.id] === 'agreeing' ? 'Processing...' : counterOfferStatus[s.id] === 'agreed' ? '✓ Agreed & PO Released' : canAgree ? `Agree to $${parseFloat(finalPriceToAgree).toFixed(2)}` : 'Agree to Price'}
                           </button>
                           <button
                             onClick={async () => {
@@ -1071,10 +1233,31 @@ export default function AiAgentWorkflow() {
                                   <div className="text-slate-650 mt-1 font-mono text-[9px] bg-white p-1.5 rounded border border-slate-100 max-h-[60px] overflow-y-auto whitespace-pre-wrap">
                                     {log.body}
                                   </div>
-                                  <div className="flex gap-2.5 mt-1 text-[9px] font-bold text-[#0078d4]">
-                                    {log.price > 0 && <span>Negotiated Price: ${log.price}</span>}
-                                    {log.lead_time > 0 && <span>Lead Time: {log.lead_time} Days</span>}
-                                  </div>
+                                  {(log.price > 0 || log.lead_time > 0) && (() => {
+                                    const agr = agreedPrices[s.id];
+                                    const suppInbound = campaignLogs.filter(l => l.supplier_id === s.id && l.direction === 'inbound' && l.price > 0);
+                                    const firstPrice = suppInbound.length > 0 ? suppInbound[0].price : null;
+                                    const refP = agr ? agr.target : firstPrice;
+                                    const isGood = refP ? log.price <= refP : true;
+                                    return (
+                                      <div className="flex gap-2.5 mt-1 text-[9px] font-bold flex-wrap">
+                                        {log.price > 0 && (
+                                          <span className={`px-1.5 py-0.5 rounded font-extrabold border flex items-center gap-1 ${
+                                            log.direction === 'outbound'
+                                              ? 'text-blue-700 bg-blue-50 border-blue-200'
+                                              : isGood
+                                              ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                                              : 'text-rose-600 bg-rose-50 border-rose-200'
+                                          }`}>
+                                            {log.direction === 'outbound' ? '🎯' : isGood ? '✅' : '⚠️'} ${log.price}/unit
+                                          </span>
+                                        )}
+                                        {log.lead_time > 0 && (
+                                          <span className="text-slate-500">🕒 {log.lead_time} Days</span>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               ))}
                             </div>
@@ -1108,6 +1291,21 @@ export default function AiAgentWorkflow() {
               <Terminal size={14} /> Live Logs
             </button>
             <button 
+              onClick={() => setActiveRightTab('emails')}
+              className={`flex items-center gap-1.5 pb-1 border-b-2 transition-all ${
+                activeRightTab === 'emails' 
+                  ? 'border-[#0078d4] text-[#0078d4] font-bold text-xs' 
+                  : 'border-transparent text-slate-400 font-semibold text-xs hover:text-slate-655'
+              }`}
+            >
+              <Mail size={14} /> Email Thread
+              {campaignLogs.length > 0 && (
+                <span className="bg-blue-100 text-blue-700 text-[9px] font-extrabold px-1.5 py-0.5 rounded-full">
+                  {campaignLogs.length}
+                </span>
+              )}
+            </button>
+            <button 
               onClick={() => setActiveRightTab('history')}
               className={`flex items-center gap-1.5 pb-1 border-b-2 transition-all ${
                 activeRightTab === 'history' 
@@ -1125,6 +1323,21 @@ export default function AiAgentWorkflow() {
               className="flex items-center gap-1.5 text-[10px] font-bold text-[#0078d4] hover:underline disabled:opacity-40"
             >
               <Download size={12} /> Download Logs
+            </button>
+          ) : activeRightTab === 'emails' ? (
+            <button
+              onClick={async () => {
+                if (!realStatusRfq) return;
+                try {
+                  const res = await campaignService.getRealStatus(realStatusRfq);
+                  if (res.data.logs) setCampaignLogs(res.data.logs);
+                  if (res.data.quotes) setRealQuotes(res.data.quotes);
+                } catch (_) {}
+              }}
+              disabled={!realStatusRfq}
+              className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 hover:underline disabled:opacity-40"
+            >
+              <RefreshCw size={11} /> Refresh
             </button>
           ) : (
             <button
@@ -1151,10 +1364,47 @@ export default function AiAgentWorkflow() {
                 if (log.type === 'error') colorClass = "text-rose-400 font-extrabold";
                 if (log.type === 'system') colorClass = "text-indigo-300 font-bold";
 
+                // Color-code price lines: detect [AI Parse] Extracted quotation
+                const priceMatch = log.message.match(/\[AI Parse\] Extracted quotation metrics: Price=\$(\d+(?:\.\d+)?)/);
+                let priceColorSegment = null;
+                if (priceMatch) {
+                  const parsedPrice = parseFloat(priceMatch[1]);
+                  // Find any agreed target price to compare against
+                  const allTargets = Object.values(agreedPrices).map(a => a.target);
+                  const lowestTarget = allTargets.length > 0 ? Math.min(...allTargets) : null;
+                  // Compare against the last known agreed target, or the sInputs default
+                  const refPrice = lowestTarget || parsedPrice;
+                  const isGoodPrice = parsedPrice <= refPrice;
+                  priceColorSegment = isGoodPrice ? 'text-emerald-400' : 'text-rose-400';
+                  colorClass = "text-slate-300"; // reset base
+                }
+
+                // Render with inline price color highlight if applicable
+                const renderMessage = () => {
+                  if (priceColorSegment && priceMatch) {
+                    const parts = log.message.split(/(Price=\$[\d.]+)/);
+                    return parts.map((part, pi) => {
+                      if (part.match(/^Price=\$[\d.]+$/)) {
+                        const pVal = parseFloat(part.replace('Price=$', ''));
+                        const allTargets = Object.values(agreedPrices).map(a => a.target);
+                        const refP = allTargets.length > 0 ? Math.min(...allTargets) : pVal;
+                        const cls = pVal <= refP ? 'text-emerald-400 font-extrabold' : 'text-rose-400 font-extrabold';
+                        return <span key={pi} className={cls}>{part}</span>;
+                      }
+                      return <span key={pi} className="text-slate-300">{part}</span>;
+                    });
+                  }
+                  // Highlight price in Negotiated Price / savings lines
+                  if (log.message.includes('Negotiated Price:') || log.message.includes('Savings:')) {
+                    return <span className="text-emerald-400 font-bold">{log.message}</span>;
+                  }
+                  return <span className={colorClass}>{log.message}</span>;
+                };
+
                 return (
                   <div key={i} className="flex items-start gap-1">
-                    <span className="text-slate-500 select-none">[{log.timestamp}]</span>
-                    <span className={colorClass}>{log.message}</span>
+                    <span className="text-slate-500 select-none shrink-0">[{log.timestamp}]</span>
+                    <span className="break-all">{renderMessage()}</span>
                   </div>
                 );
               })}
@@ -1169,6 +1419,122 @@ export default function AiAgentWorkflow() {
               
               <div ref={logsEndRef} />
             </div>
+          </div>
+        ) : activeRightTab === 'emails' ? (
+          /* Email Thread Area */
+          <div className="flex-1 overflow-y-auto h-[480px] space-y-5 pr-1">
+            {campaignLogs.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2 py-20">
+                <Mail size={28} className="text-slate-300 animate-pulse" />
+                <div className="text-[11px] font-bold">No email exchanges yet</div>
+                <div className="text-[9px] text-center max-w-xs text-slate-400">Start the autonomous agent with real-time outreach mode to view supplier negotiation threads here.</div>
+              </div>
+            ) : (
+              (() => {
+                // Group logs by supplier
+                const grouped = {};
+                campaignLogs.forEach(log => {
+                  const key = log.supplier_id;
+                  if (!grouped[key]) grouped[key] = { name: log.supplier_name, logs: [] };
+                  grouped[key].logs.push(log);
+                });
+                return Object.entries(grouped).map(([suppId, { name, logs: sLogs }]) => (
+                  <div key={suppId} className="space-y-2">
+                    <div className="flex items-center gap-2 px-1">
+                      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-slate-600 to-slate-800 flex items-center justify-center text-white text-[9px] font-bold shrink-0">
+                        {name?.charAt(0) || 'S'}
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold text-slate-700">{name}</div>
+                        <div className="text-[9px] text-slate-400 font-medium">{sLogs.length} message{sLogs.length !== 1 ? 's' : ''} exchanged</div>
+                      </div>
+                      <div className="flex-1 h-px bg-slate-100 ml-1" />
+                    </div>
+                    {/* Chat bubbles */}
+                    <div className="space-y-2 px-1">
+                      {sLogs.map((log, li) => {
+                        const isInbound = log.direction === 'inbound';
+                        return (
+                          <div key={li} className={`flex flex-col ${isInbound ? 'items-start' : 'items-end'}`}>
+                            {/* Label */}
+                            <div className={`flex items-center gap-1.5 mb-1 ${isInbound ? '' : 'flex-row-reverse'}`}>
+                              <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold ${
+                                isInbound ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                {isInbound ? '↓' : '↑'}
+                              </div>
+                              <span className={`text-[9px] font-bold ${isInbound ? 'text-amber-700' : 'text-blue-700'}`}>
+                                {isInbound ? name : 'AI Agent'}
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-mono">{log.sent_at}</span>
+                              {log.round_number && (
+                                <span className="text-[8px] bg-slate-100 text-slate-500 px-1 py-0.5 rounded font-bold">Rd {log.round_number}</span>
+                              )}
+                            </div>
+                            {/* Bubble */}
+                            <div className={`max-w-[90%] rounded-2xl px-3 py-2.5 shadow-sm border ${
+                              isInbound
+                                ? 'bg-white border-slate-200 rounded-tl-none'
+                                : 'bg-blue-600 border-blue-700 rounded-tr-none text-white'
+                            }`}>
+                              {/* Subject */}
+                              {log.subject && (
+                                <div className={`text-[9px] font-bold mb-1.5 pb-1.5 border-b ${
+                                  isInbound ? 'text-slate-500 border-slate-100' : 'text-blue-200 border-blue-500'
+                                }`}>
+                                  📧 {log.subject}
+                                </div>
+                              )}
+                              {/* Body */}
+                              <div className={`text-[10px] leading-relaxed whitespace-pre-wrap ${
+                                isInbound ? 'text-slate-700' : 'text-white'
+                              }`}>
+                                {log.body}
+                              </div>
+                              {/* Price/LeadTime chips - color coded: green if price ≤ target, red if above */}
+                              {(log.price > 0 || log.lead_time > 0) && (
+                                (() => {
+                                  const supplierAgreed = agreedPrices[parseInt(suppId)];
+                                  const refPrice = supplierAgreed ? supplierAgreed.target : null;
+                                  // Find first inbound price for this supplier as original quote
+                                  const allInbound = sLogs.filter(l => l.direction === 'inbound' && l.price > 0);
+                                  const origPrice = allInbound.length > 0 ? allInbound[0].price : null;
+                                  const priceIsBelow = refPrice ? log.price <= refPrice : (origPrice ? log.price <= origPrice : true);
+                                  return (
+                                    <div className={`flex gap-2 mt-2 pt-1.5 border-t flex-wrap ${
+                                      isInbound ? 'border-slate-100' : 'border-blue-500'
+                                    }`}>
+                                      {log.price > 0 && (
+                                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                                          !isInbound
+                                            ? 'bg-blue-500 text-white border-blue-600'
+                                            : priceIsBelow
+                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                            : 'bg-rose-50 text-rose-600 border-rose-200'
+                                        }`}>
+                                          {isInbound ? (priceIsBelow ? '✅' : '⚠️') : '🎯'} ${log.price}/unit
+                                        </span>
+                                      )}
+                                      {log.lead_time > 0 && (
+                                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                                          isInbound ? 'bg-slate-100 text-slate-600' : 'bg-blue-500 text-white'
+                                        }`}>
+                                          🕒 {log.lead_time} days
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })()
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ));
+              })()
+            )}
           </div>
         ) : (
           /* Execution History Area */
@@ -1198,7 +1564,7 @@ export default function AiAgentWorkflow() {
                     <div>Quantity: <span className="text-slate-700 font-bold">{run.quantity}</span></div>
                     <div className="truncate">Supplier: <span className="text-slate-700 font-bold">{run.supplier}</span></div>
                     <div>Savings: <span className="text-emerald-600 font-bold">{run.savings}</span></div>
-                    <div>PO Released: <span className="text-blue-600 font-black">{run.poNumber || 'N/A'}</span></div>
+                    <div>PO Released: <span className="text-blue-600 font-bold">{run.poNumber || 'N/A'}</span></div>
                     <div>ERP Status: <span className="text-slate-700 font-bold">{run.erpStatus}</span></div>
                     <div className="text-slate-400 font-mono text-[9px] text-right col-span-2 mt-1 border-t border-slate-100/50 pt-1">
                       Executed at: {run.timestamp}
@@ -1209,6 +1575,166 @@ export default function AiAgentWorkflow() {
             )}
           </div>
         )}
+
+        {/* Excel-style Live Bid Comparison Sheet */}
+        {matchedSuppliers.length > 0 && (() => {
+          const getSupplierStatusInfo = (s) => {
+            const quoteForSupplier = realQuotes.find(q => q.supplier_id === s.id);
+            const supplierInboundLogs = campaignLogs.filter(l => l.supplier_id === s.id && l.direction === 'inbound' && l.price > 0);
+            
+            const latestInboundPrice = supplierInboundLogs.length > 0 ? supplierInboundLogs[supplierInboundLogs.length - 1].price : null;
+            const latestInboundLeadTime = supplierInboundLogs.length > 0 ? supplierInboundLogs[supplierInboundLogs.length - 1].lead_time : null;
+            
+            const agreedInfo = agreedPrices[s.id];
+            const isCancelled = quoteForSupplier?.status === 'Cancelled';
+            
+            const price = agreedInfo 
+              ? agreedInfo.target 
+              : (latestInboundPrice !== null && latestInboundPrice !== undefined ? latestInboundPrice : (quoteForSupplier?.price ?? null));
+              
+            const leadTime = agreedInfo 
+              ? agreedInfo.leadTime 
+              : (latestInboundLeadTime !== null && latestInboundLeadTime !== undefined ? latestInboundLeadTime : (quoteForSupplier?.lead_time ?? null));
+              
+            return {
+              price,
+              leadTime,
+              isCancelled,
+              isAgreed: !!agreedInfo
+            };
+          };
+
+          const sortedSuppliers = [...matchedSuppliers]
+            .map(s => ({
+              ...s,
+              info: getSupplierStatusInfo(s)
+            }))
+            .sort((a, b) => {
+              // Push cancelled to bottom
+              if (a.info.isCancelled && !b.info.isCancelled) return 1;
+              if (!a.info.isCancelled && b.info.isCancelled) return -1;
+              
+              // Sort by price (cheapest first, nulls at bottom)
+              const priceA = a.info.price;
+              const priceB = b.info.price;
+              
+              if (priceA === null || priceA === 0) return 1;
+              if (priceB === null || priceB === 0) return -1;
+              
+              return priceA - priceB;
+            });
+
+          return (
+            <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50 shadow-sm flex flex-col mt-2">
+              {/* Excel Header Toolbar */}
+              <div className="bg-slate-100 border-b border-slate-200 px-3 py-2 flex items-center justify-between text-[10px] text-slate-500 font-bold select-none">
+                <div className="flex items-center gap-1.5">
+                  <span className="bg-[#107c41] text-white px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase">Excel</span>
+                  <span className="text-slate-700 font-bold text-[10px]">live_bid_sheet.xlsx</span>
+                </div>
+                <div className="flex items-center gap-2 font-mono text-[9px] text-[#107c41] font-semibold">
+                  <span>fx = SORT_ASC(PRICE)</span>
+                </div>
+              </div>
+
+              {/* Formula Bar */}
+              <div className="bg-white border-b border-slate-200 px-3 py-1 flex items-center gap-2 text-[10px] font-mono select-none">
+                <span className="text-slate-400 font-bold border-r border-slate-200 pr-2">A1</span>
+                <span className="text-slate-600 truncate font-semibold">Auto-extracting active quotes in real-time...</span>
+              </div>
+
+              {/* Grid Column Indexes (A, B, C, D, E) */}
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left font-sans text-[10px]">
+                  <thead>
+                    <tr className="bg-slate-100 text-slate-400 font-mono text-[8px] border-b border-slate-200 select-none">
+                      <th className="w-8 border-r border-slate-200 px-1 py-0.5 text-center bg-slate-150"></th>
+                      <th className="border-r border-slate-200 px-2 py-0.5 uppercase font-bold text-center">A</th>
+                      <th className="border-r border-slate-200 px-2 py-0.5 uppercase font-bold text-center">B</th>
+                      <th className="border-r border-slate-200 px-2 py-0.5 uppercase font-bold text-center">C</th>
+                      <th className="border-r border-slate-200 px-2 py-0.5 uppercase font-bold text-center">D</th>
+                      <th className="px-2 py-0.5 uppercase font-bold text-center">E</th>
+                    </tr>
+                    <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 select-none text-[9px]">
+                      <th className="w-8 border-r border-slate-200 px-1 py-1 text-center font-mono text-slate-400 bg-slate-100 font-bold"></th>
+                      <th className="border-r border-slate-200 px-2 py-1 font-bold">SUPPLIER</th>
+                      <th className="border-r border-slate-200 px-2 py-1 font-bold text-right">PRICE (USD)</th>
+                      <th className="border-r border-slate-200 px-2 py-1 font-bold text-center">LEAD TIME</th>
+                      <th className="border-r border-slate-200 px-2 py-1 font-bold text-center">STATUS</th>
+                      <th className="px-2 py-1 font-bold text-center">RANKING</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedSuppliers.map((s, idx) => {
+                      const { price, leadTime, isCancelled, isAgreed } = s.info;
+                      const isTopBid = idx === 0 && price !== null && !isCancelled;
+                      
+                      let rowBg = "bg-white";
+                      if (isAgreed) rowBg = "bg-emerald-50/50";
+                      else if (isCancelled) rowBg = "bg-rose-50/20 text-slate-450";
+                      else if (isTopBid) rowBg = "bg-amber-50/30";
+                      
+                      return (
+                        <tr key={s.id} className={`${rowBg} border-b border-slate-200 hover:bg-slate-50/80 transition-colors font-medium`}>
+                          {/* Row Number Index */}
+                          <td className="w-8 border-r border-slate-200 px-1 py-1.5 text-center font-mono select-none text-slate-400 bg-slate-100 font-bold text-[8px]">
+                            {idx + 1}
+                          </td>
+                          {/* Supplier Name */}
+                          <td className="border-r border-slate-200 px-2 py-1.5 font-bold text-slate-700 truncate max-w-[120px]">
+                            {s.name}
+                          </td>
+                          {/* Price */}
+                          <td className="border-r border-slate-200 px-2 py-1.5 text-right font-mono font-bold text-slate-800">
+                            {price !== null ? `$${price.toFixed(2)}` : "—"}
+                          </td>
+                          {/* Lead Time */}
+                          <td className="border-r border-slate-200 px-2 py-1.5 text-center font-semibold text-slate-600">
+                            {leadTime !== null && leadTime !== undefined ? `${leadTime} days` : "—"}
+                          </td>
+                          {/* Status */}
+                          <td className="border-r border-slate-200 px-2 py-1.5 text-center">
+                            {isCancelled ? (
+                              <span className="text-[8px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
+                                Withdrawn
+                              </span>
+                            ) : isAgreed ? (
+                              <span className="text-[8px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-200">
+                                Awarded
+                              </span>
+                            ) : price !== null ? (
+                              <span className="text-[8px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                                Quoted
+                              </span>
+                            ) : (
+                              <span className="text-[8px] font-bold text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200 animate-pulse">
+                                Pending
+                              </span>
+                            )}
+                          </td>
+                          {/* Ranking Badge */}
+                          <td className="px-2 py-1.5 text-center font-bold">
+                            {isCancelled ? (
+                              <span className="text-slate-400 font-medium">N/A</span>
+                            ) : isTopBid ? (
+                              <span className="text-[8px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 px-1.5 py-0.5 rounded-full shadow-sm whitespace-nowrap">
+                                🏆 Best Bid
+                              </span>
+                            ) : (
+                              <span className="text-[8px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full">
+                                #{idx + 1}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* AI Agent Telemetry Footer */}
         {agentStatus === 'completed' && (
@@ -1221,7 +1747,7 @@ export default function AiAgentWorkflow() {
               <div>• Time Elapsed: <span className="text-slate-800 font-bold">4.2 Seconds</span></div>
               <div>• Bids Negotiated: <span className="text-slate-800 font-bold">30 Bids</span></div>
               <div>• ERP Sync Success: <span className="text-slate-850 font-bold">Dynamics 365 (OData)</span></div>
-              <div>• Savings Achieved: <span className="text-emerald-600 font-black">+14.2% Saved</span></div>
+              <div>• Savings Achieved: <span className="text-emerald-600 font-bold">+14.2% Saved</span></div>
             </div>
           </div>
         )}

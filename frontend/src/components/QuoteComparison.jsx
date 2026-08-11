@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { comparisonService, rfqService, supplierService } from '../services/api';
 
-export default function QuoteComparison() {
+export default function QuoteComparison({ activeRfqNum }) {
   const [rfqs, setRfqs] = useState([]);
   const [selectedRfqNum, setSelectedRfqNum] = useState('');
   const [comparison, setComparison] = useState(null);
@@ -25,19 +25,31 @@ export default function QuoteComparison() {
   useEffect(() => {
     // Fetch RFQs in response received / sent / comparison status
     rfqService.getAll().then((res) => {
-      setRfqs(res.data);
-      if (res.data.length > 0) {
-        setSelectedRfqNum(res.data[0].rfq_number);
+      const filtered = activeRfqNum 
+        ? res.data.filter(r => r.rfq_number === activeRfqNum)
+        : res.data;
+      
+      setRfqs(filtered);
+      
+      if (filtered.length > 0) {
+        setSelectedRfqNum(filtered[0].rfq_number);
+      } else if (activeRfqNum) {
+        // Fallback placeholder if the selected active RFQ is not in the list response
+        const mockRfq = { rfq_number: activeRfqNum, item_name: 'Selected RFQ', quantity: 100, unit: 'Units' };
+        setRfqs([mockRfq]);
+        setSelectedRfqNum(activeRfqNum);
       }
     });
 
     supplierService.getAll().then((res) => {
-      setSuppliers(res.data);
-      if (res.data.length > 0) {
-        setSelectedSupplierId(String(res.data[0].id));
+      // Filter to only include suppliers synced to ERP
+      const erpOnly = res.data.filter(s => s.synced_to_erp || s.erp_vendor_id);
+      setSuppliers(erpOnly);
+      if (erpOnly.length > 0) {
+        setSelectedSupplierId(String(erpOnly[0].id));
       }
     });
-  }, []);
+  }, [activeRfqNum]);
 
   useEffect(() => {
     if (selectedRfqNum) {
@@ -154,7 +166,8 @@ export default function QuoteComparison() {
           <select 
             value={selectedRfqNum}
             onChange={(e) => setSelectedRfqNum(e.target.value)}
-            className="copilot-input py-1.5"
+            className="copilot-input py-1.5 bg-slate-100 text-slate-500 cursor-not-allowed"
+            disabled={true}
           >
             {rfqs.map((r, i) => (
               <option key={i} value={r.rfq_number}>

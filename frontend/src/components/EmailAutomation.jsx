@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { emailService, rfqService, supplierService } from '../services/api';
 
-export default function EmailAutomation({ redirectSupplierId, onNavigate }) {
+export default function EmailAutomation({ redirectSupplierId, onNavigate, activeRfqNum }) {
   const [activeTab, setActiveTab] = useState('compose');
   const [rfqs, setRfqs] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -26,24 +26,31 @@ export default function EmailAutomation({ redirectSupplierId, onNavigate }) {
   useEffect(() => {
     // Load selectors data
     rfqService.getAll().then((res) => {
-      // Filter primarily Created or Sent RFQs
-      setRfqs(res.data);
-      if (res.data.length > 0) {
-        setSelectedRfqNum(res.data[0].rfq_number);
+      // Filter primarily to only the active RFQ
+      const filtered = activeRfqNum
+        ? res.data.filter(r => r.rfq_number === activeRfqNum)
+        : res.data;
+      setRfqs(filtered);
+      if (filtered.length > 0) {
+        setSelectedRfqNum(filtered[0].rfq_number);
+      } else if (activeRfqNum) {
+        setSelectedRfqNum(activeRfqNum);
       }
     });
 
     supplierService.getAll().then((res) => {
-      setSuppliers(res.data);
-      if (res.data.length > 0) {
+      // Filter to only include suppliers synced to ERP
+      const erpOnly = res.data.filter(s => s.synced_to_erp || s.erp_vendor_id);
+      setSuppliers(erpOnly);
+      if (erpOnly.length > 0) {
         // If redirected from search, select that supplier
-        const initialSup = redirectSupplierId ? String(redirectSupplierId) : String(res.data[0].id);
+        const initialSup = redirectSupplierId ? String(redirectSupplierId) : String(erpOnly[0].id);
         setSelectedSupplierId(initialSup);
       }
     });
 
     fetchFollowUps();
-  }, [redirectSupplierId]);
+  }, [redirectSupplierId, activeRfqNum]);
 
   // Handle auto-generation if redirected or options change
   useEffect(() => {
@@ -56,7 +63,10 @@ export default function EmailAutomation({ redirectSupplierId, onNavigate }) {
     setFetchingFollowups(true);
     emailService.getFollowUpStatus()
       .then((res) => {
-        setFollowUps(res.data);
+        const filtered = activeRfqNum
+          ? res.data.filter(f => f.rfq_number === activeRfqNum)
+          : res.data;
+        setFollowUps(filtered);
         setFetchingFollowups(false);
       })
       .catch((err) => {
@@ -218,12 +228,12 @@ export default function EmailAutomation({ redirectSupplierId, onNavigate }) {
             <div className="space-y-4 text-xs">
               
               <div className="flex flex-col">
-                <label className="font-semibold text-slate-600 mb-1">Select RFQ *</label>
+                <label className="font-semibold text-slate-600 mb-1">Select RFQ * (Active RFQ locked)</label>
                 <select 
                   value={selectedRfqNum}
                   onChange={(e) => setSelectedRfqNum(e.target.value)}
-                  className="copilot-input"
-                  disabled={drafting || loading || oneClickLoading}
+                  className="copilot-input bg-slate-100 text-slate-500 cursor-not-allowed"
+                  disabled={true}
                 >
                   {rfqs.map((r, i) => (
                     <option key={i} value={r.rfq_number}>
@@ -283,7 +293,7 @@ export default function EmailAutomation({ redirectSupplierId, onNavigate }) {
                 <Bot size={16} className="text-[#0078d4]" /> AI Generated Request Draft
               </h2>
               <span className="text-[10px] bg-blue-50 text-[#0078d4] px-2 py-0.5 rounded font-semibold">
-                Neproplast Procurement Co.
+                AI Procurement Co.
               </span>
             </div>
 

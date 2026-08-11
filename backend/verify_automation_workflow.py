@@ -98,12 +98,26 @@ def setup_test_data(tester_email):
             supplier.erp_vendor_id = "ODOO-VEND-TEST-AUTO"
             db.flush()
             
-        # Clean any old test records for this RFQ
-        db.query(models.NegotiationLog).filter(models.NegotiationLog.rfq_number == rfq_num).delete()
-        db.query(models.WorkflowNotification).filter(models.WorkflowNotification.rfq_number == rfq_num).delete()
-        db.query(models.QuoteResponse).filter(models.QuoteResponse.rfq_number == rfq_num).delete()
-        db.query(models.RFQTimeline).filter(models.RFQTimeline.rfq_number == rfq_num).delete()
-        db.query(models.RFQ).filter(models.RFQ.rfq_number == rfq_num).delete()
+        # Clean any old test records for this RFQ including dependents to prevent foreign key violations
+        db.query(models.NegotiationLog).filter(models.NegotiationLog.rfq_number == rfq_num).delete(synchronize_session=False)
+        db.query(models.WorkflowNotification).filter(models.WorkflowNotification.rfq_number == rfq_num).delete(synchronize_session=False)
+        db.query(models.QuoteResponse).filter(models.QuoteResponse.rfq_number == rfq_num).delete(synchronize_session=False)
+        db.query(models.RFQTimeline).filter(models.RFQTimeline.rfq_number == rfq_num).delete(synchronize_session=False)
+        db.query(models.EmailHistory).filter(models.EmailHistory.rfq_number == rfq_num).delete(synchronize_session=False)
+        
+        # Cascading delete of POs and invoices/receipts referencing them
+        pos = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.rfq_number == rfq_num).all()
+        po_numbers = [p.po_number for p in pos]
+        if po_numbers:
+            invoices = db.query(models.InvoiceMatch).filter(models.InvoiceMatch.po_number.in_(po_numbers)).all()
+            invoice_numbers = [inv.invoice_number for inv in invoices]
+            if invoice_numbers:
+                db.query(models.PaymentVoucher).filter(models.PaymentVoucher.invoice_number.in_(invoice_numbers)).delete(synchronize_session=False)
+            db.query(models.InvoiceMatch).filter(models.InvoiceMatch.po_number.in_(po_numbers)).delete(synchronize_session=False)
+            db.query(models.GoodsReceiptNote).filter(models.GoodsReceiptNote.po_number.in_(po_numbers)).delete(synchronize_session=False)
+            db.query(models.PurchaseOrder).filter(models.PurchaseOrder.rfq_number == rfq_num).delete(synchronize_session=False)
+            
+        db.query(models.RFQ).filter(models.RFQ.rfq_number == rfq_num).delete(synchronize_session=False)
         db.commit()
         
         # Create fresh RFQ
@@ -323,6 +337,7 @@ def run_simulation_test(rfq_num, supplier_id, tester_email):
             status="Quotation Received"
         )
         db.add(quote)
+        db.commit()
         
         print("5. Triggering AI Comparison Analysis & Management Summary Notification...")
         run_comparison_and_notify(db, rfq_num)

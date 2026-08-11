@@ -4,7 +4,7 @@ import {
   Calendar, MapPin, Tag, MessageSquare, ListFilter,
   CheckCircle2, Circle, ArrowLeft, Bot, Sparkles, Send, ShieldAlert,
   Eye, Pencil, MoreVertical, TrendingUp, Award, Clock, ChevronLeft, ChevronRight,
-  Database, RefreshCw, Activity
+  Database, RefreshCw, Activity, Search, Trash2
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
@@ -12,12 +12,12 @@ import {
 } from 'recharts';
 import { rfqService, workflowService, dashboardService, dbService } from '../services/api';
 
-export default function RfqAssistant({ initialOpenCreate = false }) {
+export default function RfqAssistant({ initialOpenCreate = false, initialSelectedRfq, onSearchSuppliers, onSelectRfq }) {
   const [rfqs, setRfqs] = useState([]);
   const [selectedRfq, setSelectedRfq] = useState(null);
   const [rfqTimeline, setRfqTimeline] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState(initialOpenCreate);
+  const [showCreate, setShowCreate] = useState(initialOpenCreate || false);
   
   // Stock Validation Warning State
   const [stockWarningModal, setStockWarningModal] = useState(null);
@@ -69,6 +69,8 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
   const [moreMenuRfq, setMoreMenuRfq] = useState(null);   // rfq_number of open more-menu
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
+  const [selectedRfqNumbers, setSelectedRfqNumbers] = useState([]);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchStats = () => {
     dashboardService.getStats()
@@ -160,6 +162,12 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
     }
   }, [initialOpenCreate]);
 
+  useEffect(() => {
+    if (initialSelectedRfq) {
+      handleSelectRfq(initialSelectedRfq);
+    }
+  }, [initialSelectedRfq]);
+
   // Close more-menu when clicking outside
   useEffect(() => {
     if (moreMenuRfq === null) return;
@@ -181,8 +189,55 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
       });
   };
 
+  const handleDeleteSelected = () => {
+    if (!window.confirm(`Are you sure you want to delete the ${selectedRfqNumbers.length} selected RFQs? This will delete all associated quotes, POs, and negotiation history.`)) {
+      return;
+    }
+    setDeleting(true);
+    rfqService.deleteBatch(selectedRfqNumbers)
+      .then((res) => {
+        setSuccessMsg(res.data.message || `Deleted selected RFQs.`);
+        setSelectedRfqNumbers([]);
+        fetchRfqs();
+        fetchStats();
+        setDeleting(false);
+        setTimeout(() => setSuccessMsg(''), 3000);
+      })
+      .catch((err) => {
+        console.error(err);
+        alert('Failed to delete selected RFQs.');
+        setDeleting(false);
+      });
+  };
+
+  const handleDeleteAll = () => {
+    const allRfqNumbers = rfqs.map(r => r.rfq_number);
+    if (allRfqNumbers.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ALL ${allRfqNumbers.length} RFQs in the repository? This action is permanent and will delete all associated quotes, POs, and negotiation history.`)) {
+      return;
+    }
+    setDeleting(true);
+    rfqService.deleteBatch(allRfqNumbers)
+      .then((res) => {
+        setSuccessMsg(res.data.message || `All RFQs deleted.`);
+        setSelectedRfqNumbers([]);
+        fetchRfqs();
+        fetchStats();
+        setDeleting(false);
+        setTimeout(() => setSuccessMsg(''), 3000);
+      })
+      .catch((err) => {
+        console.error(err);
+        alert('Failed to delete all RFQs.');
+        setDeleting(false);
+      });
+  };
+
   const handleSelectRfq = (rfqNumber) => {
     setLoading(true);
+    if (onSelectRfq) {
+      onSelectRfq(rfqNumber);
+    }
     Promise.all([
       rfqService.getDetails(rfqNumber),
       rfqService.getTimeline(rfqNumber)
@@ -393,12 +448,14 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
 
   const total = filteredRfqs.length || 1;
   const openCount = filteredRfqs.filter(r => mapStatus(r.status) === 'Open').length;
+  const confirmationCount = filteredRfqs.filter(r => mapStatus(r.status) === 'Pending Confirmation').length;
   const pendingCount = filteredRfqs.filter(r => mapStatus(r.status) === 'Quotes Pending').length;
   const reviewCount = filteredRfqs.filter(r => mapStatus(r.status) === 'Under Review').length;
   const closedCount = filteredRfqs.filter(r => mapStatus(r.status) === 'Closed').length;
 
   const pieData = [
     { name: 'Open', value: openCount, color: '#10b981' },
+    { name: 'Pending Confirmation', value: confirmationCount, color: '#f59e0b' },
     { name: 'Quotes Pending', value: pendingCount, color: '#3b82f6' },
     { name: 'Under Review', value: reviewCount, color: '#8b5cf6' },
     { name: 'Closed', value: closedCount, color: '#6b7280' }
@@ -408,17 +465,28 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
   const timelineData = [];
   const daysInMonth = 31;
   const dayCounts = {};
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const currentMonthName = monthNames[new Date().getMonth()] || "Aug";
+
   filteredRfqs.forEach(r => {
     if (r.created_at) {
-      const day = parseInt(r.created_at.split(' ')[0].split('-')[2]) || 1;
-      dayCounts[day] = (dayCounts[day] || 0) + 1;
+      try {
+        const datePart = r.created_at.split(' ')[0];
+        const parts = datePart.split('-');
+        const day = parseInt(parts[2]);
+        if (!isNaN(day)) {
+          dayCounts[day] = (dayCounts[day] || 0) + 1;
+        }
+      } catch (e) {
+        console.error("Error parsing date:", e);
+      }
     }
   });
 
   for (let i = 1; i <= daysInMonth; i += 3) {
     timelineData.push({
-      name: `May ${i}`,
-      RFQs: dayCounts[i] !== undefined ? dayCounts[i] : (filteredRfqs.length > 0 ? Math.floor(Math.random() * 5) + 1 : 0)
+      name: `${currentMonthName} ${i}`,
+      RFQs: dayCounts[i] || 0
     });
   }
 
@@ -613,11 +681,8 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
 
 
 
-          {/* Main Content Grid splits left/right */}
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            
-            {/* Left 3 Columns (Table, Bottom Cards) */}
-            <div className="lg:col-span-3 space-y-6">
+          {/* Main Content Area */}
+          <div className="space-y-6">
               
               {/* Repository Card */}
               <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-4">
@@ -639,6 +704,7 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
                   >
                     <option value="All Status">All Status</option>
                     <option value="Open">Open</option>
+                    <option value="Pending Confirmation">Pending Confirmation</option>
                     <option value="Quotes Pending">Quotes Pending</option>
                     <option value="Under Review">Under Review</option>
                     <option value="Closed">Closed</option>
@@ -664,12 +730,25 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
                     ))}
                   </select>
 
-                  <select className="text-xs bg-slate-50 border border-slate-200 hover:bg-slate-100 px-3 py-1.5 rounded-xl text-slate-700 outline-none font-semibold transition-colors">
-                    <option>Date Range</option>
-                    <option>Last 7 Days</option>
-                    <option>This Month</option>
-                    <option>This Quarter</option>
-                  </select>
+                  {selectedRfqNumbers.length > 0 ? (
+                    <button
+                      onClick={handleDeleteSelected}
+                      disabled={deleting}
+                      className="text-xs bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-xl font-bold transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <Trash2 size={13} />
+                      <span>{deleting ? 'Deleting...' : `Delete Selected (${selectedRfqNumbers.length})`}</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleDeleteAll}
+                      disabled={deleting || rfqs.length === 0}
+                      className="text-xs bg-slate-100 hover:bg-rose-50 hover:text-rose-700 border border-slate-200 text-slate-600 px-3 py-1.5 rounded-xl font-semibold transition-all flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <Trash2 size={13} />
+                      <span>Delete All</span>
+                    </button>
+                  )}
 
                   {/* Search Input */}
                   <div className="flex-1 min-w-[180px] relative">
@@ -699,6 +778,22 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase tracking-wider text-[10px] font-bold">
+                          <th className="p-4 w-10 text-center">
+                            <input 
+                              type="checkbox"
+                              checked={paginatedRfqs.length > 0 && paginatedRfqs.every(r => selectedRfqNumbers.includes(r.rfq_number))}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  const currentIds = paginatedRfqs.map(r => r.rfq_number);
+                                  setSelectedRfqNumbers(prev => [...new Set([...prev, ...currentIds])]);
+                                } else {
+                                  const currentIds = paginatedRfqs.map(r => r.rfq_number);
+                                  setSelectedRfqNumbers(prev => prev.filter(num => !currentIds.includes(num)));
+                                }
+                              }}
+                              className="rounded border-slate-350 text-[#0078d4] focus:ring-[#0078d4] cursor-pointer"
+                            />
+                          </th>
                           <th className="p-4">RFQ ID</th>
                           <th className="p-4">Project Name</th>
                           <th className="p-4">Item Name</th>
@@ -719,6 +814,20 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
                               onClick={() => handleSelectRfq(r.rfq_number)}
                               className="hover:bg-blue-50/30 cursor-pointer transition-colors group"
                             >
+                              <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                                <input 
+                                  type="checkbox"
+                                  checked={selectedRfqNumbers.includes(r.rfq_number)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedRfqNumbers(prev => [...prev, r.rfq_number]);
+                                    } else {
+                                      setSelectedRfqNumbers(prev => prev.filter(num => num !== r.rfq_number));
+                                    }
+                                  }}
+                                  className="rounded border-slate-350 text-[#0078d4] focus:ring-[#0078d4] cursor-pointer"
+                                />
+                              </td>
                               <td className="p-3 font-bold text-[#0078d4] text-xs whitespace-nowrap">{r.rfq_number}</td>
                               <td className="p-3 text-slate-800 max-w-[160px]">
                                 <span className="block truncate text-xs" title={r.project_name}>{r.project_name}</span>
@@ -861,8 +970,8 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
                 )}
               </div>
 
-              {/* Bottom 3 Cards Row */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Bottom 2 Cards Row */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
                 {/* 1. Status overview pie */}
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between min-h-[240px]">
@@ -894,7 +1003,7 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
                         </PieChart>
                       </ResponsiveContainer>
                       <div className="absolute text-center">
-                        <span className="text-2xl font-black text-slate-900 block leading-none">{filteredRfqs.length}</span>
+                        <span className="text-2xl font-bold text-slate-900 block leading-none">{filteredRfqs.length}</span>
                         <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block mt-0.5">Total RFQs</span>
                       </div>
                     </div>
@@ -902,19 +1011,19 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
                     <div className="flex-1 space-y-1.5 pl-3.5 text-[10px] font-bold text-slate-500">
                       <div className="flex justify-between items-center">
                         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#10b981] block shrink-0"></span> Open</span>
-                        <span className="font-extrabold text-slate-800">{openCount} ({filteredRfqs.length > 0 ? Math.round((openCount / total) * 100) : 0}%)</span>
+                        <span className="font-semibold text-slate-800">{openCount} ({filteredRfqs.length > 0 ? Math.round((openCount / total) * 100) : 0}%)</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#3b82f6] block shrink-0"></span> Quotes Pending</span>
-                        <span className="font-extrabold text-slate-800">{pendingCount} ({filteredRfqs.length > 0 ? Math.round((pendingCount / total) * 100) : 0}%)</span>
+                        <span className="font-semibold text-slate-800">{pendingCount} ({filteredRfqs.length > 0 ? Math.round((pendingCount / total) * 100) : 0}%)</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#8b5cf6] block shrink-0"></span> Under Review</span>
-                        <span className="font-extrabold text-slate-800">{reviewCount} ({filteredRfqs.length > 0 ? Math.round((reviewCount / total) * 100) : 0}%)</span>
+                        <span className="font-semibold text-slate-800">{reviewCount} ({filteredRfqs.length > 0 ? Math.round((reviewCount / total) * 100) : 0}%)</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#6b7280] block shrink-0"></span> Closed</span>
-                        <span className="font-extrabold text-slate-800">{closedCount} ({filteredRfqs.length > 0 ? Math.round((closedCount / total) * 100) : 0}%)</span>
+                        <span className="font-semibold text-slate-800">{closedCount} ({filteredRfqs.length > 0 ? Math.round((closedCount / total) * 100) : 0}%)</span>
                       </div>
                     </div>
                   </div>
@@ -924,8 +1033,8 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between min-h-[240px]">
                   <div className="flex justify-between items-center pb-2 border-b border-slate-100 mb-2">
                     <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">RFQ Timeline (This Month)</h3>
-                    <span className="text-[9px] bg-emerald-50 text-emerald-700 font-extrabold px-2 py-0.5 rounded border border-emerald-250">
-                      May 19 – 62 RFQs
+                    <span className="text-[9px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded border border-emerald-250">
+                      Total: {filteredRfqs.length} RFQs
                     </span>
                   </div>
 
@@ -948,175 +1057,7 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
                   </div>
                 </div>
 
-                {/* 3. AI Insights */}
-                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between min-h-[240px]">
-                  <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">AI Insights</h3>
-                    <Sparkles size={14} className="text-amber-500" />
-                  </div>
-
-                  <div className="space-y-3 flex-1 flex flex-col justify-center text-xs font-semibold text-slate-655 mt-2">
-                    
-                    {/* Live AI Agent Monitoring Alert inside Insights */}
-                    {aiAgentState && aiAgentState.status === 'running' && (
-                      <div className="bg-blue-50 border border-blue-200 p-2.5 rounded-xl flex items-start gap-2.5 animate-pulse mb-1">
-                        <div className="w-5 h-5 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 mt-0.5">
-                          <RefreshCw size={11} className="animate-spin" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <span className="font-extrabold text-blue-800 block text-[10px] leading-tight">AI Agent: Autonomous Execution Active</span>
-                          <p className="text-[9px] text-blue-600 truncate mt-0.5 font-medium">
-                            {aiAgentState.logs && aiAgentState.logs.length > 0 
-                              ? aiAgentState.logs[aiAgentState.logs.length - 1].message 
-                              : `Processing: ${aiAgentState.item || 'RFQ details'}`}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Insight 1: Savings */}
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                        <TrendingUp size={14} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <span className="font-extrabold text-slate-800 block leading-tight">
-                          {stats?.widgets?.cost_savings 
-                            ? `$${Number(stats.widgets.cost_savings).toLocaleString('en-US', {maximumFractionDigits: 0})} total savings realized`
-                            : '14.2% average savings achieved'}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-medium">
-                          {aiAgentState?.status === 'completed' && aiAgentState?.savings 
-                            ? `Last agent execution optimized bid by ${aiAgentState.savings}`
-                            : 'Compared to standard catalog prices'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Insight 2: Material Demand */}
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-                        <Bot size={14} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <span className="font-extrabold text-slate-800 block leading-tight truncate">
-                          {rfqs[0]?.item_name || 'PVC Resin'} is active
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-medium">
-                          {rfqs.filter(r => r.item_name === (rfqs[0]?.item_name || 'PVC Resin')).length || 0} RFQ records matching this category
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Insight 3: Attention items */}
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                        <Clock size={14} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <span className="font-extrabold text-slate-800 block leading-tight">
-                          {rfqs.filter(r => mapStatus(r.status) === 'Open').length} RFQs await review
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-medium">
-                          Requires active supplier quote comparison
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
               </div>
-
-            </div>
-
-            {/* Right 1 Column (Schedule, Recent Activity) */}
-            <div className="lg:col-span-1 space-y-6">
-              
-              {/* RFQ Schedule Card */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
-                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                    <Calendar size={14} className="text-[#0078d4]" /> RFQ Schedule
-                  </h3>
-                  <button className="text-[10px] text-[#0078d4] font-bold hover:underline">View Calendar</button>
-                </div>
-
-                <div className="space-y-3">
-                  {scheduledRfqs.length === 0 ? (
-                    <div className="text-center py-6 text-xs text-slate-400 font-semibold">
-                      No upcoming RFQ schedule events.
-                    </div>
-                  ) : (
-                    scheduledRfqs.map((r, i) => {
-                      const { month, day } = getMonthDay(r.required_date);
-                      return (
-                        <div key={i} className="flex gap-3 items-center">
-                          {/* Styled Date box */}
-                          <div className="w-12 h-12 bg-slate-50 border border-slate-155 rounded-xl flex flex-col items-center justify-center shrink-0">
-                            <span className="text-[8px] font-black text-rose-500 leading-none">{month}</span>
-                            <span className="text-lg font-black text-slate-700 leading-none mt-1">{day}</span>
-                          </div>
-                          
-                          {/* Right Side Content */}
-                          <div className="min-w-0 flex-1">
-                            <div className="text-xs font-bold text-slate-850 truncate leading-tight">
-                              {r.rfq_number}
-                            </div>
-                            <div className="text-[10px] text-slate-450 truncate mt-0.5 font-medium">
-                              {r.project_name}
-                            </div>
-                            <div className="flex items-center justify-between mt-1 text-[9px] font-bold font-mono">
-                              <span className="text-slate-400">10:30 AM</span>
-                              <span className={`font-extrabold ${
-                                r.priority === 'High' ? 'text-rose-500' : 'text-emerald-500'
-                              }`}>
-                                {r.priority === 'High' ? 'Closing Soon' : 'Open'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* Recent Activity Card */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
-                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                    <Activity size={14} className="text-[#0078d4]" /> Recent Activity
-                  </h3>
-                  <button className="text-[10px] text-[#0078d4] font-bold hover:underline">View All</button>
-                </div>
-
-                <div className="space-y-4 relative pl-3.5 border-l-2 border-slate-100 ml-1.5 py-1">
-                  {stats?.recent_activity && stats.recent_activity.length > 0 ? (
-                    stats.recent_activity.slice(0, 5).map((act, i) => (
-                      <div key={i} className="relative group text-xs font-semibold">
-                        {/* Dot indicator */}
-                        <div className="absolute -left-[20.5px] top-1.5 w-2 h-2 rounded-full bg-emerald-500 border border-white"></div>
-                        
-                        <div className="text-slate-850 font-bold leading-tight">
-                          {act.rfq_number} — <span className="text-slate-655 font-semibold">{act.stage}</span>
-                        </div>
-                        <p className="text-[10px] text-slate-500 mt-0.5 leading-snug font-medium">
-                          {act.details}
-                        </p>
-                        <span className="text-[9px] text-slate-400 font-bold block mt-1 font-mono">
-                          {act.timestamp}
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-6 text-xs text-slate-400 font-semibold -ml-3.5">
-                      No recent activities recorded.
-                    </div>
-                  )}
-                </div>
-              </div>
-
-            </div>
 
           </div>
         </div>
@@ -1450,12 +1391,21 @@ export default function RfqAssistant({ initialOpenCreate = false }) {
         // RFQ DETAIL VIEW + ACTIVITY TIMELINE (MODULE 8)
         <div className="space-y-6">
           <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <button 
-              onClick={() => { setSelectedRfq(null); fetchRfqs(); }}
-              className="flex items-center gap-1.5 text-slate-600 hover:text-slate-800 text-xs font-semibold bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-sm transition-colors"
-            >
-              <ArrowLeft size={14} /> Back to Repository
-            </button>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => { setSelectedRfq(null); fetchRfqs(); }}
+                className="flex items-center gap-1.5 text-slate-600 hover:text-slate-800 text-xs font-semibold bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-sm transition-colors"
+              >
+                <ArrowLeft size={14} /> Back to Repository
+              </button>
+              <button 
+                onClick={() => onSearchSuppliers && onSearchSuppliers(selectedRfq.item_name)}
+                className="flex items-center gap-1.5 bg-[#0078d4] hover:bg-[#106ebe] text-white text-xs font-bold rounded-lg px-3 py-2 shadow-sm transition-all"
+                title="Search matching suppliers in ERP and external catalogs"
+              >
+                <Search size={13} /> Find ERP Suppliers
+              </button>
+            </div>
             <div className="text-right">
               <span className="text-xs font-semibold text-slate-400">STATUS</span>
               <div className="text-sm font-bold text-[#0078d4]">{selectedRfq.status}</div>

@@ -363,8 +363,28 @@ def get_mock_copilot_response(query: str, db: Session) -> str:
     Returns a rule-based mock response that answers precisely based on DB data.
     Used when OpenAI is not available or errors out.
     """
-    lowered = query.lower()
+    lowered = query.lower().strip()
     words = clean_words(query)
+    
+    # Conversational Greetings & General Responses
+    if any(g == lowered or lowered.startswith(g + " ") for g in ["hello", "hi", "hey", "greetings", "good morning", "good afternoon"]):
+        return "Hello! I am your B2B Procurement AI Copilot. How can I assist you with your procurement queries, supplier scores, or purchase orders today?"
+        
+    if any(t in lowered for t in ["thank you", "thanks", "appreciate it"]):
+        return "You're very welcome! I'm here to help you optimize and streamline Neproplast's procurement workflow. Let me know if you need any other database insights."
+        
+    if any(b in lowered for b in ["bye", "goodbye", "exit"]):
+        return "Goodbye! Have a great day. Feel free to open the Copilot anytime you need assistance."
+        
+    if "how are you" in lowered:
+        return "I am performing optimally and fully synchronized with Neproplast's procurement databases! How can I assist you today?"
+        
+    if "who are you" in lowered or "what can you do" in lowered:
+        return (
+            "I am the Neproplast AI Procurement Copilot. I have real-time access to our Suppliers, RFQs, Quote Responses, "
+            "and Purchase Orders. You can ask me to search for suppliers from a specific country, show pending approvals, "
+            "check delayed purchase orders, or look up recent prices for polymer materials."
+        )
     
     # 1. Answer regarding Pending Approvals
     if "approval" in lowered or "pending approval" in lowered:

@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -44,6 +44,7 @@ export const rfqService = {
     });
   },
   getTimeline: (rfqNumber) => api.get(`/api/rfqs/${rfqNumber}/timeline`),
+  deleteBatch: (rfqNumbers) => api.post('/api/rfqs/delete-batch', { rfq_numbers: rfqNumbers }),
 };
 
 export const supplierService = {
@@ -51,7 +52,10 @@ export const supplierService = {
   search: (query, sources, aiSearch = false) => api.get('/api/suppliers/search', { params: { query, sources, ai_search: aiSearch } }),
   getProfile: (id) => api.get(`/api/suppliers/${id}/profile`),
   add: (data) => api.post('/api/suppliers', data),
+  update: (id, data) => api.put(`/api/suppliers/${id}`, data),
   opporaSearch: (data) => api.post('/api/suppliers/oppora-search', data),
+  importSuppliers: (data) => api.post('/api/suppliers/import', data),
+  exportUrl: `${API_BASE_URL}/api/suppliers/export`,
 };
 
 export const emailService = {
@@ -60,6 +64,14 @@ export const emailService = {
   getFollowUpStatus: () => api.get('/api/email/follow-up-status'),
   triggerReminder: (emailId) => api.post('/api/email/trigger-reminder', { email_id: emailId }),
 };
+
+export const emailBotService = {
+  getLogs: () => api.get('/api/email-logs'),
+  triggerCheck: () => api.post('/api/agent/trigger-email-check'),
+  getSettings: () => api.get('/api/agent/settings'),
+  saveSettings: (settings) => api.post('/api/agent/settings', settings),
+};
+
 
 export const comparisonService = {
   uploadQuote: (rfqNumber, supplierId, file) => {

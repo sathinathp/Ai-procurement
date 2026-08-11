@@ -1,16 +1,133 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 
 body {
   background-color: var(--color-slate-50);
   color: var(--color-slate-800);
-  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif !important;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
 }
 
+/* --- Global Cartoonish Neo-Brutalist Styles --- */
 
-/* Custom micro-interactions and styling */
+/* Normalizing heavy typography to clear, readable bold */
+.font-black, .font-extrabold {
+  font-weight: 700 !important;
+}
+
+/* Card, Widget & Box Elements */
+.bg-white.border.border-slate-200, 
+.bg-white.border.border-slate-200\/80,
+.bg-white.border.border-slate-100,
+.bg-white.border.border-slate-300\/80,
+.bg-white.border.rounded-xl,
+.bg-white.border.rounded-2xl {
+  border: 2px solid #0f172a !important;
+  box-shadow: 4px 4px 0px 0px #0f172a !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.bg-white.border.border-slate-200:hover, 
+.bg-white.border.border-slate-200\/80:hover,
+.bg-white.border.border-slate-100:hover,
+.bg-white.border.border-slate-300\/80:hover {
+  transform: translateY(-2px) translateX(-2px) !important;
+  box-shadow: 6px 6px 0px 0px #0f172a !important;
+}
+
+/* Interactive Cartoon Buttons (Primary) */
+button.bg-\[\#0078d4\],
+button.bg-blue-650,
+button.bg-indigo-600,
+button.bg-emerald-600 {
+  border: 2px solid #0f172a !important;
+  box-shadow: 3px 3px 0px 0px #0f172a !important;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+button.bg-\[\#0078d4\]:hover,
+button.bg-blue-650:hover,
+button.bg-indigo-600:hover,
+button.bg-emerald-600:hover {
+  transform: translateY(-1.5px) translateX(-1.5px) !important;
+  box-shadow: 4.5px 4.5px 0px 0px #0f172a !important;
+}
+
+button.bg-\[\#0078d4\]:active,
+button.bg-blue-650:active,
+button.bg-indigo-600:active,
+button.bg-emerald-600:active {
+  transform: translateY(0px) translateX(0px) !important;
+  box-shadow: 0.5px 0.5px 0px 0px #0f172a !important;
+}
+
+/* Interactive Cartoon Buttons (Secondary/White) */
+button.bg-white.border.border-slate-200,
+button.bg-white.border.border-slate-300,
+button.bg-slate-50.border.border-slate-200 {
+  border: 2px solid #0f172a !important;
+  box-shadow: 2px 2px 0px 0px #0f172a !important;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+button.bg-white.border.border-slate-200:hover,
+button.bg-white.border.border-slate-300:hover,
+button.bg-slate-50.border.border-slate-200:hover {
+  transform: translateY(-1.5px) translateX(-1.5px) !important;
+  box-shadow: 3.5px 3.5px 0px 0px #0f172a !important;
+  background-color: #f8fafc !important;
+}
+
+button.bg-white.border.border-slate-200:active,
+button.bg-white.border.border-slate-300:active,
+button.bg-slate-50.border.border-slate-200:active {
+  transform: translateY(0px) translateX(0px) !important;
+  box-shadow: 0.5px 0.5px 0px 0px #0f172a !important;
+}
+
+/* Inputs & Form Controls */
+input[type="text"],
+input[type="search"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+textarea,
+select {
+  border: 2px solid #0f172a !important;
+  box-shadow: 2px 2px 0px 0px #0f172a !important;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  border-radius: 8px !important;
+}
+
+input[type="text"]:focus,
+input[type="search"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+textarea:focus,
+select:focus {
+  transform: translateY(-1px) translateX(-1px) !important;
+  box-shadow: 3px 3px 0px 0px #0078d4 !important;
+  outline: none !important;
+}
+
+/* Fade-In Up Tab Transition Animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.flex-1.overflow-y-auto {
+  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}/* Custom micro-interactions and styling */
 .copilot-card {
   @apply bg-white border border-slate-200/80 rounded-xl shadow-sm hover:shadow-md transition-all duration-300;
 }

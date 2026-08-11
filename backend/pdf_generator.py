@@ -64,7 +64,7 @@ def generate_po_pdf_file(po, db: Session) -> str:
     )
     
     # Title Block
-    story.append(Paragraph("NEPROPLAST MANUFACTURING CORP", title_style))
+    story.append(Paragraph("AI PROCUREMENT CORP", title_style))
     story.append(Paragraph("OFFICIAL PURCHASE ORDER (PO)", subtitle_style))
     story.append(Spacer(1, 10))
     
@@ -93,10 +93,10 @@ def generate_po_pdf_file(po, db: Session) -> str:
     # Items Table
     headers = [Paragraph("Item Name / Description", header_style), Paragraph("Qty", header_style), Paragraph("Unit Price", header_style), Paragraph("Total Amount", header_style)]
     row_data = [
-        Paragraph(po.item_name, body_style),
-        Paragraph(f"{po.quantity} MT", body_style),
-        Paragraph(f"USD {po.unit_price:.2f}", body_style),
-        Paragraph(f"USD {po.total_amount:.2f}", body_style)
+        Paragraph(po.item_name or "Unknown Item", body_style),
+        Paragraph(f"{(po.quantity or 0.0):.2f} MT", body_style),
+        Paragraph(f"USD {(po.unit_price or 0.0):.2f}", body_style),
+        Paragraph(f"USD {(po.total_amount or 0.0):.2f}", body_style)
     ]
     
     items_data = [headers, row_data]
@@ -123,7 +123,7 @@ def generate_po_pdf_file(po, db: Session) -> str:
     
     story.append(Paragraph("___________________________", body_style))
     story.append(Paragraph("Authorized Procurement Manager", bold_label))
-    story.append(Paragraph("Neproplast Supply Chain Division", body_style))
+    story.append(Paragraph("AI Procurement Division", body_style))
     
     doc.build(story)
     return pdf_path

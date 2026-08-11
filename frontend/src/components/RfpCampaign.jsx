@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { rfqService, campaignService, erpService, comparisonService } from '../services/api';
 
-export default function RfpCampaign() {
+export default function RfpCampaign({ activeRfqNum }) {
   const [rfqs, setRfqs] = useState([]);
   const [selectedRfqNum, setSelectedRfqNum] = useState('');
   const [currentRfq, setCurrentRfq] = useState(null);
@@ -85,9 +85,14 @@ export default function RfpCampaign() {
 
   const fetchRfqs = () => {
     rfqService.getAll().then(res => {
-      setRfqs(res.data);
-      if (res.data.length > 0) {
-        setSelectedRfqNum(res.data[0].rfq_number);
+      const filtered = activeRfqNum 
+        ? res.data.filter(r => r.rfq_number === activeRfqNum)
+        : res.data;
+      setRfqs(filtered);
+      if (filtered.length > 0) {
+        setSelectedRfqNum(filtered[0].rfq_number);
+      } else if (activeRfqNum) {
+        setSelectedRfqNum(activeRfqNum);
       }
     });
   };
@@ -220,12 +225,12 @@ export default function RfpCampaign() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs font-semibold text-slate-500">Target RFQ:</span>
+            <span className="text-xs font-semibold text-slate-500">Target RFQ: (Active RFQ locked)</span>
             <select 
               value={selectedRfqNum}
               onChange={(e) => setSelectedRfqNum(e.target.value)}
-              className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none focus:border-[#0078d4]"
-              disabled={simulating}
+              className="bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-500 font-semibold focus:outline-none cursor-not-allowed"
+              disabled={true}
             >
               {rfqs.map((r, i) => (
                 <option key={i} value={r.rfq_number}>
@@ -248,7 +253,7 @@ export default function RfpCampaign() {
             <div className="max-w-md mx-auto space-y-2">
               <h2 className="text-lg font-bold text-slate-800">Initialize Broad Supplier Outreach</h2>
               <p className="text-xs text-slate-500">
-                This will trigger an RFP campaign inviting **100 matching suppliers** from Neproplast's database to quote for **{currentRfq?.quantity} {currentRfq?.unit}** of **{currentRfq?.item_name}**.
+                This will trigger an RFP campaign inviting **100 matching suppliers** from our ERP database to quote for **{currentRfq?.quantity} {currentRfq?.unit}** of **{currentRfq?.item_name}**.
               </p>
             </div>
 
@@ -287,7 +292,7 @@ export default function RfpCampaign() {
               <RefreshCw className="animate-spin text-amber-500" size={20} />
               <div>
                 <h3 className="text-sm font-bold text-slate-800">RFP Simulation Underway</h3>
-                <p className="text-xs text-slate-500">Neproplast AI Agent driving broad vendor campaign</p>
+                <p className="text-xs text-slate-500">AI Agent driving broad vendor campaign</p>
               </div>
             </div>
 
@@ -333,26 +338,26 @@ export default function RfpCampaign() {
             <div className="bg-gradient-to-r from-amber-500/10 to-indigo-500/10 border border-amber-250 rounded-2xl p-5 shadow-xs space-y-3">
               <div className="flex items-center gap-2">
                 <Sparkles className="text-amber-500" size={18} />
-                <h3 className="text-sm font-black text-slate-800">AI Procurement Copilot Summary</h3>
-                <span className="text-[9px] bg-amber-100 text-amber-800 font-extrabold px-2.5 py-0.5 rounded-full ml-auto">Autonomous Agent Active</span>
+                <h3 className="text-sm font-bold text-slate-800">AI Procurement Copilot Summary</h3>
+                <span className="text-[9px] bg-amber-100 text-amber-800 font-semibold px-2.5 py-0.5 rounded-full ml-auto">Autonomous Agent Active</span>
               </div>
               <p className="text-xs text-slate-600 leading-relaxed font-semibold">
-                Campaign completed for <span className="text-slate-800 font-bold">{currentRfq?.quantity} {currentRfq?.unit}</span> of <span className="text-slate-850 font-black">{currentRfq?.item_name}</span>.
+                Campaign completed for <span className="text-slate-800 font-bold">{currentRfq?.quantity} {currentRfq?.unit}</span> of <span className="text-slate-850 font-bold">{currentRfq?.item_name}</span>.
                 The AI matched <span className="text-indigo-650 font-bold">100+ registered vendors</span>, received <span className="text-indigo-650 font-bold">30 valid quotations</span>, and completed <span className="text-emerald-600 font-bold">3 rounds of autonomous bargaining</span>.
-                Target price discount achieved: <span className="text-emerald-650 font-extrabold">~4.5% average savings</span> across top bidders.
+                Target price discount achieved: <span className="text-emerald-650 font-bold">~4.5% average savings</span> across top bidders.
               </p>
               <div className="grid grid-cols-3 gap-2.5 pt-1 text-[10px] text-slate-500 font-bold font-sans">
                 <div className="bg-white/80 border border-slate-100 p-2 rounded-lg">
                   <span className="text-slate-400 block text-[8px] uppercase">Negotiated Savings</span>
-                  <span className="text-slate-800 text-xs font-black">+$5,480.00 Total</span>
+                  <span className="text-slate-800 text-xs font-bold">+$5,480.00 Total</span>
                 </div>
                 <div className="bg-white/80 border border-slate-100 p-2 rounded-lg">
                   <span className="text-slate-400 block text-[8px] uppercase">Payment Terms</span>
-                  <span className="text-indigo-650 text-xs font-black">Net 45 Days Upgraded</span>
+                  <span className="text-indigo-650 text-xs font-bold">Net 45 Days Upgraded</span>
                 </div>
                 <div className="bg-white/80 border border-slate-100 p-2 rounded-lg">
                   <span className="text-slate-400 block text-[8px] uppercase">Auto-Sourcing Time</span>
-                  <span className="text-slate-800 text-xs font-black">3.2 Seconds</span>
+                  <span className="text-slate-800 text-xs font-bold">3.2 Seconds</span>
                 </div>
               </div>
             </div>
@@ -410,7 +415,7 @@ export default function RfpCampaign() {
                   <div>
                     <span className="text-slate-400 block text-[9px] uppercase font-bold">Negotiation Impact</span>
                     <span className="text-slate-700 font-bold">
-                      Original: <span className="line-through text-slate-400">${campaignResults.negotiations[activeNegotiationIdx]?.original_price}</span> → Negotiated: <span className="text-emerald-600 font-black">${campaignResults.negotiations[activeNegotiationIdx]?.negotiated_price}</span>
+                      Original: <span className="line-through text-slate-400">${campaignResults.negotiations[activeNegotiationIdx]?.original_price}</span> → Negotiated: <span className="text-emerald-600 font-bold">${campaignResults.negotiations[activeNegotiationIdx]?.negotiated_price}</span>
                     </span>
                   </div>
                 </div>
@@ -436,7 +441,7 @@ export default function RfpCampaign() {
                     i === 0 ? 'border-amber-400 shadow-amber-100' : 'border-slate-200'
                   }`}>
                     {i === 0 && (
-                      <div className="absolute top-0 right-0 bg-amber-400 text-slate-900 text-[8px] font-black uppercase px-2 py-0.5 rounded-bl">
+                      <div className="absolute top-0 right-0 bg-amber-400 text-slate-900 text-[8px] font-bold uppercase px-2 py-0.5 rounded-bl">
                         Rank #1 Best Bid
                       </div>
                     )}
@@ -447,7 +452,7 @@ export default function RfpCampaign() {
                       
                       {/* Weighted Score */}
                       <div className="flex items-baseline gap-1 mt-2">
-                        <span className="text-2xl font-black text-slate-800">{s.weighted_score}</span>
+                        <span className="text-2xl font-bold text-slate-800">{s.weighted_score}</span>
                         <span className="text-[10px] text-slate-450">/ 100 score</span>
                       </div>
                     </div>
@@ -465,7 +470,7 @@ export default function RfpCampaign() {
                         <span className="text-slate-500 font-semibold">Risk Profile</span>
                         <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${
                           s.risk_level === 'Low' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-amber-50 text-amber-700 border border-amber-100'
-                        }`}>{s.risk_level} Risk</span>
+                        }`}>{s.risk_level === 'High' ? 'Critical Delivery Risk' : s.risk_level === 'Medium' ? 'Moderate Delivery Risk' : 'Minimal Delivery Risk'}</span>
                       </div>
                     </div>
 
@@ -500,7 +505,7 @@ export default function RfpCampaign() {
             <Database className="text-[#0078d4]" size={18} />
             <h2 className="text-sm font-bold text-slate-800">Dynamics 365 ERP Gateway</h2>
           </div>
-          <span className="text-[9px] bg-emerald-50 text-emerald-700 font-extrabold px-2 py-0.5 rounded-full border border-emerald-100">OData Live</span>
+          <span className="text-[9px] bg-emerald-50 text-emerald-700 font-semibold px-2 py-0.5 rounded-full border border-emerald-100">OData Live</span>
         </div>
 
         {/* Sync trigger card */}
@@ -510,13 +515,13 @@ export default function RfpCampaign() {
               <div className="flex justify-between items-start">
                 <div>
                   {poSynced ? (
-                    <span className="text-[9px] bg-emerald-50 text-emerald-700 font-extrabold px-2 py-0.5 rounded border border-emerald-100 font-mono">
+                    <span className="text-[9px] bg-emerald-50 text-emerald-700 font-semibold px-2 py-0.5 rounded border border-emerald-100 font-mono">
                       ERP Ref: {selectedPO.erp_po_number || 'Synced'}
                     </span>
                   ) : (
-                    <span className="text-[9px] bg-blue-50 text-blue-700 font-extrabold px-2 py-0.5 rounded border border-blue-100 font-sans">Pending Sync PO</span>
+                    <span className="text-[9px] bg-blue-50 text-blue-700 font-semibold px-2 py-0.5 rounded border border-blue-100 font-sans">Pending Sync PO</span>
                   )}
-                  <h3 className="text-xs font-black text-slate-800 mt-1.5">{selectedPO.po_number}</h3>
+                  <h3 className="text-xs font-bold text-slate-800 mt-1.5">{selectedPO.po_number}</h3>
                 </div>
                 <button
                   onClick={() => window.open(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/purchase-orders/${selectedPO.po_number}/download`)}

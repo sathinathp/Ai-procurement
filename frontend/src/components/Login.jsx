@@ -21,7 +21,7 @@ export default function Login({ onLogin }) {
       setTimeout(() => {
         onLogin({
           name: 'Sathinath',
-          email: email || 'admin@neproplast.com',
+          email: email || 'admin@ai-procurement.com',
           role: 'Junior AI Engineer'
         });
       }, 1100);
@@ -159,14 +159,12 @@ export default function Login({ onLogin }) {
           <div className="relative group">
             {/* Soft glowing aura around logo */}
             <div className="absolute -inset-1 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 blur opacity-30 group-hover:opacity-45 transition-opacity" />
-            <img 
-              src="/favicon.png" 
-              alt="Neproplast Logo" 
-              className="w-12 h-12 object-contain rounded-xl bg-[#07090f] p-1.5 border border-slate-800/80 relative z-10" 
-            />
+            <div className="w-12 h-12 rounded-xl bg-[#07090f] p-1.5 border border-slate-800/80 relative z-10 flex items-center justify-center bg-gradient-to-tr from-[#2563eb] to-indigo-650 shadow-md">
+              <Shield size={20} className="text-white" />
+            </div>
           </div>
           <div className="space-y-1">
-            <h2 className="text-base font-extrabold text-white tracking-wide uppercase">Neproplast Portal</h2>
+            <h2 className="text-base font-extrabold text-white tracking-wide uppercase">AI Procurement Portal</h2>
             <p className="text-[10px] text-blue-400 font-bold tracking-widest uppercase">Procurement AI</p>
           </div>
         </div>
@@ -251,7 +249,7 @@ export default function Login({ onLogin }) {
 
         <div className="flex items-center justify-center gap-1.5 text-[9px] text-slate-500 text-center font-bold pt-4 border-t border-slate-900/40">
           <Shield size={10} className="text-blue-500/50" />
-          <span>Neproplast Logistics Portal v1.0.0</span>
+          <span>AI Procurement Portal v1.0.0</span>
         </div>
 
       </div>

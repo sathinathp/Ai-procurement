@@ -165,6 +165,7 @@ def seed_database():
         elif delivery_score < 85 or rating < 4.0:
             risk = "Medium"
             
+        is_erp = (i % 5 != 0) or preferred or (name in ["SABIC Polymers", "Borouge", "Jubail Polymers", "Al-Khobar Plastics"])
         s = Supplier(
             id=i + 1,
             name=name,
@@ -180,7 +181,9 @@ def seed_database():
             risk_level=risk,
             products=",".join(list(set(supplied_items))),
             categories=",".join(selected_cats),
-            average_response_time_hours=round(random.uniform(6, 48), 1)
+            average_response_time_hours=round(random.uniform(6, 48), 1),
+            synced_to_erp=is_erp,
+            erp_vendor_id=f"ERP-VEND-{1000 + i}" if is_erp else None
         )
         suppliers.append(s)
         db.add(s)

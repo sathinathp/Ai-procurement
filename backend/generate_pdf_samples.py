@@ -87,84 +87,129 @@ def create_quote_pdf(filename):
     c = canvas.Canvas(filename, pagesize=letter)
     
     # Title
-    c.setFont("Helvetica-Bold", 24)
-    c.drawString(72, 720, "SABIC POLYMERS CO.")
+    c.setFont("Helvetica-Bold", 20)
+    c.setFillColorRGB(0.0, 0.47, 0.83) # Blue brand color
+    c.drawString(54, 735, "NEPROPLAST MANUFACTURING CORP.")
     
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(72, 690, "COMMERCIAL PROPOSAL / QUOTATION")
+    c.setFont("Helvetica-Bold", 12)
+    c.setFillColorRGB(0.27, 0.33, 0.41) # Dark grey
+    c.drawString(54, 715, "AI-GENERATED BID EVALUATION & QUOTE COMPARISON MATRIX")
     
     # Decorative line
-    c.setLineWidth(1.5)
-    c.setStrokeColorRGB(0.09, 0.57, 1.0)
-    c.line(72, 680, 540, 680)
+    c.setLineWidth(2)
+    c.setStrokeColorRGB(0.0, 0.47, 0.83)
+    c.line(54, 705, 558, 705)
     
-    c.setStrokeColorRGB(0, 0, 0)
-    c.setLineWidth(1)
+    # General Info Table
+    c.setFont("Helvetica-Bold", 9)
+    c.setFillColorRGB(0, 0, 0)
+    c.drawString(54, 680, "RFQ REFERENCE:")
+    c.setFont("Helvetica", 9)
+    c.drawString(160, 680, "RFQ-2026-999")
     
-    # Quotation details
-    y = 640
-    details = [
-        ("QUOTATION REF:", "SABIC-2026-Q91"),
-        ("DATE:", "2026-08-07"),
-        ("VALIDITY:", "30 Days"),
-        ("RFQ REFERENCE:", "RFQ-2026-999")
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(320, 680, "PROJECT NAME:")
+    c.setFont("Helvetica", 9)
+    c.drawString(420, 680, "Project PVC Resin Pipeline Setup")
+    
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(54, 665, "ITEM NAME:")
+    c.setFont("Helvetica", 9)
+    c.drawString(160, 665, "PVC Resin K-67")
+    
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(320, 665, "QUANTITY:")
+    c.setFont("Helvetica", 9)
+    c.drawString(420, 665, "100.0 MT")
+    
+    # Comparison Table Headers
+    y = 620
+    c.setFont("Helvetica-Bold", 10)
+    c.setFillColorRGB(1, 1, 1)
+    
+    # Header Background
+    c.setFillColorRGB(0.0, 0.47, 0.83)
+    c.rect(54, y, 504, 25, fill=1, stroke=0)
+    
+    c.setFillColorRGB(1, 1, 1)
+    c.drawString(60, y + 8, "Evaluation Criteria")
+    c.drawString(200, y + 8, "SABIC Polymers (Rec)")
+    c.drawString(320, y + 8, "Petabytz Polymers")
+    c.drawString(440, y + 8, "Softstandard Labs")
+    
+    # Comparison Rows Data
+    rows = [
+        ("Unit Price (USD)", "1,050.00 USD / MT", "1,120.00 USD / MT", "1,180.00 USD / MT"),
+        ("Total Quote Value", "105,000.00 USD", "112,000.00 USD", "118,000.00 USD"),
+        ("Delivery Lead Time", "7 Days", "12 Days", "15 Days"),
+        ("Payment Terms", "Net 60 Days", "Net 30 Days", "Net 30 Days"),
+        ("Incoterms", "CIF Jeddah", "FOB Dammam", "EXW Riyadh"),
+        ("ERP Supplier Sync", "Verified (ERP-105)", "Verified (ERP-302)", "Verified (ERP-412)"),
+        ("AI Score / Decision", "98/100 (RECOMMENDED)", "84/100 (REJECTED)", "71/100 (REJECTED)")
     ]
     
-    for label, val in details:
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(72, y, label)
-        c.setFont("Helvetica", 10)
-        c.drawString(220, y, val)
-        y -= 20
+    c.setStrokeColorRGB(0.8, 0.8, 0.8)
+    c.setLineWidth(0.5)
+    
+    for i, row in enumerate(rows):
+        y -= 25
+        # Alternating background
+        if i % 2 == 1:
+            c.setFillColorRGB(0.96, 0.97, 0.99)
+            c.rect(54, y, 504, 25, fill=1, stroke=0)
+            
+        c.setFillColorRGB(0, 0, 0)
+        c.setFont("Helvetica-Bold", 8.5)
+        c.drawString(60, y + 8, row[0])
+        c.setFont("Helvetica", 8.5)
         
-    # Commercial Proposal Header
-    y -= 15
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(72, y, "COMMERCIAL PROPOSAL:")
-    y -= 10
-    c.line(72, y, 540, y)
-    y -= 25
-    
-    comm_details = [
-        ("Item Name:", "PVC Resin K-67"),
-        ("Unit Price:", "1050.00 USD per MT"),
-        ("Total Quantity:", "100.00 MT"),
-        ("Total Value:", "105,000.00 USD"),
-        ("Minimum Order Quantity:", "10.0 MT")
-    ]
-    
-    for label, val in comm_details:
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(72, y, label)
-        c.setFont("Helvetica", 10)
-        c.drawString(220, y, val)
-        y -= 20
+        # Color highlight recommended decision
+        if i == len(rows) - 1:
+            c.setFont("Helvetica-Bold", 8.5)
+            c.setFillColorRGB(0.1, 0.6, 0.1) # Green for recommended
+            c.drawString(200, y + 8, row[1])
+            c.setFillColorRGB(0.7, 0.1, 0.1) # Red for rejected
+            c.drawString(320, y + 8, row[2])
+            c.drawString(440, y + 8, row[3])
+        else:
+            c.setFillColorRGB(0.15, 0.2, 0.25)
+            c.drawString(200, y + 8, row[1])
+            c.drawString(320, y + 8, row[2])
+            c.drawString(440, y + 8, row[3])
+            
+        # Draw cell border
+        c.line(54, y, 558, y)
         
-    # Logistics & Terms Header
-    y -= 15
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(72, y, "LOGISTICS & TERMS:")
-    y -= 10
-    c.line(72, y, 540, y)
-    y -= 25
+    # Draw vertical gridlines
+    c.line(54, 645, 54, y)
+    c.line(190, 645, 190, y)
+    c.line(310, 645, 310, y)
+    c.line(430, 645, 430, y)
+    c.line(558, 645, 558, y)
     
-    logistics = [
-        ("Delivery Lead Time:", "7 Days"),
-        ("Payment Terms:", "Net 60 Days"),
-        ("Incoterms:", "CIF Jeddah"),
-        ("Warranty:", "12 Months"),
-        ("Shipment Mode:", "Ocean freight to Jeddah Port")
-    ]
+    # AI Recommendation Section
+    y -= 45
+    c.setFillColorRGB(0.94, 0.96, 0.99)
+    c.rect(54, y, 504, 60, fill=1, stroke=1)
     
-    for label, val in logistics:
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(72, y, label)
-        c.setFont("Helvetica", 10)
-        c.drawString(220, y, val)
-        y -= 20
-        
+    c.setFillColorRGB(0.0, 0.47, 0.83)
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(64, y + 45, "AI CO-PILOT PROCUREMENT RECOMMENDATION:")
+    
+    c.setFillColorRGB(0.2, 0.25, 0.3)
+    c.setFont("Helvetica", 8.5)
+    c.drawString(64, y + 30, "- SABIC Polymers Co. is the optimal choice: lowest unit price ($1,050.00 USD/MT), fastest lead time")
+    c.drawString(70, y + 18, "(7 Days), and the most favorable payment terms (Net 60 Days).")
+    c.drawString(64, y + 6, "- Action Recommended: Proceed to generate and issue official Purchase Order to SABIC Polymers.")
+    
+    # Audit stamp
+    y -= 35
+    c.setFont("Helvetica-Oblique", 7.5)
+    c.setFillColorRGB(0.5, 0.5, 0.5)
+    c.drawString(54, y, "This comparison matrix was generated dynamically by the Neproplast AI Procurement Assistant. All parameters are verified against D365 ERP.")
+    
     c.save()
-    print(f"[OK] Generated Supplier Quote PDF: {filename}")
+    print(f"[OK] Generated Comparative Quote PDF: {filename}")
 
 if __name__ == "__main__":
     create_rfq_pdf("sample_rfq_document.pdf")

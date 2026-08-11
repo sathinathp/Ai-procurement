@@ -266,7 +266,7 @@ export default function Phase2Modules({ tab }) {
               <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                 <Calendar className="text-[#0078d4]" /> AI Production Scheduling
               </h1>
-              <p className="text-xs text-slate-500 mt-1">Map manufacturing schedules to raw materials pipeline for Neproplast extrusion lines.</p>
+              <p className="text-xs text-slate-500 mt-1">Map manufacturing schedules to raw materials pipeline for our extrusion lines.</p>
             </div>
             <button 
               onClick={handleOptimizeSchedule}
@@ -511,7 +511,7 @@ export default function Phase2Modules({ tab }) {
             <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
               <Eye className="text-[#0078d4]" /> Quality Vision AI Inspection
             </h1>
-            <p className="text-xs text-slate-500 mt-1">Real-time computer vision scans detecting manufacturing defects on Neproplast PVC extrusions.</p>
+            <p className="text-xs text-slate-500 mt-1">Real-time computer vision scans detecting manufacturing defects on PVC extrusions.</p>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1114,7 +1114,7 @@ export default function Phase2Modules({ tab }) {
                   PDF
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-800">Neproplast_AI_Procurement_Audit_Report.pdf</h3>
+                  <h3 className="text-sm font-bold text-slate-800">AI_Procurement_Audit_Report.pdf</h3>
                   <span className="text-[10px] text-slate-400">Generated on demand via ReportLab PDF Engine</span>
                 </div>
               </div>
@@ -1128,7 +1128,7 @@ export default function Phase2Modules({ tab }) {
                 Executive Audit Certificate Summary
               </p>
               <p>
-                This document provides an executive summary of Neproplast's AI-automated procurement operations and Microsoft Dynamics 365 ERP data synchronization. The system has governed 15 Active Requisitions, 100 Verified Polymer Suppliers, and released Purchase Orders with zero compliance errors.
+                This document provides an executive summary of the AI-automated procurement operations and Microsoft Dynamics 365 ERP data synchronization. The system has governed 15 Active Requisitions, 100 Verified Polymer Suppliers, and released Purchase Orders with zero compliance errors.
               </p>
               <div className="pt-2 flex items-center gap-4 text-[11px] font-semibold text-slate-500">
                 <span>• Report Version: 2026.1.0-POC</span>
