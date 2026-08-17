@@ -143,7 +143,7 @@ export default function PurchaseOrders() {
   };
 
   const downloadPoPdf = (poNumber) => {
-    const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001';
+    const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
     window.open(`${apiBaseUrl}/api/purchase-orders/${poNumber}/download`);
   };
 
