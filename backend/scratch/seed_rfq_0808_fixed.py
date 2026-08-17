@@ -14,7 +14,7 @@ def seed_rfq():
     # 1. Upsert/Verify Suppliers
     supplier_data = [
         {"id": 10, "name": "Bahrain Chemical Corp", "email": "sathinath.padhi@petabytz.com"},
-        {"id": 24, "name": "Jubail Polymers", "email": "ashok@petabytz.com"},
+        {"id": 24, "name": "Jubail Polymers", "email": "ashok.kumar@petabytz.com"},
         {"id": 71, "name": "SABIC Polymers", "email": "sathinath.padhi@softstandard.com"}
     ]
     

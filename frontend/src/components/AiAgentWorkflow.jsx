@@ -26,7 +26,7 @@ export default function AiAgentWorkflow() {
     maxNegotiationRounds: 3,
     realTimeOutreach: true,
     testEmail1: 'sathinath.padhi@petabytz.com',
-    testEmail2: 'ashok@petabytz.com',
+    testEmail2: 'ashok.kumar@petabytz.com',
     testEmail3: 'sathinath.padhi@softstandard.com'
   });
 
@@ -322,7 +322,7 @@ export default function AiAgentWorkflow() {
         
         const customEmails = {};
         if (matchedList[0]) customEmails[matchedList[0].id] = settings.testEmail1 || 'sathinath.padhi@petabytz.com';
-        if (matchedList[1]) customEmails[matchedList[1].id] = settings.testEmail2 || 'ashok@petabytz.com';
+        if (matchedList[1]) customEmails[matchedList[1].id] = settings.testEmail2 || 'ashok.kumar@petabytz.com';
         if (matchedList[2]) customEmails[matchedList[2].id] = settings.testEmail3 || 'sathinath.padhi@softstandard.com';
         
         await campaignService.launchReal(tempRfqNum, matchedList.map(s => s.id), customEmails);

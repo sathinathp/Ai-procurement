@@ -9,7 +9,7 @@ c = conn.cursor()
 
 c.execute("UPDATE suppliers SET email = 'sales@bahrainchemicalcorp.com' WHERE name = 'Bahrain Chemical Corp'")
 c.execute("UPDATE suppliers SET email = 'sales@bayanchemical.com' WHERE name = 'Bayan Chemical'")
-c.execute("UPDATE suppliers SET email = 'ashok@petabytz.com' WHERE name = 'Bahrain Polymer Group'")
+c.execute("UPDATE suppliers SET email = 'ashok.kumar@petabytz.com' WHERE name = 'Bahrain Polymer Group'")
 conn.commit()
 
 print("Reset supplier emails successfully.")
