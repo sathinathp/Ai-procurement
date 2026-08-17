@@ -14,17 +14,32 @@ export default function Login({ onLogin }) {
     setLoading(true);
 
     setTimeout(() => {
-      setLoading(false);
-      setSuccess(true);
-      
-      // Delay transitioning to dashboard to allow success animations to finish smoothly
-      setTimeout(() => {
-        onLogin({
-          name: 'Sathinath',
-          email: email || 'admin@ai-procurement.com',
-          role: 'Senior AI Developer'
-        });
-      }, 1100);
+      const lowerEmail = email.toLowerCase().trim();
+      const validCredentials = [
+        { email: 'sathinath.padhi@petabytz.com', password: 'admin', name: 'Sathinath', role: 'Senior AI Developer' },
+        { email: 'admin@humanattest.com', password: 'admin', name: 'Administrator', role: 'Senior AI Developer' }
+      ];
+
+      const match = validCredentials.find(
+        (c) => c.email === lowerEmail && password === c.password
+      );
+
+      if (match) {
+        setLoading(false);
+        setSuccess(true);
+        
+        // Delay transitioning to dashboard to allow success animations to finish smoothly
+        setTimeout(() => {
+          onLogin({
+            name: match.name,
+            email: match.email,
+            role: match.role
+          });
+        }, 1100);
+      } else {
+        setLoading(false);
+        setError('Access Denied: Invalid email or security password.');
+      }
     }, 800);
   };
 
