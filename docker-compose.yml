@@ -31,7 +31,7 @@ services:
     container_name: procurement_frontend
     restart: always
     ports:
-      - "5183:5173" # Mapped to host port 5183 to avoid collisions
+      - "5183:1928" # Mapped to host port 5183 to avoid collisions
     environment:
       - VITE_API_URL=${VITE_API_URL}
     depends_on:
