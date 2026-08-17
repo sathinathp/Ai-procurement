@@ -4458,8 +4458,34 @@ def trigger_clean_production(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def run_db_migrations():
+    from database import engine
+    from sqlalchemy import text
+    try:
+        db_url = str(engine.url)
+        if "postgresql" in db_url:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE email_history ADD COLUMN IF NOT EXISTS supplier_email VARCHAR(255);"))
+                conn.commit()
+                logger.info("Database migration successful: ALTER TABLE email_history ADD COLUMN IF NOT EXISTS supplier_email")
+        else:
+            with engine.connect() as conn:
+                try:
+                    conn.execute(text("ALTER TABLE email_history ADD COLUMN supplier_email VARCHAR(255);"))
+                    conn.commit()
+                    logger.info("Database migration successful: ALTER TABLE email_history ADD COLUMN supplier_email")
+                except Exception as sqlite_err:
+                    if "duplicate column name" in str(sqlite_err).lower() or "already exists" in str(sqlite_err).lower():
+                        logger.info("Column supplier_email already exists in email_history (SQLite)")
+                    else:
+                        logger.error(f"SQLite migration error: {sqlite_err}")
+    except Exception as e:
+        logger.error(f"Database migration failed: {e}")
+
+
 @app.on_event("startup")
 def startup_event():
+    run_db_migrations()
     try:
         from automation_engine import start_background_worker
         start_background_worker()
