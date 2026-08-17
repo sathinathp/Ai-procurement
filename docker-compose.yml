@@ -9,8 +9,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: procurement
-    ports:
-      - "5432:5432"
+    # Removed ports mapping to avoid conflicts on host port 5432. It remains accessible internally on the Docker network.
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -19,7 +18,7 @@ services:
     container_name: procurement_backend
     restart: always
     ports:
-      - "8000:8000"
+      - "8050:8000" # Mapped to host port 8050 to avoid collisions
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/procurement
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -32,9 +31,9 @@ services:
     container_name: procurement_frontend
     restart: always
     ports:
-      - "5173:5173"
+      - "5183:5173" # Mapped to host port 5183 to avoid collisions
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - VITE_API_URL=http://localhost:8050
     depends_on:
       - backend
     volumes:
