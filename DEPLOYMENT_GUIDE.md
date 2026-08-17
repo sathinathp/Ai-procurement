@@ -156,7 +156,7 @@ Log into your Domain Registrar (GoDaddy, Namecheap, Route53, etc.) and add the f
    # ==========================================
    server {
        listen 80;
-       server_name api-humanattest.com;
+       server_name api.humanattest.com;
 
        location / {
            proxy_pass http://127.0.0.1:8050; # Directs to FastAPI backend port
@@ -194,7 +194,7 @@ Secure your application using Certbot to generate HTTPS certificates:
 2. **Generate the SSL Certificates:**
    Run the interactive installer (replace `humanattest.com` with your domain):
    ```bash
-   sudo certbot --nginx -d humanattest.com -d api-humanattest.com
+    sudo certbot --nginx -d humanattest.com -d api.humanattest.com
    ```
 3. **Redirect HTTP traffic to HTTPS:**
    Select option `2` when prompted to automatically redirect all traffic.
@@ -235,7 +235,7 @@ Secure your application using Certbot to generate HTTPS certificates:
      ports:
        - "5183:5173"
      environment:
-       - VITE_API_URL=https://api-humanattest.com # Point to your API domain
+        - VITE_API_URL=https://api.humanattest.com # Point to your API domain
    ```
 
 3. **Start the Containers:**
