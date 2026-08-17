@@ -62,7 +62,7 @@ To securely pull your repository onto the server, use GitHub **SSH Keys** or **D
    ```
 2. **Generate an SSH key on the server:**
    ```bash
-   ssh-keygen -t ed25519 -C "server-deploy@yourdomain.com"
+   ssh-keygen -t ed25519 -C "server-deploy@humanattest.com"
    # Press Enter to accept default location and no passphrase.
    ```
 3. **Copy the public key:**
@@ -119,8 +119,8 @@ Log into your Domain Registrar (GoDaddy, Namecheap, Route53, etc.) and add the f
 
 | Type | Name / Host | Points To (IP) | Description |
 | :--- | :--- | :--- | :--- |
-| **A** | `procure` (or `@` for root) | `52.144.45.25` | Maps `procure.yourdomain.com` to the frontend |
-| **A** | `api-procure` | `52.144.45.25` | Maps `api-procure.yourdomain.com` to the backend |
+| **A** | `procure` (or `@` for root) | `52.144.45.25` | Maps `humanattest.com` to the frontend |
+| **A** | `api-procure` | `52.144.45.25` | Maps `api-humanattest.com` to the backend |
 
 ### B. Configure Nginx on the Server
 1. **Install Nginx if not installed:**
@@ -132,14 +132,14 @@ Log into your Domain Registrar (GoDaddy, Namecheap, Route53, etc.) and add the f
    ```bash
    sudo nano /etc/nginx/sites-available/procurement
    ```
-3. **Paste the configuration** (replace `yourdomain.com` with your actual domain):
+3. **Paste the configuration** (replace `humanattest.com` with your actual domain):
    ```nginx
    # ==========================================
    # FRONTEND REVERSE PROXY
    # ==========================================
    server {
        listen 80;
-       server_name procure.yourdomain.com;
+       server_name humanattest.com;
 
        location / {
            proxy_pass http://127.0.0.1:5183; # Directs to React frontend port
@@ -156,7 +156,7 @@ Log into your Domain Registrar (GoDaddy, Namecheap, Route53, etc.) and add the f
    # ==========================================
    server {
        listen 80;
-       server_name api-procure.yourdomain.com;
+       server_name api-humanattest.com;
 
        location / {
            proxy_pass http://127.0.0.1:8050; # Directs to FastAPI backend port
@@ -192,9 +192,9 @@ Secure your application using Certbot to generate HTTPS certificates:
    sudo apt install certbot python3-certbot-nginx -y
    ```
 2. **Generate the SSL Certificates:**
-   Run the interactive installer (replace `yourdomain.com` with your domain):
+   Run the interactive installer (replace `humanattest.com` with your domain):
    ```bash
-   sudo certbot --nginx -d procure.yourdomain.com -d api-procure.yourdomain.com
+   sudo certbot --nginx -d humanattest.com -d api-humanattest.com
    ```
 3. **Redirect HTTP traffic to HTTPS:**
    Select option `2` when prompted to automatically redirect all traffic.
@@ -235,7 +235,7 @@ Secure your application using Certbot to generate HTTPS certificates:
      ports:
        - "5183:5173"
      environment:
-       - VITE_API_URL=https://api-procure.yourdomain.com # Point to your API domain
+       - VITE_API_URL=https://api-humanattest.com # Point to your API domain
    ```
 
 3. **Start the Containers:**
@@ -246,7 +246,7 @@ Secure your application using Certbot to generate HTTPS certificates:
    ```
 
 4. **Verify Deployment:**
-   Open your browser and navigate to `https://procure.yourdomain.com`. Verify the connection by logging in and performing an action.
+   Open your browser and navigate to `https://humanattest.com`. Verify the connection by logging in and performing an action.
 
 ---
 
