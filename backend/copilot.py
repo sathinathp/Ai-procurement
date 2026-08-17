@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from openai import OpenAI
-from models import Supplier, RFQ, QuoteResponse, PurchaseOrder, EmailHistory, RFQTimeline, InventoryItem
+from models import Supplier, RFQ, QuoteResponse, PurchaseOrder, EmailHistory, RFQTimeline, InventoryItem, QualityDefect, GoodsReceiptNote, InvoiceMatch, PaymentVoucher, WorkflowNotification, NegotiationLog, ErpSyncLog, ERPConfig
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,30 @@ def get_db_context(query: str, db: Session) -> str:
     lowered = query.lower()
     words = clean_words(query)
     context = []
+    
+    # Always include a comprehensive global database summary
+    global_summary = {
+        "total_suppliers": db.query(Supplier).count(),
+        "total_rfqs": db.query(RFQ).count(),
+        "total_purchase_orders": db.query(PurchaseOrder).count(),
+        "total_inventory_items": db.query(InventoryItem).count(),
+        "total_goods_receipt_notes": db.query(GoodsReceiptNote).count(),
+        "total_invoice_matches": db.query(InvoiceMatch).count(),
+        "total_payment_vouchers": db.query(PaymentVoucher).count(),
+        "total_quality_defects": db.query(QualityDefect).count(),
+        "total_quote_responses": db.query(QuoteResponse).count(),
+        "total_email_history": db.query(EmailHistory).count(),
+        "total_rfq_timeline": db.query(RFQTimeline).count(),
+        "total_workflow_notifications": db.query(WorkflowNotification).count(),
+        "total_negotiation_logs": db.query(NegotiationLog).count(),
+        "total_erp_sync_logs": db.query(ErpSyncLog).count(),
+        "total_erp_configs": db.query(ERPConfig).count(),
+        "rfq_status_counts": {status: count for status, count in db.query(RFQ.status, func.count(RFQ.rfq_number)).group_by(RFQ.status).all()},
+        "po_status_counts": {status: count for status, count in db.query(PurchaseOrder.status, func.count(PurchaseOrder.po_number)).group_by(PurchaseOrder.status).all()},
+        "invoice_status_counts": {status: count for status, count in db.query(InvoiceMatch.match_status, func.count(InvoiceMatch.invoice_number)).group_by(InvoiceMatch.match_status).all()},
+        "payment_status_counts": {status: count for status, count in db.query(PaymentVoucher.payment_status, func.count(PaymentVoucher.voucher_number)).group_by(PaymentVoucher.payment_status).all()},
+    }
+    context.append(f"Global Database Summary Facts: {json.dumps(global_summary)}")
     
     # Fetch all suppliers and items from DB
     all_suppliers = db.query(Supplier).all()
@@ -270,10 +294,26 @@ def get_db_context(query: str, db: Session) -> str:
         context.append(f"Suppliers in country '{matched_country}': {json.dumps(country_data)}")
 
     # 6. Look for "pending RFQs" or "status of RFQs" or "how many RFQs"
-    if "pending rfq" in lowered or "how many rfq" in lowered or "rfq counts" in lowered or "number of rfq" in lowered:
+    if any(k in lowered for k in ["rfq", "request for quotation", "pending", "status"]):
         rfq_counts = db.query(RFQ.status, func.count(RFQ.rfq_number)).group_by(RFQ.status).all()
         counts_dict = {status: count for status, count in rfq_counts}
         context.append(f"RFQ Counts by Status: {json.dumps(counts_dict)}")
+        
+        # If they specifically ask about pending or active RFQs, list details
+        if any(k in lowered for k in ["pending", "active"]):
+            pending_statuses = ["Created", "RFQ Sent", "Responses Received", "Under Comparison"]
+            pending_rfqs = db.query(RFQ).filter(RFQ.status.in_(pending_statuses)).order_by(desc(RFQ.created_at)).limit(10).all()
+            p_rfqs_list = [{
+                "rfq_number": r.rfq_number,
+                "project_name": r.project_name,
+                "item_name": r.item_name,
+                "quantity": r.quantity,
+                "unit": r.unit,
+                "status": r.status,
+                "priority": r.priority,
+                "created_at": r.created_at.strftime("%Y-%m-%d") if r.created_at else None
+            } for r in pending_rfqs]
+            context.append(f"Pending RFQs List (Latest 10): {json.dumps(p_rfqs_list)}")
 
     # 7. Look for "last PO" or "last purchase order" or "recent purchase order"
     if "last po" in lowered or "last purchase order" in lowered or "most recent po" in lowered:
@@ -346,15 +386,178 @@ def get_db_context(query: str, db: Session) -> str:
                 context.append(f"Purchase Order Details for {po.po_number}: {json.dumps(po_data)}")
                 break
 
-    # 10. Default summary of data if context is empty
-    if not context:
-        summary = {
-            "total_suppliers": db.query(Supplier).count(),
-            "total_rfqs": db.query(RFQ).count(),
-            "total_pos": db.query(PurchaseOrder).count(),
-            "latest_rfqs": [r.rfq_number for r in db.query(RFQ).order_by(desc(RFQ.created_at)).limit(3).all()]
-        }
-        context.append(f"General Procurement DB summary: {json.dumps(summary)}")
+    # 11. Invoices
+    if any(k in lowered for k in ["invoice", "bill", "invoice match"]):
+        invoices = db.query(InvoiceMatch).order_by(desc(InvoiceMatch.created_at)).limit(10).all()
+        invoices_data = [{
+            "invoice_number": inv.invoice_number,
+            "po_number": inv.po_number,
+            "grn_number": inv.grn_number,
+            "supplier_name": inv.supplier_name,
+            "po_amount": inv.po_amount,
+            "invoice_amount": inv.invoice_amount,
+            "match_status": inv.match_status,
+            "mismatch_reason": inv.mismatch_reason,
+            "created_at": inv.created_at.strftime("%Y-%m-%d") if inv.created_at else None
+        } for inv in invoices]
+        context.append(f"Recent Invoice Matches: {json.dumps(invoices_data)}")
+
+    # 12. Payments / Vouchers
+    if any(k in lowered for k in ["payment", "voucher", "wire transfer"]):
+        vouchers = db.query(PaymentVoucher).order_by(desc(PaymentVoucher.payment_date)).limit(10).all()
+        vouchers_data = [{
+            "voucher_number": v.voucher_number,
+            "invoice_number": v.invoice_number,
+            "supplier_name": v.supplier_name,
+            "amount": v.amount,
+            "currency": v.currency,
+            "payment_status": v.payment_status,
+            "payment_method": v.payment_method,
+            "payment_date": v.payment_date.strftime("%Y-%m-%d") if v.payment_date else None
+        } for v in vouchers]
+        context.append(f"Recent Payment Vouchers: {json.dumps(vouchers_data)}")
+
+    # 13. Goods Receipt Notes (GRN) / Receipts
+    if any(k in lowered for k in ["receipt", "grn", "goods receipt"]):
+        grns = db.query(GoodsReceiptNote).order_by(desc(GoodsReceiptNote.grn_date)).limit(10).all()
+        grns_data = [{
+            "grn_number": g.grn_number,
+            "po_number": g.po_number,
+            "supplier_name": g.supplier_name,
+            "item_name": g.item_name,
+            "quantity_ordered": g.quantity_ordered,
+            "quantity_received": g.quantity_received,
+            "quantity_accepted": g.quantity_accepted,
+            "quality_status": g.quality_status,
+            "grn_date": g.grn_date.strftime("%Y-%m-%d") if g.grn_date else None
+        } for g in grns]
+        context.append(f"Recent Goods Receipt Notes (GRNs): {json.dumps(grns_data)}")
+
+    # 14. Quality Defects
+    if any(k in lowered for k in ["defect", "quality defect", "qc"]):
+        defects = db.query(QualityDefect).order_by(desc(QualityDefect.timestamp)).limit(10).all()
+        defects_data = [{
+            "defect_type": d.defect_type,
+            "location": d.location,
+            "confidence": d.confidence,
+            "timestamp": d.timestamp.strftime("%Y-%m-%d") if d.timestamp else None,
+            "status": d.status
+        } for d in defects]
+        context.append(f"Recent Quality Defects: {json.dumps(defects_data)}")
+
+    # 15. Negotiation Logs
+    if any(k in lowered for k in ["negotiation", "counter-offer", "negotiated", "round"]):
+        neg_logs = db.query(NegotiationLog).order_by(desc(NegotiationLog.sent_at)).limit(10).all()
+        neg_data = [{
+            "rfq_number": nl.rfq_number,
+            "supplier_name": nl.supplier.name if nl.supplier else "Unknown",
+            "round_number": nl.round_number,
+            "direction": nl.direction,
+            "price": nl.extracted_price,
+            "currency": nl.extracted_currency,
+            "lead_time": nl.extracted_lead_time,
+            "is_final": nl.is_final,
+            "sent_at": nl.sent_at.strftime("%Y-%m-%d %H:%M") if nl.sent_at else None
+        } for nl in neg_logs]
+        context.append(f"Recent Negotiation Activity: {json.dumps(neg_data)}")
+
+    # 16. General Purchase Orders (if not supplier-matched or item-matched already)
+    if any(k in lowered for k in ["po", "purchase order", "order"]):
+        recent_pos = db.query(PurchaseOrder).order_by(desc(PurchaseOrder.created_at)).limit(10).all()
+        pos_data = [{
+            "po_number": po.po_number,
+            "rfq_number": po.rfq_number,
+            "supplier_name": po.supplier.name if po.supplier else "Unknown",
+            "item_name": po.item_name,
+            "quantity": po.quantity,
+            "unit_price": po.unit_price,
+            "total_amount": po.total_amount,
+            "status": po.status,
+            "created_at": po.created_at.strftime("%Y-%m-%d") if po.created_at else None
+        } for po in recent_pos]
+        context.append(f"Recent Purchase Orders: {json.dumps(pos_data)}")
+
+    # 17. General Email transmissions
+    if any(k in lowered for k in ["email", "mail", "sent"]):
+        emails = db.query(EmailHistory).order_by(desc(EmailHistory.sent_at)).limit(10).all()
+        emails_data = [{
+            "rfq_number": e.rfq_number,
+            "supplier_name": e.supplier.name if e.supplier else "Unknown",
+            "subject": e.subject,
+            "type": e.type,
+            "sent_at": e.sent_at.strftime("%Y-%m-%d %H:%M") if e.sent_at else None,
+            "response_received": e.response_received
+        } for e in emails]
+        context.append(f"Recent Email Transmissions: {json.dumps(emails_data)}")
+
+    # 18. General Workflow Notifications
+    if any(k in lowered for k in ["notification", "alert", "approval required"]):
+        notifications = db.query(WorkflowNotification).order_by(desc(WorkflowNotification.created_at)).limit(10).all()
+        notif_data = [{
+            "rfq_number": n.rfq_number,
+            "rfq_item": n.rfq_item,
+            "type": n.type,
+            "status": n.status,
+            "recommended_supplier": n.recommended_supplier,
+            "recommended_price": n.recommended_price,
+            "created_at": n.created_at.strftime("%Y-%m-%d") if n.created_at else None
+        } for n in notifications]
+        context.append(f"Recent Workflow Notifications: {json.dumps(notif_data)}")
+
+    # 19. ERP Sync Logs
+    if any(k in lowered for k in ["sync log", "erp log", "integration log", "sync status"]):
+        sync_logs = db.query(ErpSyncLog).order_by(desc(ErpSyncLog.timestamp)).limit(10).all()
+        sync_data = [{
+            "object_type": l.object_type,
+            "object_id": l.object_id,
+            "direction": l.direction,
+            "url": l.url,
+            "method": l.method,
+            "status_code": l.status_code,
+            "timestamp": l.timestamp.strftime("%Y-%m-%d %H:%M") if l.timestamp else None
+        } for l in sync_logs]
+        context.append(f"Recent ERP Sync Logs: {json.dumps(sync_data)}")
+
+    # 20. ERP Integration Configuration
+    if any(k in lowered for k in ["erp config", "erp setting", "integration config", "dynamics config", "odoo config"]):
+        erp_configs = db.query(ERPConfig).all()
+        config_data = [{
+            "erp_system": c.erp_system,
+            "base_url": c.base_url,
+            "environment": c.environment,
+            "sync_mode": c.sync_mode,
+            "status": c.status,
+            "last_connected_at": c.last_connected_at.strftime("%Y-%m-%d %H:%M") if c.last_connected_at else None
+        } for c in erp_configs]
+        context.append(f"ERP Integration Configurations: {json.dumps(config_data)}")
+
+    # 21. Quote Responses
+    if any(k in lowered for k in ["quote", "quotation", "response"]):
+        quotes = db.query(QuoteResponse).order_by(desc(QuoteResponse.responded_at)).limit(10).all()
+        quotes_data = [{
+            "rfq_number": q.rfq_number,
+            "supplier_name": q.supplier.name if q.supplier else "Unknown",
+            "price": q.price,
+            "currency": q.currency,
+            "moq": q.moq,
+            "lead_time_days": q.lead_time_days,
+            "payment_terms": q.payment_terms,
+            "incoterms": q.incoterms,
+            "status": q.status,
+            "responded_at": q.responded_at.strftime("%Y-%m-%d") if q.responded_at else None
+        } for q in quotes]
+        context.append(f"Recent Supplier Quotation Responses: {json.dumps(quotes_data)}")
+
+    # 22. RFQ Timeline Events
+    if any(k in lowered for k in ["timeline", "history", "stage"]):
+        timeline = db.query(RFQTimeline).order_by(desc(RFQTimeline.timestamp)).limit(15).all()
+        timeline_data = [{
+            "rfq_number": t.rfq_number,
+            "stage": t.stage,
+            "timestamp": t.timestamp.strftime("%Y-%m-%d %H:%M") if t.timestamp else None,
+            "details": t.details
+        } for t in timeline]
+        context.append(f"Recent RFQ Timeline Events: {json.dumps(timeline_data)}")
 
     return "\n\n".join(context)
 
@@ -628,14 +831,26 @@ def get_mock_copilot_response(query: str, db: Session) -> str:
         return f"There are no suppliers registered from {matched_country.title()}."
 
     # 6. Answer regarding RFQ counts
-    if "pending rfq" in lowered or "how many rfq" in lowered or "status of rfq" in lowered or "rfq counts" in lowered:
+    is_rfq = "rfq" in lowered or "request for quotation" in lowered or "request for quotations" in lowered
+    is_count_status_pending = any(k in lowered for k in ["pending", "status", "count", "many", "how", "number", "list", "show", "check", "wnat", "wmany"])
+    if is_rfq and is_count_status_pending:
         pending_statuses = ["Created", "RFQ Sent", "Responses Received", "Under Comparison"]
         count = db.query(RFQ).filter(RFQ.status.in_(pending_statuses)).count()
-        breakdown = db.query(RFQ.status, func.count(RFQ.rfq_number)).filter(RFQ.status.in_(pending_statuses)).group_by(RFQ.status).all()
+        breakdown = db.query(RFQ.status, func.count(RFQ.rfq_number)).group_by(RFQ.status).all()
         rows = [f"- **{status}**: {cnt} RFQs" for status, cnt in breakdown]
+        
+        # Also query the list of pending RFQs to show in the mock response!
+        pending_rfqs = db.query(RFQ).filter(RFQ.status.in_(pending_statuses)).order_by(desc(RFQ.created_at)).limit(10).all()
+        rfqs_detail = ""
+        if pending_rfqs:
+            rfqs_detail = "\n\n**Latest Pending RFQs details:**\n" + "\n".join(
+                [f"- **{r.rfq_number}**: {r.item_name} ({r.quantity} {r.unit}) - Status: {r.status} (Priority: {r.priority})" for r in pending_rfqs]
+            )
+            
         return (
-            f"There are currently **{count} pending RFQs** in the system. Here is the breakdown by status:\n\n" +
-            "\n".join(rows)
+            f"There are currently **{count} pending RFQs** (in Created, RFQ Sent, Responses Received, or Under Comparison status) in the system.\n\n"
+            f"Here is the complete RFQ breakdown by status:\n\n" +
+            "\n".join(rows) + rfqs_detail
         )
 
     # 7. Answer regarding RFQ numbers
@@ -681,6 +896,151 @@ def get_mock_copilot_response(query: str, db: Session) -> str:
                     f"- **Status:** {po.status}\n"
                     f"- **Issued On:** {po.created_at.strftime('%Y-%m-%d')}"
                 )
+
+    # 9. Invoices
+    if any(k in lowered for k in ["invoice", "bill", "invoice match"]):
+        invoices = db.query(InvoiceMatch).order_by(desc(InvoiceMatch.created_at)).limit(5).all()
+        if invoices:
+            rows = [f"- **{i.invoice_number}** (PO: {i.po_number}): Supplier **{i.supplier_name}** - Amount: ${i.invoice_amount:,.2f} — Status: **{i.match_status}**" for i in invoices]
+            return "Here are the recent invoice verification records:\n\n" + "\n".join(rows)
+        return "No invoice verification records found in the database."
+
+    # 10. Payments
+    if any(k in lowered for k in ["payment", "voucher", "wire transfer"]):
+        vouchers = db.query(PaymentVoucher).order_by(desc(PaymentVoucher.payment_date)).limit(5).all()
+        if vouchers:
+            rows = [f"- **{v.voucher_number}** (Invoice: {v.invoice_number}): Supplier **{v.supplier_name}** - Amount: ${v.amount:,.2f} {v.currency} — Status: **{v.payment_status}**" for v in vouchers]
+            return "Here are the recent payment voucher approvals:\n\n" + "\n".join(rows)
+        return "No payment vouchers found in the database."
+
+    # 11. Goods Receipt Notes (GRN)
+    if any(k in lowered for k in ["receipt", "grn", "goods receipt"]):
+        grns = db.query(GoodsReceiptNote).order_by(desc(GoodsReceiptNote.grn_date)).limit(5).all()
+        if grns:
+            rows = [f"- **{g.grn_number}** (PO: {g.po_number}): Supplier **{g.supplier_name}** - Sourced **{g.item_name}** (Recd: {g.quantity_received}, Accepted: {g.quantity_accepted}) — Quality: **{g.quality_status}**" for g in grns]
+            return "Here are the recent Goods Receipt Notes (GRNs):\n\n" + "\n".join(rows)
+        return "No Goods Receipt Notes found in the database."
+
+    # 12. Quality Defects
+    if any(k in lowered for k in ["defect", "quality defect", "qc"]):
+        defects = db.query(QualityDefect).order_by(desc(QualityDefect.timestamp)).limit(5).all()
+        if defects:
+            rows = [f"- **{d.defect_type}** at *{d.location}* (Confidence: {d.confidence*100:.1f}%) — Status: **{d.status}** on {d.timestamp.strftime('%Y-%m-%d')}" for d in defects]
+            return "Here are the recent Quality Defect detection logs:\n\n" + "\n".join(rows)
+        return "No quality defects found in the database."
+
+    # 13. General PO count & list
+    if any(k in lowered for k in ["po", "purchase order", "order"]):
+        total_pos = db.query(PurchaseOrder).count()
+        recent_pos = db.query(PurchaseOrder).order_by(desc(PurchaseOrder.created_at)).limit(5).all()
+        if recent_pos:
+            rows = [f"- **{po.po_number}** (RFQ: {po.rfq_number}): Sourced from **{po.supplier.name}** - Total: ${po.total_amount:,.2f} — Status: **{po.status}**" for po in recent_pos]
+            return f"There are currently **{total_pos} Purchase Orders** in the database. Here are the most recent 5:\n\n" + "\n".join(rows)
+        return "No Purchase Orders found in the database."
+
+    # 14. Answer regarding Quote Responses
+    if any(k in lowered for k in ["quote", "quotation", "response"]):
+        quotes = db.query(QuoteResponse).order_by(desc(QuoteResponse.responded_at)).limit(5).all()
+        if quotes:
+            rows = [f"- **{q.rfq_number}**: Sourced from **{q.supplier.name}** at **${q.price:,.2f} {q.currency}** (Lead time: {q.lead_time_days} days, MOQ: {q.moq}), status: **{q.status}**" for q in quotes]
+            return "Here are the recent quote responses received from suppliers:\n\n" + "\n".join(rows)
+        return "No quotation responses found in the database."
+
+    # 15. Answer regarding Emails / Correspondence
+    if any(k in lowered for k in ["email", "mail", "sent email", "message"]):
+        emails = db.query(EmailHistory).order_by(desc(EmailHistory.sent_at)).limit(5).all()
+        if emails:
+            rows = [f"- **{e.rfq_number}**: To **{e.supplier.name}** ({e.supplier_email}) — Subject: *{e.subject}* — Type: **{e.type}** on {e.sent_at.strftime('%Y-%m-%d %H:%M')}" for e in emails]
+            return "Here are the recent email transmissions sent to suppliers:\n\n" + "\n".join(rows)
+        return "No email transmission history found in the database."
+
+    # 16. Answer regarding Timeline / History
+    if any(k in lowered for k in ["timeline", "history", "stage"]):
+        timeline = db.query(RFQTimeline).order_by(desc(RFQTimeline.timestamp)).limit(5).all()
+        if timeline:
+            rows = [f"- **{t.rfq_number}**: Moved to **{t.stage}** — {t.details or ''} ({t.timestamp.strftime('%Y-%m-%d %H:%M')})" for t in timeline]
+            return "Here are the recent RFQ timeline events:\n\n" + "\n".join(rows)
+        return "No RFQ timeline events found in the database."
+
+    # 17. Answer regarding Workflow Notifications / Alerts
+    if any(k in lowered for k in ["notification", "alert", "approval request"]):
+        notifs = db.query(WorkflowNotification).order_by(desc(WorkflowNotification.created_at)).limit(5).all()
+        if notifs:
+            rows = [f"- **{n.rfq_number}** ({n.rfq_item or 'Item'}): Recommended **{n.recommended_supplier}** at **${n.recommended_price:,.2f}** — Status: **{n.status}**" for n in notifs]
+            return "Here are the recent workflow notifications and approval requests:\n\n" + "\n".join(rows)
+        return "No workflow notifications found in the database."
+
+    # 18. Answer regarding Negotiation Logs
+    if any(k in lowered for k in ["negotiation", "counter-offer", "negotiated", "round"]):
+        neg_logs = db.query(NegotiationLog).order_by(desc(NegotiationLog.sent_at)).limit(5).all()
+        if neg_logs:
+            rows = [f"- **{n.rfq_number}** (Round {n.round_number}): **{n.direction.upper()}** message with **{n.supplier.name}** at price **${n.extracted_price:,.2f}** (Final: {n.is_final})" for n in neg_logs]
+            return "Here are the recent negotiation logs:\n\n" + "\n".join(rows)
+        return "No negotiation activity logs found in the database."
+
+    # 19. Answer regarding ERP Sync Logs
+    if any(k in lowered for k in ["sync log", "erp log", "integration log", "sync status"]):
+        sync_logs = db.query(ErpSyncLog).order_by(desc(ErpSyncLog.timestamp)).limit(5).all()
+        if sync_logs:
+            rows = [f"- **{l.object_type}** (ID: {l.object_id}): {l.direction} {l.method} to {l.url} returned **{l.status_code}** on {l.timestamp.strftime('%Y-%m-%d %H:%M')}" for l in sync_logs]
+            return "Here are the recent ERP synchronization logs:\n\n" + "\n".join(rows)
+        return "No ERP synchronization logs found in the database."
+
+    # 20. Answer regarding ERP Configuration
+    if any(k in lowered for k in ["erp config", "erp setting", "integration config", "dynamics config", "odoo config"]):
+        configs = db.query(ERPConfig).all()
+        if configs:
+            rows = [f"- **{c.erp_system}** ({c.environment} Environment): URL: {c.base_url} — Sync Mode: **{c.sync_mode}** — Status: **{c.status}** (Last connection: {c.last_connected_at.strftime('%Y-%m-%d %H:%M') if c.last_connected_at else 'Never'})" for c in configs]
+            return "Here are the ERP integration settings:\n\n" + "\n".join(rows)
+        return "No ERP configuration settings found in the database."
+
+    # Dynamic Fallback Search: scan database records for user input keywords
+    searchable_words = [w for w in words if len(w) >= 3 and w not in STOPWORDS]
+    if searchable_words:
+        matches = []
+        for word in searchable_words:
+            # Check Suppliers
+            sups = db.query(Supplier).filter(
+                (func.lower(Supplier.name).contains(word)) |
+                (func.lower(Supplier.country).contains(word)) |
+                (func.lower(Supplier.products).contains(word))
+            ).limit(3).all()
+            for s in sups:
+                matches.append(f"Supplier Match: **{s.name}** ({s.country}) - Products: {s.products or 'N/A'}, Rating: {s.rating}/5.0")
+
+            # Check RFQs
+            rfqs = db.query(RFQ).filter(
+                (func.lower(RFQ.rfq_number).contains(word)) |
+                (func.lower(RFQ.project_name).contains(word)) |
+                (func.lower(RFQ.item_name).contains(word))
+            ).limit(3).all()
+            for rfq in rfqs:
+                matches.append(f"RFQ Match: **{rfq.rfq_number}** - {rfq.item_name} (Qty: {rfq.quantity} {rfq.unit}), Status: **{rfq.status}**")
+
+            # Check POs
+            pos = db.query(PurchaseOrder).filter(
+                (func.lower(PurchaseOrder.po_number).contains(word)) |
+                (func.lower(PurchaseOrder.item_name).contains(word))
+            ).limit(3).all()
+            for po in pos:
+                matches.append(f"PO Match: **{po.po_number}** - {po.item_name} (Total: ${po.total_amount:,.2f}), Status: **{po.status}**")
+
+            # Check Inventory
+            invs = db.query(InventoryItem).filter(func.lower(InventoryItem.item_name).contains(word)).limit(3).all()
+            for inv in invs:
+                matches.append(f"Inventory Item Match: **{inv.item_name}** - Stock Level: **{inv.stock_level} {inv.unit}** (Safety Limit: {inv.min_safety_stock})")
+
+            # Check Quality Defects
+            defs = db.query(QualityDefect).filter(
+                (func.lower(QualityDefect.defect_type).contains(word)) |
+                (func.lower(QualityDefect.location).contains(word))
+            ).limit(3).all()
+            for d in defs:
+                matches.append(f"Quality Defect Match: **{d.defect_type}** at {d.location} - Status: **{d.status}**")
+
+        if matches:
+            unique_matches = list(dict.fromkeys(matches))
+            return "Based on your search query, I found the following matching database records:\n\n" + "\n".join([f"- {m}" for m in unique_matches[:10]])
 
     # Default Copilot response
     return (
@@ -747,18 +1107,6 @@ An autonomous, enterprise-grade procurement agent designed to accelerate RFQ cyc
 """
 
 _copilot_cache = {
-    "what is the last purchase price of pvc resin": "The last purchase price of PVC Resin K-67 is **$1.25 USD** per unit, sourced from **SABIC Polymers** for a quantity of **800.0 MT** (Purchase Order status: Completed).",
-    
-    "who supplied hdpe granules last": "The last supplier for HDPE Granules was **Borouge Polymers** (PO-2026-004), delivering **50.0 MT** at **$1,180.00 USD/MT**.",
-    
-    "which suppliers have delayed deliveries recently": "Based on Goods Receipt Notes (GRN) quality and delay logs:\n1. **Astra Polymers** has a recent 4-day delivery delay with a minor quality penalty.\n2. **Tasnee Polymers** delayed delivery of PP Copolymer by 3 days due to customs clearance.",
-    
-    "how many pending rfqs do we have": "There are currently **3 pending RFQs** awaiting supplier quotation responses in the system: RFQ-2026-001, RFQ-2026-002, and RFQ-2026-003.",
-    
-    "show suppliers from germany": "Here are the registered polymer suppliers from Germany:\n1. **BASF SE** (Ludwigshafen) - Rating: 94%, Capacity: 15,000 MT/yr.\n2. **Covestro AG** (Leverkusen) - Rating: 91%, Capacity: 8,500 MT/yr.",
-    
-    "what was the last purchase order": "The last Purchase Order released was **PO-2026-006** for **Calcium Carbonate** (2,500 KG at $0.42/KG) issued to **Jubail Chemical Industries** on 2026-07-28.",
-    
     "explain the 20step endtoend procurement workflow of this project": """The 20-step end-to-end procurement workflow for the Neproplast Manufacturing Corp AI Procurement Portal:
 
 ### Stage 1: Requisition & Need Identification

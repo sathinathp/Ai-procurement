@@ -5047,10 +5047,17 @@ def send_counter_offer_email(data: Dict[str, Any], db: Session = Depends(get_db)
 @app.get("/api/campaign/real-status")
 def get_real_campaign_status(rfq_number: str, db: Session = Depends(get_db)):
     try:
-        notification = db.query(models.WorkflowNotification).filter_by(
-            rfq_number=rfq_number,
-            status="pending"
-        ).first()
+        notification = db.query(models.WorkflowNotification).filter(
+            models.WorkflowNotification.rfq_number == rfq_number
+        ).order_by(models.WorkflowNotification.id.desc()).first()
+        
+        rfq = db.query(models.RFQ).filter(models.RFQ.rfq_number == rfq_number).first()
+        
+        completed = False
+        if rfq and rfq.status in ["PO Generated", "Approved", "Under Comparison", "Closed"]:
+            completed = True
+        elif notification is not None:
+            completed = True
         
         logs = db.query(models.NegotiationLog).filter_by(
             rfq_number=rfq_number
@@ -5087,7 +5094,7 @@ def get_real_campaign_status(rfq_number: str, db: Session = Depends(get_db)):
             })
             
         return {
-            "completed": notification is not None,
+            "completed": completed,
             "notification_id": notification.id if notification else None,
             "logs": formatted_logs,
             "quotes": formatted_quotes
@@ -5111,10 +5118,17 @@ async def websocket_campaign_status(websocket: WebSocket, rfq_number: str):
             # Refresh DB session to get live data
             db.expire_all()
             
-            notification = db.query(models.WorkflowNotification).filter_by(
-                rfq_number=rfq_number,
-                status="pending"
-            ).first()
+            notification = db.query(models.WorkflowNotification).filter(
+                models.WorkflowNotification.rfq_number == rfq_number
+            ).order_by(models.WorkflowNotification.id.desc()).first()
+            
+            rfq = db.query(models.RFQ).filter(models.RFQ.rfq_number == rfq_number).first()
+            
+            completed = False
+            if rfq and rfq.status in ["PO Generated", "Approved", "Under Comparison", "Closed"]:
+                completed = True
+            elif notification is not None:
+                completed = True
             
             logs = db.query(models.NegotiationLog).filter_by(
                 rfq_number=rfq_number
@@ -5155,7 +5169,6 @@ async def websocket_campaign_status(websocket: WebSocket, rfq_number: str):
                     "status": q.status
                 })
                 
-            completed = notification is not None
             if formatted_logs or completed:
                 await websocket.send_json({
                     "completed": completed,

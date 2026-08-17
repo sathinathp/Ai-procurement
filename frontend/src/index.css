@@ -10,12 +10,7 @@ body {
   overflow-x: hidden;
 }
 
-/* --- Global Cartoonish Neo-Brutalist Styles --- */
-
-/* Normalizing heavy typography to clear, readable bold */
-.font-black, .font-extrabold {
-  font-weight: 700 !important;
-}
+/* --- Global Premium Design Tokens (Glass & Neumorphic) --- */
 
 /* Card, Widget & Box Elements */
 .bg-white.border.border-slate-200, 
@@ -24,67 +19,70 @@ body {
 .bg-white.border.border-slate-300\/80,
 .bg-white.border.rounded-xl,
 .bg-white.border.rounded-2xl {
-  border: 2px solid #0f172a !important;
-  box-shadow: 4px 4px 0px 0px #0f172a !important;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  border: 1px solid rgba(226, 232, 240, 0.8) !important;
+  box-shadow: 
+    6px 6px 15px rgba(165, 180, 252, 0.025), 
+    -6px -6px 15px rgba(255, 255, 255, 0.85),
+    inset 1px 1px 0px rgba(255, 255, 255, 0.7) !important;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 .bg-white.border.border-slate-200:hover, 
 .bg-white.border.border-slate-200\/80:hover,
 .bg-white.border.border-slate-100:hover,
 .bg-white.border.border-slate-300\/80:hover {
-  transform: translateY(-2px) translateX(-2px) !important;
-  box-shadow: 6px 6px 0px 0px #0f172a !important;
+  transform: translateY(-1.5px) !important;
+  border-color: rgba(226, 232, 240, 1) !important;
+  box-shadow: 
+    10px 10px 22px rgba(165, 180, 252, 0.06), 
+    -10px -10px 22px rgba(255, 255, 255, 0.95),
+    inset 1px 1px 0px rgba(255, 255, 255, 0.9) !important;
 }
 
-/* Interactive Cartoon Buttons (Primary) */
+/* Interactive Buttons (Primary) */
 button.bg-\[\#0078d4\],
 button.bg-blue-650,
 button.bg-indigo-600,
 button.bg-emerald-600 {
-  border: 2px solid #0f172a !important;
-  box-shadow: 3px 3px 0px 0px #0f172a !important;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  border: 1px solid transparent !important;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.18) !important;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 button.bg-\[\#0078d4\]:hover,
 button.bg-blue-650:hover,
 button.bg-indigo-600:hover,
 button.bg-emerald-600:hover {
-  transform: translateY(-1.5px) translateX(-1.5px) !important;
-  box-shadow: 4.5px 4.5px 0px 0px #0f172a !important;
+  transform: translateY(-1px) scale(1.02) !important;
+  box-shadow: 0 6px 18px rgba(59, 130, 246, 0.28) !important;
 }
 
 button.bg-\[\#0078d4\]:active,
 button.bg-blue-650:active,
 button.bg-indigo-600:active,
 button.bg-emerald-600:active {
-  transform: translateY(0px) translateX(0px) !important;
-  box-shadow: 0.5px 0.5px 0px 0px #0f172a !important;
+  transform: translateY(0px) scale(0.98) !important;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.15) !important;
 }
 
-/* Interactive Cartoon Buttons (Secondary/White) */
+/* Interactive Buttons (Secondary/White) */
 button.bg-white.border.border-slate-200,
 button.bg-white.border.border-slate-300,
-button.bg-slate-50.border.border-slate-200 {
-  border: 2px solid #0f172a !important;
-  box-shadow: 2px 2px 0px 0px #0f172a !important;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+button.bg-slate-50.border.border-slate-200,
+.view-all-btn {
+  border: 1px solid rgba(226, 232, 240, 0.95) !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.015) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 button.bg-white.border.border-slate-200:hover,
 button.bg-white.border.border-slate-300:hover,
-button.bg-slate-50.border.border-slate-200:hover {
-  transform: translateY(-1.5px) translateX(-1.5px) !important;
-  box-shadow: 3.5px 3.5px 0px 0px #0f172a !important;
-  background-color: #f8fafc !important;
-}
-
-button.bg-white.border.border-slate-200:active,
-button.bg-white.border.border-slate-300:active,
-button.bg-slate-50.border.border-slate-200:active {
-  transform: translateY(0px) translateX(0px) !important;
-  box-shadow: 0.5px 0.5px 0px 0px #0f172a !important;
+button.bg-slate-50.border.border-slate-200:hover,
+.view-all-btn:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.035) !important;
+  background-color: #ffffff !important;
+  border-color: rgba(203, 213, 225, 0.8) !important;
 }
 
 /* Inputs & Form Controls */
@@ -95,10 +93,12 @@ input[type="password"],
 input[type="number"],
 textarea,
 select {
-  border: 2px solid #0f172a !important;
-  box-shadow: 2px 2px 0px 0px #0f172a !important;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
-  border-radius: 8px !important;
+  border: 1px solid rgba(226, 232, 240, 0.9) !important;
+  box-shadow: 
+    inset 1px 1px 3px rgba(0, 0, 0, 0.02),
+    0 1px 2px rgba(0, 0, 0, 0.005) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  border-radius: 12px !important;
 }
 
 input[type="text"]:focus,
@@ -108,8 +108,11 @@ input[type="password"]:focus,
 input[type="number"]:focus,
 textarea:focus,
 select:focus {
-  transform: translateY(-1px) translateX(-1px) !important;
-  box-shadow: 3px 3px 0px 0px #0078d4 !important;
+  border-color: #6366f1 !important;
+  box-shadow: 
+    0 0 0 4px rgba(99, 102, 241, 0.12),
+    inset 1px 1px 2px rgba(0, 0, 0, 0.01) !important;
+  transform: none !important;
   outline: none !important;
 }
 

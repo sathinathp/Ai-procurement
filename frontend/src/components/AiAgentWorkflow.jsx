@@ -65,6 +65,7 @@ export default function AiAgentWorkflow() {
   const [realStatusRfq, setRealStatusRfq] = useState(() => getInitialState('realStatusRfq', null));
   const [realQuotes, setRealQuotes] = useState(() => getInitialState('realQuotes', []));
   const [campaignLogs, setCampaignLogs] = useState(() => getInitialState('campaignLogs', []));
+  const [selectedSupplierId, setSelectedSupplierId] = useState(() => getInitialState('selectedSupplierId', null));
   const printedLogsRef = useRef(new Set());
   const abortRef = useRef(false);   // set to true to kill the IMAP polling loop immediately
   const completedByAgreeRef = useRef(false); // set to true when Agree-to-Price completes the workflow
@@ -91,11 +92,12 @@ export default function AiAgentWorkflow() {
       realStatusRfq,
       realQuotes,
       campaignLogs,
+      selectedSupplierId,
       status: agentStatus, // for compatibility with RfqAssistant listener
       timestamp: new Date().toLocaleTimeString()
     }));
     window.dispatchEvent(new Event('ai_agent_update'));
-  }, [agentStatus, currentStep, parsedData, logs, inventoryStatus, matchedSuppliers, negotiationResult, syncStatus, uploading, realStatusRfq, realQuotes, campaignLogs]);
+  }, [agentStatus, currentStep, parsedData, logs, inventoryStatus, matchedSuppliers, negotiationResult, syncStatus, uploading, realStatusRfq, realQuotes, campaignLogs, selectedSupplierId]);
 
   // Watch for new inbound emails — detect new arrivals for notifications only
   // NOTE: We do NOT auto-fill the price input anymore. The amber badge shows the supplier's quoted price.
@@ -379,6 +381,9 @@ export default function AiAgentWorkflow() {
                 const simRes = await campaignService.simulate(tempRfqNum);
                 setNegotiationResult(simRes.data);
                 finalData = simRes.data;
+                if (simRes.data?.shortlist?.length > 0) {
+                  setSelectedSupplierId(simRes.data.shortlist[0].supplier_id);
+                }
                 resolve();
               }
             } catch (err) {
@@ -442,6 +447,9 @@ export default function AiAgentWorkflow() {
                 const simRes = await campaignService.simulate(tempRfqNum);
                 setNegotiationResult(simRes.data);
                 finalData = simRes.data;
+                if (simRes.data?.shortlist?.length > 0) {
+                  setSelectedSupplierId(simRes.data.shortlist[0].supplier_id);
+                }
               }
             } catch (pollErr) {
               console.error("Error polling real campaign status:", pollErr);
@@ -452,6 +460,9 @@ export default function AiAgentWorkflow() {
         const simRes = await campaignService.simulate(tempRfqNum);
         setNegotiationResult(simRes.data);
         finalData = simRes.data;
+        if (simRes.data?.shortlist?.length > 0) {
+          setSelectedSupplierId(simRes.data.shortlist[0].supplier_id);
+        }
         
         addLog(`[IMAP Inbound] Received reply from Sathya Polymer Suppliers (sathinath.padhi@petabytz.com)`, 'info');
         addLog(`[AI Parse] Extracted quotation metrics: Price=$290.00, Lead Time=10 days, Terms="Net 30 Days"`, 'success');
@@ -474,58 +485,12 @@ export default function AiAgentWorkflow() {
       if (!finalData) return;
       
       const bestBid = finalData.shortlist[0];
-      addLog(`[Negotiation Win] Top bid awarded to "${bestBid.supplier_name}" (${bestBid.country}).`, 'success');
+      addLog(`[Negotiation Complete] Best bid from "${bestBid.supplier_name}" (${bestBid.country}) is recommended.`, 'success');
       addLog(`  -> Negotiated Price: $${bestBid.price}/unit (saved $${(finalData.negotiations[0]?.original_price - bestBid.price).toFixed(2)}/unit)`, 'success');
       addLog(`  -> Agreed Delivery: ${bestBid.lead_time} Days | Risk Level: ${bestBid.risk_level}`, 'info');
+      addLog(`[AWAITING APPROVAL] Awaiting human review & approval to release Purchase Order and sync ERP.`, 'warning');
 
-      // Auto Release Purchase Order
-      addLog(`Generating Purchase Order PDF for ${bestBid.supplier_name}...`, 'info');
-      const poRes = await comparisonService.generatePO(tempRfqNum, bestBid.supplier_name);
-      addLog(`[SUCCESS] Released Purchase Order: ${poRes.data.po_number}`, 'success');
-
-      // STEP 5: ERP SYNC
-      setCurrentStep(4);
-      if (settings.autoSyncErp) {
-        addLog(`Step 5/5: Initiating OData REST link with Dynamics 365 F&O...`, 'info');
-        
-        addLog(`Syncing Supplier ID details with ERP Gateway...`, 'info');
-        await erpService.sync('vendor', bestBid.supplier_id);
-        addLog(`[SUCCESS] Supplier record verified in Dynamics 365.`, 'success');
-
-        addLog(`Syncing Purchase Order ${poRes.data.po_number} header and lines...`, 'info');
-        await erpService.sync('po', poRes.data.po_number);
-        addLog(`[SUCCESS] Purchase Order status updated to "Synced" in ERP.`, 'success');
-        setSyncStatus('synced');
-      } else {
-        addLog(`Step 5/5: ERP Sync skipped based on Agent settings.`, 'warning');
-        setSyncStatus('skipped');
-      }
-
-      setAgentStatus('completed');
-      addLog(`[AGENT STATUS] Workflow execution finished successfully. All objectives met.`, 'success');
-
-      try {
-        const runHistoryItem = {
-          rfqNumber: tempRfqNum,
-          poNumber: poRes?.data?.po_number || 'N/A',
-          item: newRfqData.item_name || 'HDPE Pipes 110mm',
-          quantity: `${newRfqData.quantity || 250} ${newRfqData.unit || 'MT'}`,
-          supplier: bestBid?.supplier_name || 'N/A',
-          savings: simRes?.data?.negotiations?.[0]
-            ? `+$${(simRes.data.negotiations[0].original_price - bestBid.price).toFixed(2)}/unit`
-            : '14.2%',
-          erpStatus: settings.autoSyncErp ? 'Synced (D365)' : 'Skipped',
-          status: 'completed',
-          timestamp: new Date().toLocaleTimeString()
-        };
-        setHistoryList(prev => {
-          const updated = [runHistoryItem, ...prev];
-          localStorage.setItem('ai_agent_history', JSON.stringify(updated));
-          return updated;
-        });
-      } catch (historyErr) {
-        console.error("Failed to append success run to history list: ", historyErr);
-      }
+      setAgentStatus('awaiting_approval');
 
     } catch (err) {
       console.error(err);
@@ -551,6 +516,73 @@ export default function AiAgentWorkflow() {
       } catch (historyErr) {
         console.error("Failed to append failed run to history list: ", historyErr);
       }
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleApproveAndRelease = async () => {
+    if (!realStatusRfq || !negotiationResult || !selectedSupplierId) return;
+    
+    setAgentStatus('running');
+    setUploading(true);
+    setCurrentStep(4);
+    
+    try {
+      const bestBid = negotiationResult.shortlist.find(s => s.supplier_id === selectedSupplierId) || negotiationResult.shortlist[0];
+      
+      addLog(`[Human Approved] Sourcing recommendation approved for ${bestBid.supplier_name}.`, 'success');
+      addLog(`Generating Purchase Order PDF for ${bestBid.supplier_name}...`, 'info');
+      
+      const poRes = await comparisonService.generatePO(realStatusRfq, bestBid.supplier_name);
+      addLog(`[SUCCESS] Released Purchase Order: ${poRes.data.po_number}`, 'success');
+
+      // STEP 5: ERP SYNC
+      if (settings.autoSyncErp) {
+        addLog(`Step 5/5: Initiating OData REST link with Dynamics 365 F&O...`, 'info');
+        
+        addLog(`Syncing Supplier ID details with ERP Gateway...`, 'info');
+        await erpService.sync('vendor', bestBid.supplier_id);
+        addLog(`[SUCCESS] Supplier record verified in Dynamics 365.`, 'success');
+
+        addLog(`Syncing Purchase Order ${poRes.data.po_number} header and lines...`, 'info');
+        await erpService.sync('po', poRes.data.po_number);
+        addLog(`[SUCCESS] Purchase Order status updated to "Synced" in ERP.`, 'success');
+        setSyncStatus('synced');
+      } else {
+        addLog(`Step 5/5: ERP Sync skipped based on Agent settings.`, 'warning');
+        setSyncStatus('skipped');
+      }
+
+      setAgentStatus('completed');
+      addLog(`[AGENT STATUS] Workflow execution finished successfully. All objectives met.`, 'success');
+
+      try {
+        const runHistoryItem = {
+          rfqNumber: realStatusRfq,
+          poNumber: poRes?.data?.po_number || 'N/A',
+          item: parsedData?.item_name || 'HDPE Pipes 110mm',
+          quantity: `${parsedData?.quantity || 250} ${parsedData?.unit || 'MT'}`,
+          supplier: bestBid?.supplier_name || 'N/A',
+          savings: negotiationResult?.negotiations?.find(n => n.supplier_name === bestBid.supplier_name)
+            ? `+$${(negotiationResult.negotiations.find(n => n.supplier_name === bestBid.supplier_name).original_price - bestBid.price).toFixed(2)}/unit`
+            : '14.2%',
+          erpStatus: settings.autoSyncErp ? 'Synced (D365)' : 'Skipped',
+          status: 'completed',
+          timestamp: new Date().toLocaleTimeString()
+        };
+        setHistoryList(prev => {
+          const updated = [runHistoryItem, ...prev];
+          localStorage.setItem('ai_agent_history', JSON.stringify(updated));
+          return updated;
+        });
+      } catch (historyErr) {
+        console.error("Failed to append success run to history list: ", historyErr);
+      }
+    } catch (err) {
+      console.error(err);
+      setAgentStatus('failed');
+      addLog(`[CRITICAL ERROR] Approval or Sync failed. Reason: ${err.message || 'API Failure'}`, 'error');
     } finally {
       setUploading(false);
     }
@@ -590,6 +622,7 @@ export default function AiAgentWorkflow() {
     setNegotiationResult(null);
     setSyncStatus(null);
     setRealStatusRfq(null);
+    setSelectedSupplierId(null);
   };
 
   const steps = [
@@ -774,6 +807,11 @@ export default function AiAgentWorkflow() {
                     <RefreshCw className="animate-spin" size={12} /> Executing...
                   </span>
                 )}
+                {agentStatus === 'awaiting_approval' && (
+                  <span className="text-xs font-bold text-amber-600 flex items-center gap-1 animate-pulse">
+                    <AlertCircle size={12} /> Awaiting Approval
+                  </span>
+                )}
                 {agentStatus === 'completed' && (
                   <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
                     <CheckCircle size={12} /> Successfully Finished
@@ -807,9 +845,9 @@ export default function AiAgentWorkflow() {
             {/* Steps execution visualizer */}
             <div className="space-y-4">
               {steps.map((step, idx) => {
-                const isPassed = agentStatus === 'completed' || currentStep > idx;
-                const isCurrent = agentStatus !== 'completed' && currentStep === idx;
-                const isPending = agentStatus !== 'completed' && currentStep < idx;
+                const isPassed = agentStatus === 'completed' || currentStep > idx || (agentStatus === 'awaiting_approval' && idx <= 3);
+                const isCurrent = agentStatus !== 'completed' && agentStatus !== 'awaiting_approval' && currentStep === idx;
+                const isPending = (agentStatus !== 'completed' && agentStatus !== 'awaiting_approval' && currentStep < idx) || (agentStatus === 'awaiting_approval' && idx > 3);
                 
                 return (
                   <div key={idx} className={`flex items-center gap-4 p-3 rounded-xl border transition-all ${
@@ -854,8 +892,14 @@ export default function AiAgentWorkflow() {
                       </div>
                     )}
                     {isPassed && idx === 3 && negotiationResult && (
-                      <div className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
-                        Awarded: ${negotiationResult.shortlist[0]?.price}/unit
+                      <div className={`text-[10px] font-bold px-2 py-1 rounded ${
+                        agentStatus === 'awaiting_approval'
+                          ? 'text-amber-700 bg-amber-50'
+                          : 'text-emerald-700 bg-emerald-50'
+                      }`}>
+                        {agentStatus === 'awaiting_approval' 
+                          ? `Proposed: $${negotiationResult.shortlist[0]?.price}/unit` 
+                          : `Awarded: $${negotiationResult.shortlist[0]?.price}/unit`}
                       </div>
                     )}
                     {isPassed && idx === 4 && (
@@ -870,6 +914,92 @@ export default function AiAgentWorkflow() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Procurement Approval Card */}
+        {agentStatus === 'awaiting_approval' && negotiationResult && (
+          <div className="bg-gradient-to-r from-amber-50 to-amber-100/50 border border-amber-300 rounded-2xl p-6 shadow-md space-y-5">
+            <div className="flex justify-between items-center">
+              <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
+                <CheckCircle size={14} className="text-amber-600" /> Procurement Approval Required
+              </h4>
+              <span className="text-[9px] bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-bold">
+                Action Required
+              </span>
+            </div>
+            <p className="text-xs text-slate-650 leading-relaxed font-medium">
+              The AI Negotiation loop is complete. Select which supplier's bid you would like to approve. The AI recommends <strong>{negotiationResult.shortlist[0]?.supplier_name}</strong>.
+            </p>
+            
+            <div className="space-y-3">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Shortlisted Bids</div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {negotiationResult.shortlist.map((supplier) => {
+                  const isRecommended = supplier.supplier_name === negotiationResult.shortlist[0].supplier_name;
+                  const isSelected = selectedSupplierId === supplier.supplier_id;
+                  
+                  return (
+                    <div 
+                      key={supplier.supplier_id} 
+                      onClick={() => setSelectedSupplierId(supplier.supplier_id)}
+                      className={`border p-4 rounded-xl cursor-pointer transition-all flex flex-col justify-between ${
+                        isSelected 
+                          ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-500/25' 
+                          : 'border-slate-200 bg-white hover:border-slate-350 shadow-sm'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-start gap-1">
+                          <span className="text-xs font-bold text-slate-800 truncate max-w-[120px]">
+                            {supplier.supplier_name}
+                          </span>
+                          {isRecommended && (
+                            <span className="text-[8px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-250">
+                              🏆 Rec
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs font-bold text-emerald-600">
+                          ${supplier.price}/unit
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-semibold space-y-0.5">
+                          <div>• Lead Time: <span className="text-slate-700">{supplier.lead_time} days</span></div>
+                          <div>• Risk Rating: <span className={`font-bold ${supplier.risk_level === 'High' ? 'text-rose-600' : 'text-slate-700'}`}>{supplier.risk_level}</span></div>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
+                        <span className="text-[9px] text-slate-400 font-bold">
+                          Score: {supplier.weighted_score || supplier.price_score}
+                        </span>
+                        <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                          isSelected ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300'
+                        }`}>
+                          {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={handleApproveAndRelease}
+                disabled={!selectedSupplierId}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <CheckCircle size={14} /> Approve & Release PO for {negotiationResult.shortlist.find(s => s.supplier_id === selectedSupplierId)?.supplier_name || 'Selected Vendor'}
+              </button>
+              <button
+                onClick={resetAgent}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2.5 px-4 rounded-xl transition-colors cursor-pointer border border-slate-200"
+              >
+                Reject & Restart
+              </button>
             </div>
           </div>
         )}

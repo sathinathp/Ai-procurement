@@ -22,7 +22,7 @@ export default function Login({ onLogin }) {
         onLogin({
           name: 'Sathinath',
           email: email || 'admin@ai-procurement.com',
-          role: 'Junior AI Engineer'
+          role: 'Senior AI Developer'
         });
       }, 1100);
     }, 800);

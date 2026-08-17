@@ -25,7 +25,15 @@ export default function App() {
   });
   const [user, setUser] = useState(() => {
     const savedUser = localStorage.getItem('user');
-    return savedUser ? JSON.parse(savedUser) : null;
+    if (savedUser) {
+      const parsed = JSON.parse(savedUser);
+      if (parsed.name === 'Sathinath' && parsed.role === 'Junior AI Engineer') {
+        parsed.role = 'Senior AI Developer';
+        localStorage.setItem('user', JSON.stringify(parsed));
+      }
+      return parsed;
+    }
+    return null;
   });
   
   // Copilot right-hand drawer state
@@ -140,7 +148,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-50">
+    <div className="flex h-screen w-screen overflow-hidden bg-gradient-to-tr from-[#f6f8fb] via-[#f1f5f9] to-[#e9eff6]">
       
       {/* Left Sidebar - Collapsible on mobile */}
       <div className={`fixed inset-y-0 left-0 z-40 transform xl:relative xl:translate-x-0 transition-transform duration-300 ease-in-out ${
@@ -167,47 +175,47 @@ export default function App() {
       )}
 
       {/* Main Workspace Column */}
-      <div className="flex-1 flex flex-col min-w-0 h-full relative">
+      <div className="flex-1 flex flex-col min-w-0 h-full relative bg-transparent">
         
-        {/* Top Header navbar */}
-        <header className="h-14 bg-white border-b-2 border-slate-900 px-4 sm:px-6 flex items-center justify-between shrink-0 z-30">
+        {/* Top Header navbar - Restyled as a clean glass panel */}
+        <header className="h-14 bg-white/45 backdrop-blur-md border-b border-slate-200/50 px-4 sm:px-6 flex items-center justify-between shrink-0 z-30 shadow-sm">
           <div className="flex items-center gap-2">
             <button 
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="xl:hidden p-1.5 rounded-lg text-slate-900 hover:bg-slate-100 focus:outline-none mr-1 border-2 border-slate-900 shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)] active:translate-y-[0.5px]"
+              className="xl:hidden p-1.5 rounded-lg text-slate-650 hover:bg-white/80 hover:text-slate-900 focus:outline-none mr-1 border border-slate-200 bg-white/50 backdrop-blur-sm shadow-sm transition-all"
               title="Toggle Sidebar Menu"
             >
               <Menu size={18} />
             </button>
-            <span className="text-slate-505 font-medium capitalize text-xs hidden sm:inline">workspace /</span>
-            <span className="text-slate-900 font-bold capitalize text-xs truncate max-w-[150px] sm:max-w-none">
+            <span className="text-slate-500 font-bold capitalize text-[10px] uppercase tracking-wider hidden sm:inline">Workspace /</span>
+            <span className="text-slate-800 font-extrabold capitalize text-xs tracking-wide truncate max-w-[150px] sm:max-w-none">
               {getTabTitle(activeTab)}
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             
             {/* Database seed trigger */}
             <button 
               onClick={handleReSeedDb}
               disabled={reseeding}
-              className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-805 bg-white border-2 border-slate-900 px-3 py-1.5 rounded-xl transition-all shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] disabled:opacity-40 cursor-pointer"
+              className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 bg-white/80 hover:bg-white border border-slate-250/50 px-3.5 py-1.5 rounded-xl transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 cursor-pointer"
               title="Click to reset the database and regenerate mock history"
             >
-              <Database size={12} className={reseeding ? 'animate-spin text-[#0078d4] stroke-[2px]' : 'text-slate-600 stroke-[1.5px]'} />
-              <span>{reseeding ? 'Reset & Seed DB' : 'Reset & Seed DB'}</span>
+              <Database size={12} className={reseeding ? 'animate-spin text-[#0078d4] stroke-[2px]' : 'text-slate-550 stroke-[1.5px]'} />
+              <span>{reseeding ? 'Resetting DB...' : 'Reset & Seed DB'}</span>
             </button>
 
             {/* Toggle AI Copilot button */}
             <button 
               onClick={() => setCopilotOpen(!copilotOpen)}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold border-2 border-slate-900 transition-all cursor-pointer shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
                 copilotOpen 
-                  ? 'bg-[#e0f2fe] text-[#0369a1]' 
-                  : 'bg-white text-slate-800 hover:bg-slate-50'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-transparent shadow-[0_4px_10px_rgba(59,130,246,0.2)]' 
+                  : 'bg-white/80 text-slate-700 hover:bg-white border-slate-250/50'
               }`}
             >
-              <Bot size={14} className="text-[#0369a1] stroke-[2px]" />
+              <Bot size={14} className={copilotOpen ? 'text-white stroke-[2px]' : 'text-indigo-600 stroke-[2.5px]'} />
               <span>AI Copilot</span>
             </button>
 
@@ -298,10 +306,10 @@ export default function App() {
       <div className="fixed bottom-8 right-16 z-50">
         <button
           onClick={() => setShowFloatingRfqModal(true)}
-          className="w-14 h-14 bg-[#0078d4] hover:bg-[#106ebe] text-white rounded-full flex items-center justify-center border-3 border-slate-900 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] hover:scale-105 active:translate-x-[1px] active:translate-y-[1px] active:shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] transition-all duration-150 cursor-pointer"
+          className="w-14 h-14 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-750 hover:to-indigo-750 text-white rounded-full flex items-center justify-center shadow-[0_4px_16px_rgba(59,130,246,0.3)] hover:shadow-[0_6px_22px_rgba(59,130,246,0.45)] hover:scale-108 active:scale-95 transition-all duration-300 cursor-pointer p-0"
           title="Create / Upload RFQ"
         >
-          <Plus size={28} className="stroke-[3.5px]" />
+          <Plus size={28} className="stroke-[3px] shrink-0 text-white" />
         </button>
       </div>
 

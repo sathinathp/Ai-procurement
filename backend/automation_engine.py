@@ -438,6 +438,17 @@ def run_comparison_and_notify(db: Session, rfq_number: str, winner_supplier_id: 
     # Refresh new_po so SQLAlchemy loads its relationships (supplier, rfq)
     db.refresh(new_po)
 
+    # Sync Vendor and PO to Odoo ERP (silently)
+    try:
+        from main import sync_to_odoo_erp
+        if not winner_supplier.synced_to_erp or not winner_supplier.erp_vendor_id:
+            sync_to_odoo_erp("vendor", str(winner_supplier.id), db)
+        
+        sync_to_odoo_erp("po", po_number, db)
+        logger.info(f"[ERP Sync] Silent Odoo ERP sync succeeded for PO {po_number}")
+    except Exception as erp_err:
+        logger.error(f"[ERP Sync] Silent Odoo ERP sync failed: {erp_err}")
+
     # ---------------------------------------------------------------
     # Generate PO PDF and send to SUPPLIER with attachment
     # ---------------------------------------------------------------

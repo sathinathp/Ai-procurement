@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Star, Shield, Mail, Phone, Clock, Database } from 'lucide-react';
 import { supplierService } from '../services/api';
 
@@ -24,7 +25,7 @@ export default function SupplierProfileModal({ supplierId, onClose }) {
 
   if (!supplierId) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl border border-slate-200/80 w-full max-w-4xl max-h-[92vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
         
@@ -310,11 +311,11 @@ export default function SupplierProfileModal({ supplierId, onClose }) {
                         ) : (
                           profile.previous_orders.map((po, idx) => (
                             <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                              <td className="p-3.5 pl-5 font-bold text-slate-800">{po.po_number}</td>
+                              <td className="p-3.5 pl-5 font-bold text-slate-805">{po.po_number}</td>
                               <td className="p-3.5 font-medium text-slate-450">{po.rfq_number}</td>
-                              <td className="p-3.5 font-bold text-slate-800">{po.item_name}</td>
+                              <td className="p-3.5 font-bold text-slate-805">{po.item_name}</td>
                               <td className="p-3.5 text-right font-semibold text-slate-600">{po.quantity}</td>
-                              <td className="p-3.5 text-right font-bold text-slate-800">${po.total_amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                              <td className="p-3.5 text-right font-bold text-slate-805">${po.total_amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                               <td className="p-3.5">
                                 <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-semibold border uppercase tracking-wider ${
                                   po.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
@@ -337,6 +338,7 @@ export default function SupplierProfileModal({ supplierId, onClose }) {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Search, Star, Mail, Phone, MapPin, Clock, Sparkles, Send, Plus, Bot,
   RefreshCw, Zap, Building2, Users, Tag, Globe, ChevronDown, ChevronUp, 
@@ -329,13 +330,13 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-[#f8fafc] space-y-6">
+    <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-tr from-[#f6f8fb] via-[#f1f5f9] to-[#e9eff6] space-y-6">
 
       {/* Header with Title and Import/Export Tools */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white border-[3px] border-slate-900 rounded-2xl p-6 shadow-[6px_6px_0px_0px_rgba(15,23,42,1)]">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white/70 backdrop-blur-md border border-slate-200/80 rounded-3xl p-6 shadow-sm">
         <div className="space-y-1">
           <h1 className="text-xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
-            <Building2 className="text-[#0078d4]" size={22} />
+            <Building2 className="text-indigo-600" size={22} />
             Supplier Sourcing & Discovery
           </h1>
           <p className="text-xs text-slate-500">
@@ -347,14 +348,14 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
           <a
             href={supplierService.exportUrl}
             download="suppliers_export.csv"
-            className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white border-2 border-slate-900 text-slate-800 hover:bg-slate-50 rounded-xl text-xs font-bold transition-all shadow-[2.5px_2.5px_0px_0px_rgba(15,23,42,1)] active:translate-y-[0.5px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] cursor-pointer"
+            className="view-all-btn flex items-center gap-1.5 px-4 py-2.5 bg-white text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
           >
             <Download size={13} className="text-slate-500" />
             <span>Export CSV</span>
           </a>
 
           {/* Import CSV input & button */}
-          <label className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white border-2 border-slate-900 text-slate-800 hover:bg-slate-50 rounded-xl text-xs font-bold transition-all shadow-[2.5px_2.5px_0px_0px_rgba(15,23,42,1)] active:translate-y-[0.5px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] cursor-pointer">
+          <label className="view-all-btn flex items-center gap-1.5 px-4 py-2.5 bg-white text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer">
             <Upload size={13} className="text-slate-500" />
             <span>Import CSV</span>
             <input 
@@ -368,7 +369,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-4.5 py-2.5 bg-[#0078d4] hover:bg-[#106ebe] text-white text-xs font-bold rounded-xl border-2 border-slate-900 transition-all shadow-[2.5px_2.5px_0px_0px_rgba(15,23,42,1)] active:translate-y-[0.5px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] cursor-pointer"
+            className="flex items-center gap-1.5 px-4.5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-650 hover:scale-[1.02] active:scale-[0.98] text-white text-xs font-bold rounded-xl transition-all shadow-md hover:shadow-lg cursor-pointer"
           >
             <Plus size={14} />
             <span>Add Supplier</span>
@@ -377,13 +378,13 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
       </div>
 
       {/* ── Tab Bar ── */}
-      <div className="bg-white border-[3px] border-slate-900 rounded-2xl shadow-[6px_6px_0px_0px_rgba(15,23,42,1)] relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#0078d4] to-violet-600" />
+      <div className="bg-white/70 backdrop-blur-md border border-slate-200/80 rounded-3xl shadow-sm relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-blue-600 to-indigo-650" />
         <div className="flex items-center gap-1 px-5 pt-4 border-b border-slate-100">
           <button
             onClick={() => setActiveTab('search')}
             className={`pb-3 px-3 text-xs font-bold border-b-[3px] transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'search' ? 'border-[#0078d4] text-[#0078d4]' : 'border-transparent text-slate-400 hover:text-slate-600'
+              activeTab === 'search' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-400 hover:text-slate-600'
             }`}
           >
             <Search size={13} /> Sourcing Channels
@@ -391,7 +392,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
           <button
             onClick={() => setActiveTab('oppora')}
             className={`pb-3 px-3 text-xs font-bold border-b-[3px] transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'oppora' ? 'border-violet-600 text-violet-750' : 'border-transparent text-slate-400 hover:text-slate-600'
+              activeTab === 'oppora' ? 'border-violet-650 text-violet-750' : 'border-transparent text-slate-400 hover:text-slate-600'
             }`}
           >
             <Zap size={13} /> Oppora AI Discovery
@@ -410,25 +411,25 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Search raw chemicals (e.g. PVC Resin, HDPE Granules, Stretch Film)..."
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-2 border-slate-900 rounded-xl text-xs text-slate-700 placeholder-slate-450 focus:outline-none focus:bg-white transition-all font-semibold shadow-[2px_2px_0px_0px_rgba(15,23,42,1)]"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:bg-white transition-all font-semibold shadow-inner focus:ring-2 focus:ring-indigo-500/10"
                   />
                   <Search className="absolute left-3.5 top-3.5 text-slate-400" size={14} />
                 </div>
-                <button type="submit" className="bg-[#0078d4] hover:bg-[#106ebe] text-white font-bold text-xs px-5 rounded-xl border-2 border-slate-900 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)] transition-all flex items-center gap-1.5 shrink-0 cursor-pointer">
+                <button type="submit" className="bg-gradient-to-r from-blue-600 to-indigo-650 hover:scale-[1.02] active:scale-[0.98] text-white font-bold text-xs px-5 rounded-xl transition-all flex items-center gap-1.5 shrink-0 cursor-pointer shadow-md">
                   <Search size={13} />
                   <span>Search</span>
                 </button>
               </div>
 
               {/* Sourcing Channels Checkboxes */}
-              <div className="flex flex-wrap items-center gap-3 bg-slate-50 border-2 border-slate-900 p-4 rounded-xl shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
+              <div className="flex flex-wrap items-center gap-3 bg-slate-50/60 border border-slate-200/80 p-4 rounded-xl shadow-inner">
                 <span className="text-[10px] text-slate-500 uppercase tracking-wider font-extrabold">Search Sources:</span>
                 
                 <button 
                   type="button" 
                   onClick={() => handleSourceToggle('internal')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border-2 border-slate-900 transition-all flex items-center gap-1.5 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] cursor-pointer ${
-                    sources.internal ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-sm ${
+                    sources.internal ? 'bg-indigo-600 border-transparent text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
                   <Building2 size={12} />
@@ -438,8 +439,8 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                 <button 
                   type="button" 
                   onClick={() => handleSourceToggle('demo')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border-2 border-slate-900 transition-all flex items-center gap-1.5 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] cursor-pointer ${
-                    sources.demo ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-sm ${
+                    sources.demo ? 'bg-indigo-600 border-transparent text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
                   <FileSpreadsheet size={12} />
@@ -449,8 +450,8 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                 <button 
                   type="button" 
                   onClick={() => handleSourceToggle('google')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border-2 border-slate-900 transition-all flex items-center gap-1.5 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] cursor-pointer ${
-                    sources.google ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-sm ${
+                    sources.google ? 'bg-indigo-600 border-transparent text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
                   <Globe size={12} />
@@ -460,21 +461,21 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                 <button 
                   type="button" 
                   onClick={() => handleSourceToggle('alibaba')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border-2 border-slate-900 transition-all flex items-center gap-1.5 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] cursor-pointer ${
-                    sources.alibaba ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 hover:scale-[1.01] active:scale-[0.99] cursor-pointer shadow-sm ${
+                    sources.alibaba ? 'bg-indigo-600 border-transparent text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
                   <Tag size={12} />
                   <span>Alibaba (Mock)</span>
                 </button>
 
-                <div className="h-5 w-[2px] bg-slate-900 mx-1" />
+                <div className="h-5 w-[1px] bg-slate-250 mx-1" />
 
                 <button 
                   type="button" 
                   onClick={() => setAiSearchEnabled(!aiSearchEnabled)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border-2 border-slate-900 flex items-center gap-1.5 transition-all shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] cursor-pointer ${
-                    aiSearchEnabled ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-650 hover:bg-indigo-50'
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-sm ${
+                    aiSearchEnabled ? 'bg-gradient-to-r from-violet-600 to-indigo-600 border-transparent text-white' : 'bg-indigo-50 border-indigo-200/50 text-indigo-700 hover:bg-indigo-100/80'
                   }`}
                 >
                   <Sparkles size={12} className={aiSearchEnabled ? "animate-pulse" : ""} />
@@ -653,21 +654,21 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
         {/* ── Sourcing Channel Results ── */}
         {activeTab === 'search' && (
           loading ? (
-            <div className="p-16 bg-white border-[3px] border-slate-900 rounded-2xl text-center shadow-[6px_6px_0px_0px_rgba(15,23,42,1)]">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0078d4] mx-auto mb-3"></div>
-              <span className="text-xs text-slate-550 font-bold">Scanning supply network databases...</span>
+            <div className="p-16 bg-white/70 backdrop-blur-md border border-slate-200/80 rounded-3xl text-center shadow-sm">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-3"></div>
+              <span className="text-xs text-slate-500 font-bold">Scanning supply network databases...</span>
             </div>
           ) : results.length === 0 ? (
-            <div className="p-16 bg-white border-[3px] border-slate-900 rounded-2xl text-center text-slate-450 space-y-3 shadow-[6px_6px_0px_0px_rgba(15,23,42,1)]">
-              <Search className="mx-auto text-slate-355 animate-pulse" size={32} />
+            <div className="p-16 bg-white/70 backdrop-blur-md border border-slate-200/80 rounded-3xl text-center text-slate-400 space-y-3 shadow-sm">
+              <Search className="mx-auto text-slate-300 animate-pulse" size={32} />
               <p className="text-xs font-semibold text-slate-500">No suppliers found. Try searching for "PVC Resin" or "HDPE Granules".</p>
             </div>
           ) : (
-            <div className="bg-white border-[3px] border-slate-900 rounded-2xl shadow-[6px_6px_0px_0px_rgba(15,23,42,1)] overflow-hidden">
+            <div className="bg-white/90 border border-slate-200/85 rounded-3xl shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="bg-slate-100 border-b-2 border-slate-900 text-slate-900 font-bold uppercase tracking-wider text-[9px]">
+                    <tr className="bg-slate-50/75 border-b border-slate-200/80 text-slate-700 font-bold uppercase tracking-wider text-[9px] whitespace-nowrap">
                       <th className="p-4 pl-5">Supplier Name</th>
                       <th className="p-4">Country</th>
                       <th className="p-4">Contact Info</th>
@@ -682,50 +683,50 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                       <th className="p-4 pr-5 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 text-slate-700">
+                  <tbody className="divide-y divide-slate-100 text-slate-650">
                     {results.map((s, i) => {
                       const char = s.name.charAt(0).toUpperCase();
-                      let avatarBg = "bg-indigo-50 text-indigo-700 border-indigo-100";
-                      if (['A','B','C'].includes(char)) avatarBg = "bg-blue-50 text-blue-700 border-blue-100";
-                      else if (['D','E','F','G'].includes(char)) avatarBg = "bg-emerald-50 text-emerald-700 border-emerald-100";
-                      else if (['H','I','J','K'].includes(char)) avatarBg = "bg-violet-50 text-violet-75 border-violet-100";
-                      else if (['L','M','N','O'].includes(char)) avatarBg = "bg-amber-50 text-amber-700 border-amber-100";
-
+                      let avatarBg = "bg-indigo-50 text-indigo-650 border-indigo-100/50";
+                      if (['A','B','C'].includes(char)) avatarBg = "bg-blue-50 text-blue-650 border-blue-100/50";
+                      else if (['D','E','F','G'].includes(char)) avatarBg = "bg-emerald-50 text-emerald-650 border-emerald-100/50";
+                      else if (['H','I','J','K'].includes(char)) avatarBg = "bg-violet-50 text-violet-75 border-violet-100/50";
+                      else if (['L','M','N','O'].includes(char)) avatarBg = "bg-amber-50 text-amber-650 border-amber-100/50";
+ 
                       const isExternal = s.source && (s.source.includes("Google") || s.source.includes("Alibaba") || s.source.includes("OpenAI"));
-
+ 
                       return (
-                        <tr key={i} className="hover:bg-slate-50/50 transition-colors duration-150">
+                        <tr key={i} className="hover:bg-slate-50/40 transition-colors duration-150">
                           {/* Name and Source */}
                           <td className="p-4 pl-5">
                             <div className="flex items-center gap-3">
-                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs border-2 border-slate-900 shrink-0 shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)] ${avatarBg}`}>
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs border border-slate-200/50 shrink-0 shadow-sm ${avatarBg}`}>
                                 {char}
                               </div>
                               <div>
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span 
-                                    className="font-bold text-slate-800 text-xs hover:text-[#0078d4] hover:underline cursor-pointer"
+                                    className="font-bold text-slate-800 text-xs hover:text-indigo-600 hover:underline cursor-pointer"
                                     onClick={() => !isExternal && setSelectedSupplierId(s.id)}
                                   >
                                     {s.name}
                                   </span>
                                   {s.preferred && (
-                                    <span className="bg-amber-100 text-amber-950 border-2 border-slate-900 text-[8px] font-bold px-2 py-0.5 rounded-lg uppercase tracking-wider shrink-0 shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)]">
+                                    <span className="bg-amber-500/10 text-amber-700 border border-amber-500/20 text-[8px] font-extrabold px-2 py-0.5 rounded-lg uppercase tracking-wider shrink-0">
                                       Approved Supplier
                                     </span>
                                   )}
                                 </div>
                                 <div className="text-[10px] text-slate-400 font-semibold flex items-center gap-1 mt-1">
-                                  <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border-2 border-slate-900 shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)] ${
-                                    s.source?.includes("ERP") ? "bg-blue-100 text-blue-900 border-slate-900" :
-                                    s.source?.includes("Demo") ? "bg-amber-100 text-amber-900 border-slate-900" :
-                                    s.source?.includes("Google") ? "bg-rose-100 text-rose-900 border-slate-900" :
-                                    "bg-emerald-100 text-emerald-900 border-slate-900"
+                                  <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border ${
+                                    s.source?.includes("ERP") ? "bg-blue-500/10 text-blue-700 border-blue-500/15" :
+                                    s.source?.includes("Demo") ? "bg-amber-500/10 text-amber-700 border-amber-500/15" :
+                                    s.source?.includes("Google") ? "bg-rose-500/10 text-rose-700 border-rose-500/15" :
+                                    "bg-emerald-500/10 text-emerald-700 border-emerald-500/15"
                                   }`}>
                                     {s.source}
                                   </span>
                                   {s.erp_vendor_id && (
-                                    <span className="bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold text-slate-600">
+                                    <span className="bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold text-slate-500">
                                       {s.erp_vendor_id}
                                     </span>
                                   )}
@@ -733,97 +734,97 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                               </div>
                             </div>
                           </td>
-
+ 
                           {/* Country */}
-                          <td className="p-4">
-                            <div className="flex items-center gap-1.5 text-xs text-slate-650 font-bold">
+                          <td className="p-4 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5 text-xs text-slate-600 font-semibold">
                               <MapPin size={12} className="text-slate-400" />
                               <span>{s.country}</span>
                             </div>
                           </td>
-
+ 
                           {/* Contact Info */}
-                          <td className="p-4">
+                          <td className="p-4 whitespace-nowrap">
                             <div className="text-xs space-y-0.5 font-semibold">
-                              <a href={`mailto:${s.email}`} className="flex items-center gap-1 text-[#0078d4] hover:underline font-bold">
+                              <a href={`mailto:${s.email}`} className="flex items-center gap-1 text-indigo-650 hover:underline font-bold">
                                 <Mail size={11} className="shrink-0" />
                                 <span className="truncate max-w-[150px]">{s.email}</span>
                               </a>
                               {s.phone && (
-                                <div className="flex items-center gap-1 text-slate-550 font-medium">
-                                  <Phone size={11} className="text-slate-400 shrink-0" />
+                                <div className="flex items-center gap-1 text-slate-500 font-medium">
+                                  <Phone size={11} className="text-slate-450 shrink-0" />
                                   <span>{s.phone}</span>
                                 </div>
                               )}
                             </div>
                           </td>
-
+ 
                           {/* Previous Orders */}
-                          <td className="p-4 text-center font-semibold text-slate-700 text-xs">
+                          <td className="p-4 text-center font-semibold text-slate-600 text-xs whitespace-nowrap">
                             {s.previous_orders ?? 0}
                           </td>
-
+ 
                           {/* Last Purchase Price */}
-                          <td className="p-4 text-right font-bold text-slate-800 text-xs">
+                          <td className="p-4 text-right font-bold text-slate-800 text-xs whitespace-nowrap">
                             {s.last_purchase_price ? `$${s.last_purchase_price.toLocaleString(undefined, {minimumFractionDigits: 2})}/MT` : '—'}
                           </td>
-
+ 
                           {/* Rating */}
-                          <td className="p-4">
-                            <div className="flex items-center gap-1 font-semibold text-amber-550 text-xs justify-center">
+                          <td className="p-4 whitespace-nowrap">
+                            <div className="flex items-center gap-1 font-semibold text-amber-500 text-xs justify-center">
                               <Star fill="currentColor" size={11} />
                               <span>{s.rating ? s.rating.toFixed(1) : '—'}</span>
                             </div>
                           </td>
-
+ 
                           {/* Risk */}
                           <td className="p-4 text-center whitespace-nowrap">
-                            <span className={`whitespace-nowrap px-2 py-0.5 rounded-lg text-[10px] font-bold border-2 border-slate-900 shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)] ${
-                              s.risk_level === 'High' ? 'bg-[#ffe4e6] text-rose-950' :
-                              s.risk_level === 'Medium' ? 'bg-[#fef9c3] text-amber-950' :
-                              'bg-[#dcfce7] text-emerald-950'
+                            <span className={`whitespace-nowrap px-2 py-0.5 rounded-lg text-[10px] font-bold border ${
+                              s.risk_level === 'High' ? 'bg-rose-500/10 text-rose-700 border-rose-500/15' :
+                              s.risk_level === 'Medium' ? 'bg-amber-500/10 text-amber-700 border-amber-500/15' :
+                              'bg-emerald-500/10 text-emerald-700 border-emerald-500/15'
                             }`}>
                               {s.risk_level === 'High' ? 'Critical Delivery Risk' : s.risk_level === 'Medium' ? 'Moderate Delivery Risk' : 'Minimal Delivery Risk'}
                             </span>
                           </td>
-
+ 
                           {/* Quality / Delivery */}
-                          <td className="p-4 text-center text-xs font-semibold text-slate-600 whitespace-nowrap">
-                            Q: <span className="font-semibold text-slate-850">{s.quality_score ? `${Math.round(s.quality_score)}%` : '—'}</span> | D: <span className="font-semibold text-slate-850">{s.delivery_score ? `${Math.round(s.delivery_score)}%` : '—'}</span>
+                          <td className="p-4 text-center text-xs font-semibold text-slate-500 whitespace-nowrap">
+                            Q: <span className="font-semibold text-slate-700">{s.quality_score ? `${Math.round(s.quality_score)}%` : '—'}</span> | D: <span className="font-semibold text-slate-700">{s.delivery_score ? `${Math.round(s.delivery_score)}%` : '—'}</span>
                           </td>
-
+ 
                           {/* Price Comp */}
-                          <td className="p-4 text-center text-xs font-semibold text-slate-850">
+                          <td className="p-4 text-center text-xs font-semibold text-slate-600 whitespace-nowrap">
                             {s.price_competitiveness ? `${Math.round(s.price_competitiveness)}%` : '—'}
                           </td>
-
+ 
                           {/* Lead Time */}
-                          <td className="p-4 text-center font-bold text-slate-700 text-xs">
+                          <td className="p-4 text-center font-bold text-slate-650 text-xs whitespace-nowrap">
                             {s.lead_time} days
                           </td>
-
+ 
                           {/* Approved Status Toggle */}
-                          <td className="p-4 text-center">
+                          <td className="p-4 text-center whitespace-nowrap">
                             <button 
                               onClick={() => handleTogglePreferred(s)}
-                              className={`p-1.5 rounded-xl border-2 border-slate-900 transition-all shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)] active:translate-y-[0.5px] active:shadow-[0.5px_0.5px_0px_0px_rgba(15,23,42,1)] cursor-pointer ${
+                              className={`p-1.5 rounded-xl border transition-all hover:scale-[1.05] active:scale-[0.95] cursor-pointer shadow-sm ${
                                 s.preferred 
-                                  ? 'bg-amber-100 text-amber-600 hover:bg-amber-200 border-slate-900' 
-                                  : 'bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-50 border-slate-900'
+                                  ? 'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border-amber-500/25' 
+                                  : 'bg-white text-slate-400 hover:text-slate-500 hover:bg-slate-550 border-slate-200'
                               }`}
                               title={s.preferred ? "Remove Approved Supplier Status" : "Mark as Approved Supplier"}
                             >
                               <Star fill={s.preferred ? "currentColor" : "none"} size={13} />
                             </button>
                           </td>
-
+ 
                           {/* Actions */}
-                          <td className="p-4 pr-5 text-right">
+                          <td className="p-4 pr-5 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-2">
                               {isExternal ? (
                                 <button
                                   onClick={() => handleRegisterSupplier(s)}
-                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-xl border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] transition-all flex items-center gap-1 cursor-pointer"
+                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1 cursor-pointer whitespace-nowrap shadow-sm"
                                   title="Add to ERP Database"
                                 >
                                   <Plus size={11} />
@@ -832,7 +833,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                               ) : (
                                 <button 
                                   onClick={() => setSelectedSupplierId(s.id)}
-                                  className="px-3 py-1.5 bg-white border-2 border-slate-900 text-slate-800 hover:bg-slate-50 text-[10px] font-bold rounded-xl shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] transition-all flex items-center gap-1 cursor-pointer"
+                                  className="view-all-btn px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-[10px] font-bold rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1 cursor-pointer whitespace-nowrap shadow-sm"
                                 >
                                   <Eye size={11} />
                                   <span>View History</span>
@@ -841,7 +842,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                               
                               <button 
                                 onClick={() => onSendRfqRedirect(s.id)}
-                                className="px-3 py-1.5 bg-[#0078d4] hover:bg-[#106ebe] text-white text-[10px] font-bold rounded-xl border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[1px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] transition-all flex items-center gap-1 cursor-pointer"
+                                className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white text-[10px] font-bold rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1 cursor-pointer whitespace-nowrap shadow-md"
                               >
                                 <Send size={11} />
                                 <span>Send RFQ</span>
@@ -868,11 +869,11 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
       )}
 
       {/* Bulk Import Preview & Execution Modal */}
-      {showImportModal && (
+      {showImportModal && createPortal(
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border-[3px] border-slate-900 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 shadow-[8px_8px_0px_0px_rgba(15,23,42,1)]">
+          <div className="bg-white rounded-3xl border border-slate-200/80 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 shadow-2xl">
             
-            <div className="p-5 border-b-2 border-slate-900 bg-slate-50 flex items-center justify-between shrink-0">
+            <div className="p-5 border-b border-slate-200/60 bg-slate-50/50 flex items-center justify-between shrink-0">
               <div className="space-y-0.5">
                 <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
                   <FileSpreadsheet className="text-emerald-600" size={18} />
@@ -889,18 +890,18 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
             </div>
 
             <div className="p-6 overflow-y-auto flex-1 space-y-4">
-              <div className="bg-amber-50 border-2 border-slate-900 text-amber-950 p-4 rounded-xl shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] text-[11px] font-semibold flex items-start gap-2">
+              <div className="bg-amber-500/10 border border-amber-500/20 text-amber-900 p-4 rounded-xl text-[11px] font-semibold flex items-start gap-2">
                 <AlertCircle size={15} className="shrink-0 mt-0.5" />
                 <span>
                   The system detected <strong>{importPreview.length}</strong> supplier records in your CSV. Ensure the column headers match <strong>name, country, email, phone, rating, lead_time_days, preferred, products</strong> to map them correctly. Existing suppliers will be updated by name.
                 </span>
               </div>
 
-              <div className="border-2 border-slate-900 rounded-xl overflow-hidden shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]">
+              <div className="border border-slate-200/80 rounded-xl overflow-hidden shadow-sm">
                 <div className="max-h-[350px] overflow-y-auto overflow-x-auto text-[11px]">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="bg-slate-100 border-b-2 border-slate-900 font-extrabold text-slate-900 uppercase tracking-wider text-[9px]">
+                      <tr className="bg-slate-50 border-b border-slate-200 font-extrabold text-slate-700 uppercase tracking-wider text-[9px]">
                         <th className="p-2.5 pl-3">Name</th>
                         <th className="p-2.5">Country</th>
                         <th className="p-2.5">Email</th>
@@ -911,25 +912,25 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                         <th className="p-2.5">ERP Sync</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200 text-slate-700">
+                    <tbody className="divide-y divide-slate-100 text-slate-650">
                       {importPreview.map((item, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50">
+                        <tr key={idx} className="hover:bg-slate-50/50">
                           <td className="p-2.5 pl-3 font-bold text-slate-800">{item.name || item.supplier_name || '—'}</td>
                           <td className="p-2.5 font-semibold">{item.country || '—'}</td>
                           <td className="p-2.5 font-semibold text-slate-500">{item.email || item.sales_email || '—'}</td>
                           <td className="p-2.5 font-bold text-amber-600">{item.rating || '—'}</td>
                           <td className="p-2.5 font-semibold">{item.lead_time_days || item.lead_time || '—'} days</td>
                           <td className="p-2.5">
-                            <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border-2 border-slate-900 shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] ${
-                              ['true', '1', 'yes'].includes((item.preferred || '').toLowerCase()) ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-500'
+                            <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border ${
+                              ['true', '1', 'yes'].includes((item.preferred || '').toLowerCase()) ? 'bg-amber-500/10 border-amber-500/20 text-amber-700' : 'bg-slate-100 border-slate-200 text-slate-500'
                             }`}>
                               {['true', '1', 'yes'].includes((item.preferred || '').toLowerCase()) ? 'Yes' : 'No'}
                             </span>
                           </td>
                           <td className="p-2.5 truncate max-w-[150px] font-semibold">{item.products || item.items || '—'}</td>
                           <td className="p-2.5">
-                            <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border-2 border-slate-900 shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] ${
-                              ['true', '1', 'yes', 'synced', ''].includes((item.synced_to_erp || 'true').toLowerCase()) ? 'bg-blue-100 text-blue-900' : 'bg-slate-100 text-slate-500'
+                            <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border ${
+                              ['true', '1', 'yes', 'synced', ''].includes((item.synced_to_erp || 'true').toLowerCase()) ? 'bg-blue-500/10 border-blue-500/20 text-blue-750' : 'bg-slate-100 border-slate-200 text-slate-500'
                             }`}>
                               {['true', '1', 'yes', 'synced', ''].includes((item.synced_to_erp || 'true').toLowerCase()) ? 'Sync' : 'Local'}
                             </span>
@@ -942,14 +943,14 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
               </div>
             </div>
 
-            <div className="p-5 border-t-2 border-slate-900 flex justify-end gap-3 bg-slate-50 shrink-0">
+            <div className="p-5 border-t border-slate-200/60 flex justify-end gap-3 bg-slate-50/50 shrink-0">
               <button 
                 type="button" 
                 onClick={() => {
                   setShowImportModal(false);
                   setImportPreview([]);
                 }}
-                className="px-4 py-2 bg-white border-2 border-slate-900 text-slate-800 hover:bg-slate-50 text-xs font-bold rounded-xl shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[0.5px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] transition-all cursor-pointer"
+                className="view-all-btn px-4 py-2 bg-white border border-slate-250 text-slate-700 hover:bg-slate-50 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-sm"
                 disabled={importing}
               >
                 Cancel
@@ -957,7 +958,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
               <button 
                 type="button" 
                 onClick={executeImport}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl border-2 border-slate-900 transition-all flex items-center gap-1.5 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[0.5px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] cursor-pointer"
+                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-650 hover:scale-[1.02] active:scale-[0.98] text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
                 disabled={importing}
               >
                 {importing ? (
@@ -975,22 +976,23 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
             </div>
 
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Add Supplier Modal */}
-      {showAddModal && (
+      {showAddModal && createPortal(
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border-[3px] border-slate-900 w-full max-w-xl max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 shadow-[8px_8px_0px_0px_rgba(15,23,42,1)]">
+          <div className="bg-white rounded-3xl border border-slate-200/80 w-full max-w-xl max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 shadow-2xl">
             
-            <div className="p-5 border-b-2 border-slate-900 bg-slate-50 flex items-center justify-between shrink-0">
+            <div className="p-5 border-b border-slate-200/60 bg-slate-50/50 flex items-center justify-between shrink-0">
               <h2 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                <Plus size={16} className="text-[#0078d4]" />
+                <Plus size={16} className="text-indigo-650" />
                 Register Supplier Card
               </h2>
               <button 
                 onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-slate-655 p-1 rounded-lg text-sm font-bold cursor-pointer border border-slate-200"
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg text-sm font-bold cursor-pointer border border-slate-200"
               >
                 ✕
               </button>
@@ -1006,7 +1008,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                     value={newSupplier.name} 
                     onChange={(e) => setNewSupplier({...newSupplier, name: e.target.value})}
                     placeholder="e.g. Saudi Polymers Ltd"
-                    className="w-full border-2 border-slate-900 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white outline-none transition-all shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)]"
+                    className="w-full border border-slate-250 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 outline-none transition-all"
                     required
                   />
                 </div>
@@ -1016,7 +1018,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                     type="text" 
                     value={newSupplier.country} 
                     onChange={(e) => setNewSupplier({...newSupplier, country: e.target.value})}
-                    className="w-full border-2 border-slate-900 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white outline-none transition-all shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)]"
+                    className="w-full border border-slate-250 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 outline-none transition-all"
                     required
                   />
                 </div>
@@ -1030,7 +1032,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                     value={newSupplier.email} 
                     onChange={(e) => setNewSupplier({...newSupplier, email: e.target.value})}
                     placeholder="sales@company.com"
-                    className="w-full border-2 border-slate-900 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white outline-none transition-all shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)]"
+                    className="w-full border border-slate-250 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 outline-none transition-all"
                     required
                   />
                 </div>
@@ -1041,7 +1043,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                     value={newSupplier.phone} 
                     onChange={(e) => setNewSupplier({...newSupplier, phone: e.target.value})}
                     placeholder="e.g. +966 11 4829 110"
-                    className="w-full border-2 border-slate-900 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white outline-none transition-all shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)]"
+                    className="w-full border border-slate-250 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 outline-none transition-all"
                   />
                 </div>
               </div>
@@ -1056,7 +1058,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                     max="5"
                     value={newSupplier.rating} 
                     onChange={(e) => setNewSupplier({...newSupplier, rating: parseFloat(e.target.value)})}
-                    className="w-full border-2 border-slate-900 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white outline-none transition-all shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)]"
+                    className="w-full border border-slate-250 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 outline-none transition-all"
                   />
                 </div>
                 <div className="flex flex-col">
@@ -1065,7 +1067,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                     type="number" 
                     value={newSupplier.lead_time} 
                     onChange={(e) => setNewSupplier({...newSupplier, lead_time: parseInt(e.target.value)})}
-                    className="w-full border-2 border-slate-900 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white outline-none transition-all shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)]"
+                    className="w-full border border-slate-250 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 outline-none transition-all"
                   />
                 </div>
                 <div className="flex flex-col">
@@ -1073,7 +1075,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                   <select 
                     value={newSupplier.preferred ? 'true' : 'false'} 
                     onChange={(e) => setNewSupplier({...newSupplier, preferred: e.target.value === 'true'})}
-                    className="w-full border-2 border-slate-900 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white outline-none transition-all shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)]"
+                    className="w-full border border-slate-250 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 outline-none transition-all"
                   >
                     <option value="false">No</option>
                     <option value="true">Yes</option>
@@ -1088,7 +1090,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                     type="number" 
                     value={newSupplier.quality_score} 
                     onChange={(e) => setNewSupplier({...newSupplier, quality_score: parseFloat(e.target.value)})}
-                    className="w-full border-2 border-slate-900 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white outline-none transition-all shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)]"
+                    className="w-full border border-slate-250 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 outline-none transition-all"
                   />
                 </div>
                 <div className="flex flex-col">
@@ -1097,7 +1099,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                     type="number" 
                     value={newSupplier.delivery_score} 
                     onChange={(e) => setNewSupplier({...newSupplier, delivery_score: parseFloat(e.target.value)})}
-                    className="w-full border-2 border-slate-900 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white outline-none transition-all shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)]"
+                    className="w-full border border-slate-250 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 outline-none transition-all"
                   />
                 </div>
                 <div className="flex flex-col">
@@ -1106,7 +1108,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                     type="number" 
                     value={newSupplier.price_competitiveness} 
                     onChange={(e) => setNewSupplier({...newSupplier, price_competitiveness: parseFloat(e.target.value)})}
-                    className="w-full border-2 border-slate-900 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white outline-none transition-all shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)]"
+                    className="w-full border border-slate-250 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 outline-none transition-all"
                   />
                 </div>
               </div>
@@ -1117,7 +1119,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                   <select 
                     value={newSupplier.risk_level} 
                     onChange={(e) => setNewSupplier({...newSupplier, risk_level: e.target.value})}
-                    className="w-full border-2 border-slate-900 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white outline-none transition-all shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)]"
+                    className="w-full border border-slate-250 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 outline-none transition-all"
                   >
                     <option value="Low">Low</option>
                     <option value="Medium">Medium</option>
@@ -1130,7 +1132,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                     type="number" 
                     value={newSupplier.average_response_time_hours} 
                     onChange={(e) => setNewSupplier({...newSupplier, average_response_time_hours: parseFloat(e.target.value)})}
-                    className="w-full border-2 border-slate-900 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white outline-none transition-all shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)]"
+                    className="w-full border border-slate-250 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 outline-none transition-all"
                   />
                 </div>
               </div>
@@ -1142,21 +1144,21 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
                   value={newSupplier.products} 
                   onChange={(e) => setNewSupplier({...newSupplier, products: e.target.value})}
                   placeholder="e.g. PVC Resin, HDPE Granules, Stabilizers"
-                  className="w-full border-2 border-slate-900 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white outline-none transition-all shadow-[1.5px_1.5px_0px_0px_rgba(15,23,42,1)]"
+                  className="w-full border border-slate-250 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 outline-none transition-all"
                 />
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t-2 border-slate-900 shrink-0">
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-200/60 shrink-0">
                 <button 
                   type="button" 
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 bg-white border-2 border-slate-900 text-slate-800 hover:bg-slate-50 text-xs font-bold rounded-xl shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[0.5px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] transition-all cursor-pointer"
+                  className="view-all-btn px-4 py-2 bg-white border border-slate-250 text-slate-700 hover:bg-slate-50 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-sm"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit" 
-                  className="px-4 py-2 bg-[#0078d4] hover:bg-[#106ebe] text-white text-xs font-bold rounded-xl border-2 border-slate-900 transition-all shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] active:translate-y-[0.5px] active:shadow-[1px_1px_0px_0px_rgba(15,23,42,1)] cursor-pointer"
+                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-650 hover:scale-[1.02] active:scale-[0.98] text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-md"
                 >
                   Save Supplier
                 </button>
