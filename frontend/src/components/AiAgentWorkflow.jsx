@@ -336,7 +336,17 @@ export default function AiAgentWorkflow() {
         
         await new Promise((resolve, reject) => {
           const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
-          const wsUrl = `${API_BASE_URL.replace(/^http/, 'ws')}/ws/campaign/${tempRfqNum}`;
+          
+          // Robustly clean and construct the WebSocket URL
+          let apiHost = API_BASE_URL.trim();
+          apiHost = apiHost.replace(/^https?:\/\//i, '');
+          if (apiHost.endsWith('/')) {
+            apiHost = apiHost.slice(0, -1);
+          }
+          
+          // If frontend runs on https or backend explicitly uses https, upgrade WS to secure wss://
+          const useSecureWs = window.location.protocol === 'https:' || API_BASE_URL.toLowerCase().startsWith('https:');
+          const wsUrl = `${useSecureWs ? 'wss' : 'ws'}://${apiHost}/ws/campaign/${tempRfqNum}`;
           
           addLog(`[WebSocket] Connecting to real-time status channel...`, 'info');
           const ws = new WebSocket(wsUrl);
