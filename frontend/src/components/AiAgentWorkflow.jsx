@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Bot, Sparkles, Upload, Download, Play, RefreshCw, 
   CheckCircle, AlertCircle, Terminal, Settings, FileText, 
-  Mail, Database, Layers, CheckCircle2, ChevronRight
+  Mail, Database, Layers, CheckCircle2, ChevronRight,
+  Maximize2, Minimize2, Search, X
 } from 'lucide-react';
 import { 
   rfqService, workflowService, supplierService, 
@@ -70,7 +71,16 @@ export default function AiAgentWorkflow() {
   const abortRef = useRef(false);   // set to true to kill the IMAP polling loop immediately
   const completedByAgreeRef = useRef(false); // set to true when Agree-to-Price completes the workflow
   
+  const [isLogsMaximized, setIsLogsMaximized] = useState(false);
+  const [logSearchQuery, setLogSearchQuery] = useState("");
   const logsEndRef = useRef(null);
+  const maximizedLogsEndRef = useRef(null);
+
+  useEffect(() => {
+    if (isLogsMaximized && maximizedLogsEndRef.current) {
+      maximizedLogsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs, isLogsMaximized]);
 
   useEffect(() => {
     if (logsEndRef.current) {
@@ -126,6 +136,44 @@ export default function AiAgentWorkflow() {
   const addLog = (message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [...prev, { timestamp, message, type }]);
+  };
+
+  const renderLogMessage = (log) => {
+    let colorClass = "text-slate-300";
+    if (log.type === 'success') colorClass = "text-emerald-400";
+    if (log.type === 'warning') colorClass = "text-amber-400";
+    if (log.type === 'error') colorClass = "text-rose-400 font-extrabold";
+    if (log.type === 'system') colorClass = "text-indigo-300 font-bold";
+
+    const priceMatch = log.message.match(/\[AI Parse\] Extracted quotation metrics: Price=\$(\d+(?:\.\d+)?)/);
+    let priceColorSegment = null;
+    if (priceMatch) {
+      const parsedPrice = parseFloat(priceMatch[1]);
+      const allTargets = Object.values(agreedPrices).map(a => a.target);
+      const lowestTarget = allTargets.length > 0 ? Math.min(...allTargets) : null;
+      const refPrice = lowestTarget || parsedPrice;
+      const isGoodPrice = parsedPrice <= refPrice;
+      priceColorSegment = isGoodPrice ? 'text-emerald-400' : 'text-rose-400';
+      colorClass = "text-slate-300";
+    }
+
+    if (priceColorSegment && priceMatch) {
+      const parts = log.message.split(/(Price=\$[\d.]+)/);
+      return parts.map((part, pi) => {
+        if (part.match(/^Price=\$[\d.]+$/)) {
+          const pVal = parseFloat(part.replace('Price=$', ''));
+          const allTargets = Object.values(agreedPrices).map(a => a.target);
+          const refP = allTargets.length > 0 ? Math.min(...allTargets) : pVal;
+          const cls = pVal <= refP ? 'text-emerald-400 font-extrabold' : 'text-rose-400 font-extrabold';
+          return <span key={pi} className={cls}>{part}</span>;
+        }
+        return <span key={pi} className="text-slate-300">{part}</span>;
+      });
+    }
+    if (log.message.includes('Negotiated Price:') || log.message.includes('Savings:')) {
+      return <span className="text-emerald-400 font-bold">{log.message}</span>;
+    }
+    return <span className={colorClass}>{log.message}</span>;
   };
 
   const handleSettingChange = (name, value) => {
@@ -1460,7 +1508,7 @@ export default function AiAgentWorkflow() {
             <button
               onClick={handleDownloadLogs}
               disabled={logs.length === 0}
-              className="flex items-center gap-1.5 text-[10px] font-bold text-[#0078d4] hover:underline disabled:opacity-40"
+              className="flex items-center gap-1.5 text-[10px] font-bold text-[#0078d4] hover:underline disabled:opacity-40 cursor-pointer"
             >
               <Download size={12} /> Download Logs
             </button>
@@ -1495,59 +1543,21 @@ export default function AiAgentWorkflow() {
 
         {activeRightTab === 'logs' ? (
           /* Terminal Area */
-          <div className="flex-1 bg-slate-900 rounded-xl p-4 flex flex-col overflow-hidden h-[480px] border border-slate-950 shadow-inner">
+          <div className="flex-1 bg-slate-900 rounded-xl p-4 flex flex-col overflow-hidden h-[480px] border border-slate-950 shadow-inner relative group">
+            <button
+              onClick={() => setIsLogsMaximized(true)}
+              title="Maximize logs"
+              className="absolute top-3 right-3 bg-slate-800/80 hover:bg-slate-700 text-slate-350 hover:text-white p-1.5 rounded-lg border border-slate-700 transition-all opacity-0 group-hover:opacity-100 flex items-center justify-center shadow-md cursor-pointer z-10"
+            >
+              <Maximize2 size={12} />
+            </button>
             <div className="flex-1 overflow-y-auto space-y-2 font-mono text-[10px] pr-1 leading-normal select-text">
-              {logs.map((log, i) => {
-                let colorClass = "text-slate-300";
-                if (log.type === 'success') colorClass = "text-emerald-400";
-                if (log.type === 'warning') colorClass = "text-amber-400";
-                if (log.type === 'error') colorClass = "text-rose-400 font-extrabold";
-                if (log.type === 'system') colorClass = "text-indigo-300 font-bold";
-
-                // Color-code price lines: detect [AI Parse] Extracted quotation
-                const priceMatch = log.message.match(/\[AI Parse\] Extracted quotation metrics: Price=\$(\d+(?:\.\d+)?)/);
-                let priceColorSegment = null;
-                if (priceMatch) {
-                  const parsedPrice = parseFloat(priceMatch[1]);
-                  // Find any agreed target price to compare against
-                  const allTargets = Object.values(agreedPrices).map(a => a.target);
-                  const lowestTarget = allTargets.length > 0 ? Math.min(...allTargets) : null;
-                  // Compare against the last known agreed target, or the sInputs default
-                  const refPrice = lowestTarget || parsedPrice;
-                  const isGoodPrice = parsedPrice <= refPrice;
-                  priceColorSegment = isGoodPrice ? 'text-emerald-400' : 'text-rose-400';
-                  colorClass = "text-slate-300"; // reset base
-                }
-
-                // Render with inline price color highlight if applicable
-                const renderMessage = () => {
-                  if (priceColorSegment && priceMatch) {
-                    const parts = log.message.split(/(Price=\$[\d.]+)/);
-                    return parts.map((part, pi) => {
-                      if (part.match(/^Price=\$[\d.]+$/)) {
-                        const pVal = parseFloat(part.replace('Price=$', ''));
-                        const allTargets = Object.values(agreedPrices).map(a => a.target);
-                        const refP = allTargets.length > 0 ? Math.min(...allTargets) : pVal;
-                        const cls = pVal <= refP ? 'text-emerald-400 font-extrabold' : 'text-rose-400 font-extrabold';
-                        return <span key={pi} className={cls}>{part}</span>;
-                      }
-                      return <span key={pi} className="text-slate-300">{part}</span>;
-                    });
-                  }
-                  // Highlight price in Negotiated Price / savings lines
-                  if (log.message.includes('Negotiated Price:') || log.message.includes('Savings:')) {
-                    return <span className="text-emerald-400 font-bold">{log.message}</span>;
-                  }
-                  return <span className={colorClass}>{log.message}</span>;
-                };
-
-                return (
-                  <div key={i} className="flex items-start gap-1">
-                    <span className="text-slate-500 select-none shrink-0">[{log.timestamp}]</span>
-                    <span className="break-all">{renderMessage()}</span>
-                  </div>
-                );
-              })}
+              {logs.map((log, i) => (
+                <div key={i} className="flex items-start gap-1">
+                  <span className="text-slate-500 select-none shrink-0">[{log.timestamp}]</span>
+                  <span className="break-all">{renderLogMessage(log)}</span>
+                </div>
+              ))}
 
               {logs.length === 0 && (
                 <div className="h-full flex flex-col items-center justify-center text-slate-500 font-sans space-y-2">
@@ -1893,6 +1903,121 @@ export default function AiAgentWorkflow() {
         )}
 
       </div>
+
+      {/* Maximized Live Logs Modal */}
+      {isLogsMaximized && (() => {
+        const filteredLogs = logs.filter(log => 
+          log.message.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
+          log.timestamp.toLowerCase().includes(logSearchQuery.toLowerCase())
+        );
+        
+        return (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[9999] flex items-center justify-center p-4 md:p-6 transition-all duration-300">
+            <div className="bg-slate-900 border border-slate-800 w-full max-w-6xl h-[85vh] rounded-2xl flex flex-col overflow-hidden shadow-2xl shadow-blue-900/15 transform transition-all duration-300 scale-100">
+              
+              {/* Modal Header */}
+              <div className="bg-slate-950 border-b border-slate-800 px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <Terminal className="text-[#0078d4]" size={18} />
+                  <div>
+                    <h3 className="text-sm font-bold text-white leading-none">Live Logs Console</h3>
+                    <span className="text-[10px] text-slate-400 font-semibold">ProcureX Autonomous Agent Operations</span>
+                  </div>
+                </div>
+
+                {/* Search Bar */}
+                <div className="relative flex items-center flex-1 max-w-md">
+                  <Search className="absolute left-3 text-slate-500" size={14} />
+                  <input
+                    type="text"
+                    placeholder="Search and filter logs..."
+                    value={logSearchQuery}
+                    onChange={(e) => setLogSearchQuery(e.target.value)}
+                    className="w-full text-xs pl-9 pr-8 py-2 bg-slate-800 border border-slate-700 rounded-xl focus:outline-none focus:border-[#0078d4] text-white font-medium placeholder:text-slate-500"
+                  />
+                  {logSearchQuery && (
+                    <button
+                      onClick={() => setLogSearchQuery("")}
+                      className="absolute right-3 text-slate-400 hover:text-white cursor-pointer"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Header Actions */}
+                <div className="flex items-center gap-3">
+                  {logSearchQuery && (
+                    <span className="text-[10px] font-bold text-slate-400 bg-slate-800 border border-slate-700 px-2 py-1 rounded-lg">
+                      {filteredLogs.length} match{filteredLogs.length !== 1 ? 'es' : ''}
+                    </span>
+                  )}
+                  <button
+                    onClick={handleDownloadLogs}
+                    disabled={logs.length === 0}
+                    className="flex items-center gap-1.5 text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-2 rounded-xl disabled:opacity-40 cursor-pointer transition-colors"
+                  >
+                    <Download size={13} /> Download
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsLogsMaximized(false);
+                      setLogSearchQuery("");
+                    }}
+                    className="flex items-center gap-1 text-xs font-bold text-white bg-slate-800 hover:bg-rose-600 border border-slate-750 hover:border-rose-500 px-3 py-2 rounded-xl cursor-pointer transition-colors"
+                  >
+                    <Minimize2 size={13} /> Close
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Terminal Console */}
+              <div className="flex-1 bg-slate-950 p-6 overflow-y-auto flex flex-col font-mono text-xs md:text-sm select-text leading-relaxed">
+                <div className="flex-1 space-y-2.5 overflow-y-auto pr-1">
+                  {filteredLogs.map((log, i) => (
+                    <div key={i} className="flex items-start gap-2.5 hover:bg-slate-900/40 p-1 rounded transition-colors">
+                      <span className="text-slate-500 select-none shrink-0 font-medium">[{log.timestamp}]</span>
+                      <span className="break-all font-medium">{renderLogMessage(log)}</span>
+                    </div>
+                  ))}
+
+                  {filteredLogs.length === 0 && (
+                    <div className="h-full flex flex-col items-center justify-center text-slate-500 font-sans space-y-3 py-20">
+                      <Bot size={32} className="text-slate-600 animate-pulse" />
+                      <div className="text-sm font-bold text-slate-400">
+                        {logSearchQuery ? "No matches found" : "ProcureX Standby"}
+                      </div>
+                      <div className="text-xs text-center max-w-sm text-slate-500">
+                        {logSearchQuery 
+                          ? "Try refining your search query or clear the filter." 
+                          : "Upload an RFQ blueprint or sheet to initiate execution and view real-time operations."}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div ref={maximizedLogsEndRef} />
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="bg-slate-950 border-t border-slate-800 px-6 py-3 flex items-center justify-between text-[11px] text-slate-400 font-semibold select-none">
+                <div className="flex items-center gap-4">
+                  <span>Total Logs: <strong className="text-white">{logs.length}</strong></span>
+                  {logSearchQuery && (
+                    <span>Filtered Logs: <strong className="text-[#0078d4]">{filteredLogs.length}</strong></span>
+                  )}
+                  <span>RFQ ID: <strong className="text-white">{realStatusRfq || "None"}</strong></span>
+                </div>
+                <div>
+                  <span>Status: <strong className={agentStatus === 'completed' ? 'text-emerald-500' : agentStatus === 'running' ? 'text-[#0078d4]' : 'text-amber-500'}>{agentStatus.toUpperCase()}</strong></span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );
