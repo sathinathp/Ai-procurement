@@ -121,7 +121,7 @@ export default function App() {
     const mapping = {
       dashboard: 'Operations Dashboard',
       rfqs: 'RFQs & Assistant',
-      ai_agent: 'Autonomous AI Agent',
+      ai_agent: 'Autonomous ProcureX',
       email_bot: 'Email Bot Console',
       rfp_campaign: 'RFP Campaign Simulator',
       suppliers: 'Supplier Search',

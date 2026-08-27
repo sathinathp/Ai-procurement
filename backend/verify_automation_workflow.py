@@ -129,7 +129,7 @@ def setup_test_data(tester_email):
             required_date=(datetime.now() + timedelta(days=30)).date(),
             item_name="PVC Resin K-67",
             item_code="ITM-RAW-9999",
-            description="Premium PVC Resin K-67 for AI Copilot Automation validation.",
+            description="Premium PVC Resin K-67 for ProcureX Copilot Automation validation.",
             quantity=100.0,
             unit="MT",
             specifications="K-Value 67, Apparent Density 0.55 g/ml",
@@ -179,10 +179,9 @@ def run_real_test(rfq_num, supplier_id, tester_email):
             f"- Quantity: {rfq.quantity} {rfq.unit}\n"
             f"- Delivery Location: {rfq.delivery_location}\n"
             f"- Required Delivery Date: {rfq.expected_delivery_date}\n\n"
-            f"Please reply directly to this email with your pricing and lead time to proceed.\n\n"
             f"Best regards,\n"
-            f"AI Procurement Agent\n"
-            f"Neproplast Co."
+            f"ProcureX Agent\n"
+            f"ProcureX Co."
         )
         
         print(f"Sending real RFQ invitation to '{tester_email}' from '{SMTP_USERNAME}'...")
@@ -238,7 +237,7 @@ def run_real_test(rfq_num, supplier_id, tester_email):
             
         notifications = db.query(models.WorkflowNotification).filter(models.WorkflowNotification.rfq_number == rfq_num).all()
         if notifications:
-            print(f"\n[OK] AI Agent successfully completed negotiation cycles and generated a dashboard comparison approval request!")
+            print(f"\n[OK] ProcureX Agent successfully completed negotiation cycles and generated a dashboard comparison approval request!")
         else:
             print(f"\n[INFO] IMAP check completed. Keep checking / replying to advance through negotiation rounds (current rounds: {len(logs)//2})")
             
@@ -286,7 +285,7 @@ def run_simulation_test(rfq_num, supplier_id, tester_email):
         )
         db.add(inbound_1)
         
-        print("3. Generating and Simulating Round 1 AI Agent Counter-Offer (10% target)...")
+        print("3. Generating and Simulating Round 1 ProcureX Agent Counter-Offer (10% target)...")
         offer_res = generate_ai_counter_offer(rfq.item_name, supplier.name, 1400.00, "USD", 1)
         outbound_1 = models.NegotiationLog(
             rfq_number=rfq_num,
@@ -346,7 +345,7 @@ def run_simulation_test(rfq_num, supplier_id, tester_email):
         notification = db.query(models.WorkflowNotification).filter(models.WorkflowNotification.rfq_number == rfq_num).first()
         if notification:
             print("\n[OK] Simulation Completed Successfully!")
-            print("Summary of AI Recommendation:")
+            print("Summary of ProcureX Recommendation:")
             print(f"- Recommended Vendor: {notification.recommended_supplier}")
             print(f"- Negotiated Price: {notification.recommended_currency} {notification.recommended_price}")
             print(f"- Message: {notification.summary_message}")
@@ -361,7 +360,7 @@ def run_simulation_test(rfq_num, supplier_id, tester_email):
 
 if __name__ == "__main__":
     print("=================================================================")
-    print("      NEPROPLAST AI COPILOT: AUTOMATION AGENT WORKFLOW TESTER     ")
+    print("      PROCUREX COPILOT: AUTOMATION AGENT WORKFLOW TESTER     ")
     print("=================================================================")
     
     smtp_ok = test_smtp_connection()

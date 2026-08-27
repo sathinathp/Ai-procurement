@@ -292,7 +292,7 @@ export default function RfpCampaign({ activeRfqNum }) {
               <RefreshCw className="animate-spin text-amber-500" size={20} />
               <div>
                 <h3 className="text-sm font-bold text-slate-800">RFP Simulation Underway</h3>
-                <p className="text-xs text-slate-500">AI Agent driving broad vendor campaign</p>
+                <p className="text-xs text-slate-500">ProcureX driving broad vendor campaign</p>
               </div>
             </div>
 
@@ -334,11 +334,11 @@ export default function RfpCampaign({ activeRfqNum }) {
         {simStep >= 3 && campaignResults && (
           <div className="space-y-6">
             
-            {/* AI Agent Executive Summary & Strategy Log */}
+            {/* ProcureX Agent Executive Summary & Strategy Log */}
             <div className="bg-gradient-to-r from-amber-500/10 to-indigo-500/10 border border-amber-250 rounded-2xl p-5 shadow-xs space-y-3">
               <div className="flex items-center gap-2">
                 <Sparkles className="text-amber-500" size={18} />
-                <h3 className="text-sm font-bold text-slate-800">AI Procurement Copilot Summary</h3>
+                <h3 className="text-sm font-bold text-slate-800">ProcureX Copilot Summary</h3>
                 <span className="text-[9px] bg-amber-100 text-amber-800 font-semibold px-2.5 py-0.5 rounded-full ml-auto">Autonomous Agent Active</span>
               </div>
               <p className="text-xs text-slate-600 leading-relaxed font-semibold">
@@ -367,7 +367,7 @@ export default function RfpCampaign({ activeRfqNum }) {
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2">
                   <MessageSquare className="text-indigo-600" size={18} />
-                  <h3 className="text-sm font-bold text-slate-800">AI Agent Negotiation Logs</h3>
+                  <h3 className="text-sm font-bold text-slate-800">ProcureX Negotiation Logs</h3>
                   <span className="text-[9px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full border border-indigo-150">5 Target Sessions</span>
                 </div>
                 <span className="text-xs text-slate-500 font-medium">Auto-negotiated best price/terms</span>

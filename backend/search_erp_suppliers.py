@@ -146,7 +146,7 @@ def send_suppliers_email(suppliers, source_name):
                 Hello,
             </p>
             <p style="font-size: 16px; color: #555;">
-                Below is the list of active suppliers retrieved automatically via the **AI Procurement Agent** integration pipeline.
+                Below is the list of active suppliers retrieved automatically via the **ProcureX** integration pipeline.
             </p>
             <p style="font-size: 14px; color: #888;">
                 <strong>Source:</strong> {source_name}
@@ -171,7 +171,7 @@ def send_suppliers_email(suppliers, source_name):
             </p>
             <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
             <p style="font-size: 12px; color: #999; text-align: center;">
-                Neproplast AI Procurement Agent &bull; Autonomous Integration Lab
+                ProcureX &bull; Autonomous Integration Lab
             </p>
         </div>
     </body>
@@ -189,7 +189,7 @@ def send_suppliers_email(suppliers, source_name):
         
         for recipient in RECIPIENTS:
             msg = MIMEMultipart()
-            msg['From'] = f"\"Neproplast ERP Copilot\" <{SMTP_USERNAME}>"
+            msg['From'] = f"\"ProcureX ERP Copilot\" <{SMTP_USERNAME}>"
             msg['To'] = recipient
             msg['Subject'] = subject
             msg.attach(MIMEText(html_content, 'html'))

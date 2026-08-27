@@ -1,6 +1,6 @@
 # Production Deployment, Database & Domain Integration Guide
 
-This guide provides step-by-step instructions for deploying your AI Procurement application from your local workspace to your virtual private server (VPS) at **`52.144.45.25`**, integrating your database, and linking your custom domain.
+This guide provides step-by-step instructions for deploying your ProcureX application from your local workspace to your virtual private server (VPS) at **`52.144.45.25`**, integrating your database, and linking your custom domain.
 
 ---
 
@@ -38,10 +38,10 @@ If you have not already pushed your code to a GitHub repository, follow these st
    ```
 3. **Commit the changes:**
    ```bash
-   git commit -m "feat: Initial commit for AI Procurement deployment"
+   git commit -m "feat: Initial commit for ProcureX deployment"
    ```
 4. **Create a GitHub repository:**
-   - Go to [GitHub](https://github.com) and create a new repository (e.g., `ai-procurement`).
+   - Go to [GitHub](https://github.com) and create a new repository (e.g., `procurex`).
    - Keep it private if your credentials or API keys are present (make sure `.env` is listed in your `.gitignore` so they are not leaked).
 5. **Add the remote URL and push:**
    ```bash

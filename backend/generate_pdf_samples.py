@@ -8,7 +8,7 @@ def create_rfq_pdf(filename):
     
     # Title
     c.setFont("Helvetica-Bold", 24)
-    c.drawString(72, 720, "NEPROPLAST CO.")
+    c.drawString(72, 720, "PROCUREX CO.")
     
     c.setFont("Helvetica-Bold", 14)
     c.drawString(72, 690, "MATERIAL REQUEST & RFQ")
@@ -89,11 +89,11 @@ def create_quote_pdf(filename):
     # Title
     c.setFont("Helvetica-Bold", 20)
     c.setFillColorRGB(0.0, 0.47, 0.83) # Blue brand color
-    c.drawString(54, 735, "NEPROPLAST MANUFACTURING CORP.")
+    c.drawString(54, 735, "PROCUREX MANUFACTURING CORP.")
     
     c.setFont("Helvetica-Bold", 12)
     c.setFillColorRGB(0.27, 0.33, 0.41) # Dark grey
-    c.drawString(54, 715, "AI-GENERATED BID EVALUATION & QUOTE COMPARISON MATRIX")
+    c.drawString(54, 715, "PROCUREX BID EVALUATION & QUOTE COMPARISON MATRIX")
     
     # Decorative line
     c.setLineWidth(2)
@@ -145,7 +145,7 @@ def create_quote_pdf(filename):
         ("Payment Terms", "Net 60 Days", "Net 30 Days", "Net 30 Days"),
         ("Incoterms", "CIF Jeddah", "FOB Dammam", "EXW Riyadh"),
         ("ERP Supplier Sync", "Verified (ERP-105)", "Verified (ERP-302)", "Verified (ERP-412)"),
-        ("AI Score / Decision", "98/100 (RECOMMENDED)", "84/100 (REJECTED)", "71/100 (REJECTED)")
+        ("ProcureX Score / Decision", "98/100 (RECOMMENDED)", "84/100 (REJECTED)", "71/100 (REJECTED)")
     ]
     
     c.setStrokeColorRGB(0.8, 0.8, 0.8)
@@ -194,7 +194,7 @@ def create_quote_pdf(filename):
     
     c.setFillColorRGB(0.0, 0.47, 0.83)
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(64, y + 45, "AI CO-PILOT PROCUREMENT RECOMMENDATION:")
+    c.drawString(64, y + 45, "PROCUREX COPILOT RECOMMENDATION:")
     
     c.setFillColorRGB(0.2, 0.25, 0.3)
     c.setFont("Helvetica", 8.5)
@@ -206,7 +206,7 @@ def create_quote_pdf(filename):
     y -= 35
     c.setFont("Helvetica-Oblique", 7.5)
     c.setFillColorRGB(0.5, 0.5, 0.5)
-    c.drawString(54, y, "This comparison matrix was generated dynamically by the Neproplast AI Procurement Assistant. All parameters are verified against D365 ERP.")
+    c.drawString(54, y, "This comparison matrix was generated dynamically by the ProcureX Assistant. All parameters are verified against D365 ERP.")
     
     c.save()
     print(f"[OK] Generated Comparative Quote PDF: {filename}")

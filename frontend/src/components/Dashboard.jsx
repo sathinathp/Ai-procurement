@@ -12,6 +12,13 @@ import {
 import { dashboardService, workflowService } from '../services/api';
 import SupplierProfileModal from './SupplierProfileModal';
 
+const formatCurrency = (val) => {
+  if (val === undefined || val === null) return '$0.00';
+  if (val < 1000) return `$${val.toFixed(2)}`;
+  if (val < 1000000) return `$${(val / 1000).toFixed(1)}k`;
+  return `$${(val / 1000000).toFixed(2)}M`;
+};
+
 export default function Dashboard({ onNavigate, onOpenCopilot, onImportTrigger }) {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -237,7 +244,7 @@ export default function Dashboard({ onNavigate, onOpenCopilot, onImportTrigger }
       const startTime = performance.now();
       let gatewayLatency = 12;
       try {
-        await dashboardService.getStats();
+        await dashboardService.ping();
         gatewayLatency = Math.round(performance.now() - startTime);
       } catch (err) {
         gatewayLatency = 15 + Math.floor(Math.random() * 10);
@@ -573,7 +580,39 @@ export default function Dashboard({ onNavigate, onOpenCopilot, onImportTrigger }
 
       {/* Sourcing Operations & Alerts Hub */}
       {(() => {
-        const currentAlerts = stats?.sourcing_alerts || sourcingAlertsData[alertsTimeframe] || sourcingAlertsData['This Month'];
+        const baseAlerts = sourcingAlertsData[alertsTimeframe] || sourcingAlertsData['This Month'];
+        const currentAlerts = stats?.sourcing_alerts ? {
+          rfqsAttention: alertsTimeframe === 'Today' ? stats.sourcing_alerts.rfqsAttention.slice(0, Math.min(2, stats.sourcing_alerts.rfqsAttention.length)) :
+                         alertsTimeframe === 'This Week' ? stats.sourcing_alerts.rfqsAttention.slice(0, Math.min(4, stats.sourcing_alerts.rfqsAttention.length)) :
+                         alertsTimeframe === 'This Month' ? stats.sourcing_alerts.rfqsAttention.slice(0, Math.min(6, stats.sourcing_alerts.rfqsAttention.length)) :
+                         stats.sourcing_alerts.rfqsAttention,
+          deliveryRisks: alertsTimeframe === 'Today' ? stats.sourcing_alerts.deliveryRisks.slice(0, Math.min(1, stats.sourcing_alerts.deliveryRisks.length)) :
+                         alertsTimeframe === 'This Week' ? stats.sourcing_alerts.deliveryRisks.slice(0, Math.min(2, stats.sourcing_alerts.deliveryRisks.length)) :
+                         alertsTimeframe === 'This Month' ? stats.sourcing_alerts.deliveryRisks.slice(0, Math.min(3, stats.sourcing_alerts.deliveryRisks.length)) :
+                         stats.sourcing_alerts.deliveryRisks,
+          recommendations: alertsTimeframe === 'Today' ? stats.sourcing_alerts.recommendations.slice(0, Math.min(1, stats.sourcing_alerts.recommendations.length)) :
+                           alertsTimeframe === 'This Week' ? stats.sourcing_alerts.recommendations.slice(0, Math.min(2, stats.sourcing_alerts.recommendations.length)) :
+                           alertsTimeframe === 'This Month' ? stats.sourcing_alerts.recommendations.slice(0, Math.min(3, stats.sourcing_alerts.recommendations.length)) :
+                           stats.sourcing_alerts.recommendations,
+          savings: {
+            amount: alertsTimeframe === 'Today' ? `$${Math.round((widgets?.cost_savings || 0) / 12).toLocaleString()}` :
+                    alertsTimeframe === 'This Week' ? `$${Math.round((widgets?.cost_savings || 0) / 4).toLocaleString()}` :
+                    alertsTimeframe === 'This Month' ? `$${Math.round(widgets?.cost_savings || 0).toLocaleString()}` :
+                    `$${Math.round((widgets?.cost_savings || 0) * 12).toLocaleString()}`,
+            detail: stats.sourcing_alerts.savings.detail
+          },
+          historicalPrice: alertsTimeframe === 'Today' ? stats.sourcing_alerts.historicalPrice.slice(0, Math.min(1, stats.sourcing_alerts.historicalPrice.length)) :
+                           alertsTimeframe === 'This Week' ? stats.sourcing_alerts.historicalPrice.slice(0, Math.min(2, stats.sourcing_alerts.historicalPrice.length)) :
+                           alertsTimeframe === 'This Month' ? stats.sourcing_alerts.historicalPrice.slice(0, Math.min(3, stats.sourcing_alerts.historicalPrice.length)) :
+                           stats.sourcing_alerts.historicalPrice,
+          automations: {
+            count: alertsTimeframe === 'Today' ? Math.max(1, Math.round((widgets?.today_rfqs || 0))) :
+                   alertsTimeframe === 'This Week' ? Math.max(2, Math.round((widgets?.pending_rfqs || 0) / 2)) :
+                   alertsTimeframe === 'This Month' ? (widgets?.pending_rfqs || 0) :
+                   (widgets?.pending_rfqs || 0) * 4,
+            detail: stats.sourcing_alerts.automations.detail
+          }
+        } : baseAlerts;
         return (
           <div className="p-6 rounded-3xl glass-panel shadow-sm">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4.5 border-b border-slate-200/60">
@@ -874,7 +913,7 @@ export default function Dashboard({ onNavigate, onOpenCopilot, onImportTrigger }
           <div>
             <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block">TOTAL PO VALUE</span>
             <span className="text-2xl font-black text-slate-850 block">
-              {widgets?.total_rfq_value !== undefined ? `$${(widgets.total_rfq_value / 1000000).toFixed(2)}M` : '$24.85M'}
+              {formatCurrency(widgets?.total_rfq_value ?? 24850000)}
             </span>
             <span className="text-[10px] text-emerald-600 font-semibold">This Quarter</span>
           </div>
@@ -888,7 +927,7 @@ export default function Dashboard({ onNavigate, onOpenCopilot, onImportTrigger }
           <div>
             <span className="text-[9px] font-extrabold text-indigo-500 uppercase tracking-widest block">COST SAVINGS (AI)</span>
             <span className="text-2xl font-black text-indigo-600 block">
-              {widgets?.cost_savings !== undefined ? `$${(widgets.cost_savings / 1000000).toFixed(2)}M` : '$2.48M'}
+              {formatCurrency(widgets?.cost_savings ?? 2480000)}
             </span>
             <span className="text-[10px] text-indigo-500/70 font-semibold">AI Auto-Negotiated</span>
           </div>
@@ -896,13 +935,13 @@ export default function Dashboard({ onNavigate, onOpenCopilot, onImportTrigger }
 
         {/* REVENUE VALUE */}
         <div className="p-5 rounded-3xl glass-panel glass-panel-hover flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/15 flex items-center justify-center shrink-0">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 border border-emerald-500/15 flex items-center justify-center shrink-0">
             <FileText size={22} className="stroke-[2px]" />
           </div>
           <div>
             <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block">REVENUE VALUE</span>
             <span className="text-2xl font-black text-slate-850 block">
-              {widgets?.total_rfq_value !== undefined ? `$${((widgets.total_rfq_value * 1.18) / 1000000).toFixed(2)}M` : '$119.51M'}
+              {formatCurrency(widgets?.total_rfq_value ? widgets.total_rfq_value * 1.18 : 119510000)}
             </span>
             <span className="text-[10px] text-amber-600/70 font-semibold">This Quarter</span>
           </div>

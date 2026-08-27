@@ -65,7 +65,7 @@ sudo apt install nginx certbot python3-certbot-nginx -y
 
 Each application must bind to a **unique port** on the host server to prevent conflicts.
 
-### App 1: AI Procurement
+### App 1: ProcureX
 Place your files in `/var/www/app1`.
 Create `/var/www/app1/docker-compose.yml`:
 ```yaml
@@ -134,7 +134,7 @@ Paste the following configuration (replace `yourdomain.com` with your actual dom
 
 ```nginx
 # ==========================================
-# APPLICATION 1 (AI Procurement)
+# APPLICATION 1 (ProcureX)
 # ==========================================
 
 # Frontend

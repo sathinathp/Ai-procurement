@@ -293,7 +293,7 @@ export default function EmailAutomation({ redirectSupplierId, onNavigate, active
                 <Bot size={16} className="text-[#0078d4]" /> AI Generated Request Draft
               </h2>
               <span className="text-[10px] bg-blue-50 text-[#0078d4] px-2 py-0.5 rounded font-semibold">
-                AI Procurement Co.
+                ProcureX Co.
               </span>
             </div>
 

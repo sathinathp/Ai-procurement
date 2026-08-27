@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:8000`;
+const hostname = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname;
+const API_BASE_URL = import.meta.env.VITE_API_URL || `http://${hostname}:8000`;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -28,6 +29,7 @@ api.interceptors.response.use(
 
 export const dashboardService = {
   getStats: () => api.get('/api/dashboard/stats'),
+  ping: () => api.get('/'),
 };
 
 export const rfqService = {

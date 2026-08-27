@@ -214,7 +214,7 @@ class ERPConfig(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     erp_system = Column(String(50), default="Dynamics365") # Dynamics365, SAP_S4HANA, SAP_Ariba, Oracle
-    base_url = Column(String(500), default="https://neproplast-prod.operations.dynamics.com/data")
+    base_url = Column(String(500), default="https://procurex-prod.operations.dynamics.com/data")
     tenant_id = Column(String(255), default="72f988bf-86f1-41af-91ab-2d7cd011db47")
     client_id = Column(String(255), default="d365-ai-procurement-app-client-id")
     client_secret = Column(String(255), default="••••••••••••••••••••••••••••")

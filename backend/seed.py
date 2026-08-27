@@ -462,7 +462,7 @@ def seed_database():
                 f"- Required Delivery Date: {rfq.expected_delivery_date}\n\n"
                 f"Please submit your technical and commercial proposal by email. If you have any clarifications, feel free to contact us.\n\n"
                 f"Best regards,\n"
-                f"Neproplast Procurement Team"
+                f"ProcureX Procurement Team"
             )
             
             email_inv = EmailHistory(
@@ -486,7 +486,7 @@ def seed_database():
                     f"This is a gentle reminder regarding our RFQ for {rfq.item_name} ({rfq.rfq_number}).\n"
                     f"We look forward to receiving your bid at your earliest convenience.\n\n"
                     f"Regards,\n"
-                    f"Neproplast Procurement"
+                    f"ProcureX Procurement"
                 )
                 email_rem = EmailHistory(
                     id=email_idx,

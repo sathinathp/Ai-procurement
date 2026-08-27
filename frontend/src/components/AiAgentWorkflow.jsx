@@ -11,7 +11,7 @@ import {
 
 export default function AiAgentWorkflow() {
   const [systemPrompt, setSystemPrompt] = useState(
-    "You are an autonomous procurement AI agent. Upon RFQ upload, extract parameters, perform stock verification, match the top 3 suppliers, generate outreach emails, simulate best-price negotiations, automatically create a purchase order, and sync the PO directly to the Dynamics 365 ERP gateway."
+    "You are an autonomous procurement ProcureX agent. Upon RFQ upload, extract parameters, perform stock verification, match the top 3 suppliers, generate outreach emails, simulate best-price negotiations, automatically create a purchase order, and sync the PO directly to the Dynamics 365 ERP gateway."
   );
   const [mockInputs, setMockInputs] = useState({});
   const [counterOfferStatus, setCounterOfferStatus] = useState({}); // { [supplierId]: 'idle' | 'sending' | 'success' | 'error' }
@@ -258,7 +258,7 @@ export default function AiAgentWorkflow() {
         required_date: data.required_date || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
         item_name: data.item_name || 'HDPE Pipes 110mm',
         item_code: data.item_code || 'ITM-991',
-        description: data.description || 'Extracted via Autonomous AI Agent',
+        description: data.description || 'Extracted via Autonomous ProcureX Agent',
         quantity: data.quantity || 250,
         unit: data.unit || 'MT',
         specifications: data.specifications || 'Standard specifications',
@@ -615,7 +615,7 @@ export default function AiAgentWorkflow() {
     const element = document.createElement("a");
     const file = new Blob([logText], {type: 'text/plain'});
     element.href = URL.createObjectURL(file);
-    element.download = `autonomous_ai_agent_log_${Date.now()}.txt`;
+    element.download = `procurex_log_${Date.now()}.txt`;
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
@@ -657,8 +657,8 @@ export default function AiAgentWorkflow() {
                 <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Autonomous Mode</span>
                 <span className="text-[10px] text-slate-400 font-semibold">• Multi-Agent Orchestrator</span>
               </div>
-              <h1 className="text-xl font-extrabold text-slate-800">Autonomous Procurement AI Agent</h1>
-              <p className="text-xs text-slate-500">Configure parameters, upload an RFQ request, and observe the AI Agent driving the entire procurement cycle autonomously.</p>
+              <h1 className="text-xl font-extrabold text-slate-800">Autonomous Procurement ProcureX Agent</h1>
+              <p className="text-xs text-slate-500">Configure parameters, upload an RFQ request, and observe ProcureX driving the entire procurement cycle autonomously.</p>
             </div>
             <Bot size={36} className="text-[#0078d4] bg-blue-50 p-2 rounded-xl" />
           </div>
@@ -778,7 +778,7 @@ export default function AiAgentWorkflow() {
 
             <div className="max-w-md mx-auto space-y-1">
               <h2 className="text-sm font-bold text-slate-800">Launch Autonomous Workflow</h2>
-              <p className="text-xs text-slate-500">Upload a purchase requisition, blueprint drawing, or RFQ document to trigger the AI Agent execution chain.</p>
+              <p className="text-xs text-slate-500">Upload a purchase requisition, blueprint drawing, or RFQ document to trigger the ProcureX Agent execution chain.</p>
             </div>
 
             <div className="border-2 border-dashed border-slate-200 hover:border-[#0078d4] rounded-xl p-8 cursor-pointer bg-slate-50/50 hover:bg-blue-50/10 transition-all relative max-w-lg mx-auto">
@@ -1025,7 +1025,7 @@ export default function AiAgentWorkflow() {
               </span>
             </div>
             <p className="text-[11px] text-slate-500 font-medium">
-              The AI Agent is currently waiting for real supplier email responses. You can reply from a real email account, or click below to immediately mock a reply to advance the negotiation loop:
+              The ProcureX Agent is currently waiting for real supplier email responses. You can reply from a real email account, or click below to immediately mock a reply to advance the negotiation loop:
             </p>
             <div className="flex flex-col gap-3">
               {matchedSuppliers.map((s, idx) => {
@@ -1235,7 +1235,7 @@ export default function AiAgentWorkflow() {
                                 return;
                               }
                               setCounterOfferStatus(prev => ({ ...prev, [s.id]: 'agreeing' }));
-                              addLog(`[AI Agent] ${s.name} - Agreeing to $${agreePriceVal}/unit. Processing acceptance...`, 'info');
+                              addLog(`[ProcureX Agent] ${s.name} - Agreeing to $${agreePriceVal}/unit. Processing acceptance...`, 'info');
                               try {
                                 const agreeRes = await campaignService.agreeToPrice(
                                   realStatusRfq,
@@ -1365,7 +1365,7 @@ export default function AiAgentWorkflow() {
                                 }`}>
                                   <div className="flex justify-between items-center font-bold text-[9px] mb-1">
                                     <span className={log.direction === 'inbound' ? 'text-amber-700' : 'text-blue-700'}>
-                                      {log.direction === 'inbound' ? '← Inbound (Supplier)' : '→ Outbound (AI Agent)'}
+                                      {log.direction === 'inbound' ? '← Inbound (Supplier)' : '→ Outbound (ProcureX)'}
                                     </span>
                                     <span className="text-slate-400 font-mono font-medium">{log.sent_at}</span>
                                   </div>
@@ -1552,7 +1552,7 @@ export default function AiAgentWorkflow() {
               {logs.length === 0 && (
                 <div className="h-full flex flex-col items-center justify-center text-slate-500 font-sans space-y-2">
                   <Bot size={24} className="text-slate-600 animate-pulse" />
-                  <div className="text-[11px] font-bold">AI Agent Standby</div>
+                  <div className="text-[11px] font-bold">ProcureX Standby</div>
                   <div className="text-[9px] text-center max-w-xs">Upload an RFQ blueprint or sheet to initiate execution and view real-time operations.</div>
                 </div>
               )}
@@ -1604,7 +1604,7 @@ export default function AiAgentWorkflow() {
                                 {isInbound ? '↓' : '↑'}
                               </div>
                               <span className={`text-[9px] font-bold ${isInbound ? 'text-amber-700' : 'text-blue-700'}`}>
-                                {isInbound ? name : 'AI Agent'}
+                                {isInbound ? name : 'ProcureX'}
                               </span>
                               <span className="text-[9px] text-slate-400 font-mono">{log.sent_at}</span>
                               {log.round_number && (
@@ -1683,7 +1683,7 @@ export default function AiAgentWorkflow() {
               <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2 py-20">
                 <FileText size={28} className="text-slate-300 animate-pulse" />
                 <div className="text-[11px] font-bold">No execution history found</div>
-                <div className="text-[9px] text-center max-w-xs text-slate-400">Run the autonomous agent to store your transaction history here.</div>
+                <div className="text-[9px] text-center max-w-xs text-slate-400">Run ProcureX to store your transaction history here.</div>
               </div>
             ) : (
               historyList.map((run, i) => (
@@ -1876,11 +1876,11 @@ export default function AiAgentWorkflow() {
           );
         })()}
 
-        {/* AI Agent Telemetry Footer */}
+        {/* ProcureX Telemetry Footer */}
         {agentStatus === 'completed' && (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs">
             <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase">
-              <span>Agent Performance Audit</span>
+              <span>ProcureX Performance Audit</span>
               <span className="text-emerald-600">COMPLETED</span>
             </div>
             <div className="grid grid-cols-2 gap-2 text-slate-600 font-semibold">

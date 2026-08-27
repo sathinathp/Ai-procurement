@@ -64,7 +64,7 @@ def generate_po_pdf_file(po, db: Session) -> str:
     )
     
     # Title Block
-    story.append(Paragraph("AI PROCUREMENT CORP", title_style))
+    story.append(Paragraph("PROCUREX CORP", title_style))
     story.append(Paragraph("OFFICIAL PURCHASE ORDER (PO)", subtitle_style))
     story.append(Spacer(1, 10))
     
@@ -123,7 +123,7 @@ def generate_po_pdf_file(po, db: Session) -> str:
     
     story.append(Paragraph("___________________________", body_style))
     story.append(Paragraph("Authorized Procurement Manager", bold_label))
-    story.append(Paragraph("AI Procurement Division", body_style))
+    story.append(Paragraph("ProcureX Division", body_style))
     
     doc.build(story)
     return pdf_path

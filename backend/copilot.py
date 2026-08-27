@@ -571,20 +571,20 @@ def get_mock_copilot_response(query: str, db: Session) -> str:
     
     # Conversational Greetings & General Responses
     if any(g == lowered or lowered.startswith(g + " ") for g in ["hello", "hi", "hey", "greetings", "good morning", "good afternoon"]):
-        return "Hello! I am your B2B Procurement AI Copilot. How can I assist you with your procurement queries, supplier scores, or purchase orders today?"
+        return "Hello! I am your B2B ProcureX Copilot. How can I assist you with your procurement queries, supplier scores, or purchase orders today?"
         
     if any(t in lowered for t in ["thank you", "thanks", "appreciate it"]):
-        return "You're very welcome! I'm here to help you optimize and streamline Neproplast's procurement workflow. Let me know if you need any other database insights."
+        return "You're very welcome! I'm here to help you optimize and streamline ProcureX's procurement workflow. Let me know if you need any other database insights."
         
     if any(b in lowered for b in ["bye", "goodbye", "exit"]):
         return "Goodbye! Have a great day. Feel free to open the Copilot anytime you need assistance."
         
     if "how are you" in lowered:
-        return "I am performing optimally and fully synchronized with Neproplast's procurement databases! How can I assist you today?"
+        return "I am performing optimally and fully synchronized with ProcureX's procurement databases! How can I assist you today?"
         
     if "who are you" in lowered or "what can you do" in lowered:
         return (
-            "I am the Neproplast AI Procurement Copilot. I have real-time access to our Suppliers, RFQs, Quote Responses, "
+            "I am the ProcureX Copilot. I have real-time access to our Suppliers, RFQs, Quote Responses, "
             "and Purchase Orders. You can ask me to search for suppliers from a specific country, show pending approvals, "
             "check delayed purchase orders, or look up recent prices for polymer materials."
         )
@@ -615,7 +615,7 @@ def get_mock_copilot_response(query: str, db: Session) -> str:
     if "highest rating" in lowered or "top rating" in lowered or "highest rated" in lowered:
         top = db.query(Supplier).order_by(desc(Supplier.rating)).limit(3).all()
         rows = [f"- ⭐⭐⭐⭐⭐ **{s.name}** ({s.country}): **{s.rating} / 5.0 Rating** (Delivery Score: {s.delivery_score}%, Quality Score: {s.quality_score}%)" for s in top]
-        return "The highest rated enterprise suppliers in Neproplast's directory are:\n\n" + "\n".join(rows)
+        return "The highest rated enterprise suppliers in ProcureX's directory are:\n\n" + "\n".join(rows)
 
     # 5. Answer regarding Inventory
     if "inventory" in lowered or "stock" in lowered or "warehouse" in lowered:
@@ -638,7 +638,7 @@ def get_mock_copilot_response(query: str, db: Session) -> str:
     # 7. Answer regarding Procurement Policy
     if "policy" in lowered or "rule" in lowered or "procurement policy" in lowered:
         return (
-            "📜 **Neproplast Corporate AI Procurement Policy Summary:**\n\n"
+            "📜 **ProcureX Corporate Policy Summary:**\n\n"
             "1. **Competitive Bidding**: All purchase requisitions above SAR 50,000 / USD 13,300 require a minimum of **3 competitive supplier quotes**.\n"
             "2. **Approval Tiers**: Department Head sign-off for <$50k; Executive Vice President sign-off for >$50k.\n"
             "3. **Payment Terms Standard**: Corporate standard is **Net 60 Days** or Letter of Credit (LC).\n"
@@ -1044,7 +1044,7 @@ def get_mock_copilot_response(query: str, db: Session) -> str:
 
     # Default Copilot response
     return (
-        "Hello! I am your Procurement AI Copilot. I can search through our database of suppliers, RFQs, quote responses, "
+        "Hello! I am your ProcureX Copilot. I can search through our database of suppliers, RFQs, quote responses, "
         "and purchase orders. Ask me things like:\n\n"
         "- *Show pending approvals*\n"
         "- *What is the last purchase price of PVC Resin?*\n"
@@ -1058,7 +1058,7 @@ def get_mock_copilot_response(query: str, db: Session) -> str:
 
 
 PROJECT_GUIDE_TEXT = """
-NEPROPLAST MANUFACTURING CORP - AI PROCUREMENT PORTAL
+PROCUREX MANUFACTURING CORP - PORTAL
 1. PROJECT OVERVIEW & MOTIVE:
 An autonomous, enterprise-grade procurement agent designed to accelerate RFQ cycles, reduce manual sourcing work, and optimize pricing through AI negotiation. It integrates React/Vite (Frontend) and FastAPI/SQLite (Backend) with Odoo and Microsoft Dynamics 365 ERP systems.
 
@@ -1107,7 +1107,7 @@ An autonomous, enterprise-grade procurement agent designed to accelerate RFQ cyc
 """
 
 _copilot_cache = {
-    "explain the 20step endtoend procurement workflow of this project": """The 20-step end-to-end procurement workflow for the Neproplast Manufacturing Corp AI Procurement Portal:
+    "explain the 20step endtoend procurement workflow of this project": """The 20-step end-to-end procurement workflow for the ProcureX Portal:
 
 ### Stage 1: Requisition & Need Identification
 1. **Material Request Generation**: Extract request details from uploaded PDFs using OCR.
@@ -1188,9 +1188,9 @@ def copilot_chat(messages: list, rfq_number: Optional[str], db: Session, openai_
         client = OpenAI(api_key=openai_key)
         
         system_prompt = (
-            "You are a professional, highly capable Procurement AI Copilot and Project Guide for Neproplast.\n"
+            "You are a professional, highly capable ProcureX Copilot and Project Guide.\n"
             "You have two primary capabilities:\n"
-            "1. Database Sourcing Agent: You have direct access to Neproplast's database tables (Suppliers, RFQs, Quote Responses, Purchase Orders, Email History, Inventory).\n"
+            "1. Database Sourcing Agent: You have direct access to ProcureX's database tables (Suppliers, RFQs, Quote Responses, Purchase Orders, Email History, Inventory).\n"
             "2. Project Guide & Advisor: You have detailed information about the system architecture, file structure, technology stack, and 20-step end-to-end procurement workflow of this application.\n\n"
             "Guidelines:\n"
             "- For database/business queries, ground your answers in the DATABASE STATE below.\n"

@@ -83,7 +83,7 @@ def send_real_email_direct(to_email: str, subject: str, body: str, attachment_pa
                 subject = f"[Rerouted from {to_email}] {subject}"
                 to_email = "sathinath.padhi@petabytz.com"
 
-            from_display = "AI Procurement Copilot"
+            from_display = "ProcureX Copilot"
             from_header = f'"{from_display}" <{resend_from}>'
             
             payload = {
@@ -134,7 +134,7 @@ def send_real_email_direct(to_email: str, subject: str, body: str, attachment_pa
 
     try:
         msg = MIMEMultipart()
-        from_display = "AI Procurement Copilot"
+        from_display = "ProcureX Copilot"
         msg['From'] = f'"{from_display}" <{smtp_username}>'
         msg['To'] = to_email
         msg['Subject'] = subject
@@ -260,8 +260,8 @@ def generate_ai_counter_offer(rfq_item: str, supplier_name: str, supplier_price:
         f"with standard Net 60 Days payment terms.\n\n"
         f"Please let us know if you can accommodate this so we can submit your offer for management review and final shortlist.\n\n"
         f"Best regards,\n"
-        f"AI Procurement Agent\n"
-        f"AI Co."
+        f"ProcureX Agent\n"
+        f"ProcureX Co."
     )
 
     if not openai_key or "YOUR_" in openai_key or not openai_key.strip():
@@ -270,7 +270,7 @@ def generate_ai_counter_offer(rfq_item: str, supplier_name: str, supplier_price:
     try:
         client = OpenAI(api_key=openai_key.strip())
         system_prompt = (
-            "You are an expert AI Procurement Negotiator. Generate a polite, formal email from AI's Agent "
+            "You are an expert ProcureX Negotiator. Generate a polite, formal email from ProcureX's Agent "
             "to a supplier. The email should acknowledge their current offer, present a counter-offer target price "
             "(which is 10% lower than their quoted price), request Net 60 Days terms, and ask them to confirm if they can accept.\n"
             "Generate a JSON object with two keys:\n"
@@ -404,7 +404,7 @@ def run_comparison_and_notify(db: Session, rfq_number: str, winner_supplier_id: 
     rfq.status = "PO Generated"
     
     summary_message = (
-        f"AI Procurement Agent has completed all negotiations.\n"
+        f"ProcureX Agent has completed all negotiations.\n"
         f"Purchase Order {po_number} has been automatically generated and sent to {winner_supplier.name} "
         f"with a final negotiated price of {winner_quote.currency} {winner_quote.price}/unit "
         f"and lead time {winner_quote.lead_time_days} days."
@@ -477,7 +477,7 @@ def run_comparison_and_notify(db: Session, rfq_number: str, winner_supplier_id: 
             f"- Incoterms: {incoterms}\n\n"
             f"Please review the attached PDF document and reply to confirm order acceptance.\n\n"
             f"Best regards,\n"
-            f"AI Procurement Copilot"
+            f"ProcureX Copilot"
         )
         # Route to custom email override if it was used in initial invitation
         winner_email = winner_supplier.email
@@ -501,7 +501,7 @@ def run_comparison_and_notify(db: Session, rfq_number: str, winner_supplier_id: 
     subject = f"Auto-Released: PO {po_number} for RFQ {rfq_number} - {rfq.item_name}"
     email_body = (
         f"Dear Sathinath,\n\n"
-        f"The AI Procurement Agent has completed the negotiation cycles for RFQ {rfq_number} ({rfq.item_name}) and auto-released the Purchase Order.\n\n"
+        f"The ProcureX Agent has completed the negotiation cycles for RFQ {rfq_number} ({rfq.item_name}) and auto-released the Purchase Order.\n\n"
         f"Details:\n"
         f"- PO Reference: {po_number}\n"
         f"- Awarded Vendor: {winner_supplier.name}\n"
@@ -511,7 +511,7 @@ def run_comparison_and_notify(db: Session, rfq_number: str, winner_supplier_id: 
         f"The PO PDF has been generated and is attached to this email for your records.\n"
         f"A copy has also been emailed directly to the supplier ({winner_supplier.email}).\n\n"
         f"Best regards,\n"
-        f"AI Procurement Agent"
+        f"ProcureX Agent"
     )
     send_real_email_direct(recipient, subject, email_body, attachment_path=pdf_path)
 
@@ -741,12 +741,12 @@ def check_and_process_emails(db: Session, raise_on_error: bool = False):
                                     f"Dear Customer,\n\n"
                                     f"Thank you for reaching out! We have received your RFQ request for '{item_name}' (Quantity: {quantity} {unit}).\n\n"
                                     f"System RFQ Reference: {rfq_number}\n\n"
-                                    f"Our AI Procurement Engine has identified the following potential suppliers for your request:\n"
+                                    f"Our ProcureX Engine has identified the following potential suppliers for your request:\n"
                                     f"{supplier_lines}\n\n"
                                     f"Do you want to start automated procurement & negotiations with these suppliers?\n"
                                     f"Please reply 'YES' to this email to confirm and launch the automated negotiation process.\n\n"
                                     f"Best regards,\n"
-                                    f"AI Procurement Agent"
+                                    f"ProcureX Agent"
                                 )
                                 send_real_email_direct(sender_email, confirm_subject, confirm_body)
                                 logger.info(f"[Automation Engine] Sent initial RFQ confirmation email to customer {sender_email} for {rfq_number}")
@@ -794,11 +794,11 @@ def check_and_process_emails(db: Session, raise_on_error: bool = False):
                                     subj = f"RFQ Invitation: {rfq.item_name} ({rfq_number})"
                                     b_msg = (
                                         f"Dear {s.name} Sales Team,\n\n"
-                                        f"AI is requesting a quotation for {rfq.quantity} {rfq.unit} of {rfq.item_name}.\n"
+                                        f"ProcureX is requesting a quotation for {rfq.quantity} {rfq.unit} of {rfq.item_name}.\n"
                                         f"Required Delivery Location: {rfq.delivery_location or 'Yanbu Site'}\n\n"
                                         f"Please reply directly to this email with your quote (unit price, currency, lead time, and payment terms).\n\n"
                                         f"Best regards,\n"
-                                        f"AI Procurement Agent"
+                                        f"ProcureX Agent"
                                     )
                                     db.add(models.EmailHistory(
                                         rfq_number=rfq_number,
@@ -827,11 +827,11 @@ def check_and_process_emails(db: Session, raise_on_error: bool = False):
                                     f"Dear Customer,\n\n"
                                     f"Thank you for your confirmation!\n\n"
                                     f"Automated procurement negotiations have been initiated for {rfq_number} ({rfq.item_name}).\n"
-                                    f"Our AI Agent has dispatched RFQ requests to {len(matched)} matched suppliers:\n"
+                                    f"ProcureX has dispatched RFQ requests to {len(matched)} matched suppliers:\n"
                                     + "\n".join([f"- {s.name}" for s in matched]) +
                                     f"\n\nWe will negotiate the best prices and terms automatically and notify you once final offers are ready.\n\n"
                                     f"Best regards,\n"
-                                    f"AI Procurement Agent"
+                                    f"ProcureX Agent"
                                 )
                                 send_real_email_direct(sender_email, cust_reply_subj, cust_reply_body)
                                 mail.store(msg_id, '+FLAGS', '\\Seen')
@@ -853,7 +853,7 @@ def check_and_process_emails(db: Session, raise_on_error: bool = False):
                                     f"Dear Customer,\n\n"
                                     f"Understood. The automated procurement process for {rfq_number} ({rfq.item_name}) has been cancelled.\n\n"
                                     f"Best regards,\n"
-                                    f"AI Procurement Agent"
+                                    f"ProcureX Agent"
                                 )
                                 send_real_email_direct(sender_email, cust_reply_subj, cust_reply_body)
                                 mail.store(msg_id, '+FLAGS', '\\Seen')
@@ -1148,7 +1148,7 @@ def check_and_process_emails(db: Session, raise_on_error: bool = False):
                                 rfq_number=rfq_number,
                                 stage="RFQ Sent",
                                 timestamp=datetime.utcnow(),
-                                details=f"AI Agent Counter-Offer (Round {current_round}) sent to {supplier.name}. Proposing {currency} {target_price}/unit."
+                                details=f"ProcureX Counter-Offer (Round {current_round}) sent to {supplier.name}. Proposing {currency} {target_price}/unit."
                             ))
                             db.commit()
                             logger.info(f"Counter-offer (Round {current_round}) sent to {supplier.name} for RFQ {rfq_number}")
@@ -1371,7 +1371,7 @@ def process_inbound_supplier_reply(db: Session, rfq_number: str, supplier_id: in
             rfq_number=rfq_number,
             stage="RFQ Sent",
             timestamp=datetime.utcnow(),
-            details=f"AI Agent Counter-Offer (Round {current_round}) sent to {supplier.name}. Proposing USD {target_price}/unit."
+            details=f"ProcureX Counter-Offer (Round {current_round}) sent to {supplier.name}. Proposing USD {target_price}/unit."
         ))
         db.commit()
     else:
@@ -1579,7 +1579,7 @@ def auto_simulate_campaigns(db: Session):
             else:
                 last_log = logs[0]
                 if last_log.direction == "outbound":
-                    # Last message was sent by the AI Agent. We are waiting for supplier reply.
+                    # Last message was sent by ProcureX. We are waiting for supplier reply.
                     time_passed = (datetime.utcnow() - last_log.sent_at).total_seconds()
                     if time_passed >= delay:
                         round_num = last_log.round_number

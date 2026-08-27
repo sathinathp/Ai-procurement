@@ -55,7 +55,7 @@ try:
             round_number=1,
             direction="outbound",
             subject=f"RFQ Outreach: Spec request for Stretch Film ({rfq_number})",
-            body="Hello Softstandard Polymer Labs Team,\n\nWe are requesting a quote for 2,490 Rolls of Stretch Film to be delivered to our Dammam Warehouse. Please reply with your unit price, lead time, and payment terms.\n\nBest regards,\nAI Procurement Engine",
+            body="Hello Softstandard Polymer Labs Team,\n\nWe are requesting a quote for 2,490 Rolls of Stretch Film to be delivered to our Dammam Warehouse. Please reply with your unit price, lead time, and payment terms.\n\nBest regards,\nProcureX Engine",
             sent_at=now - timedelta(hours=3),
             reply_received=True
         ),
@@ -82,7 +82,7 @@ try:
             round_number=2,
             direction="outbound",
             subject=f"Negotiation Round 2: Target Offer for Stretch Film ({rfq_number})",
-            body="Dear Softstandard Team,\n\nThank you for the initial quote. To proceed, we are targeting a price of $4.95 per roll (10% discount). Can you meet this target or offer your best final price?\n\nRegards,\nAI Procurement Engine",
+            body="Dear Softstandard Team,\n\nThank you for the initial quote. To proceed, we are targeting a price of $4.95 per roll (10% discount). Can you meet this target or offer your best final price?\n\nRegards,\nProcureX Engine",
             sent_at=now - timedelta(hours=2),
             reply_received=True
         ),
@@ -109,7 +109,7 @@ try:
             round_number=3,
             direction="outbound",
             subject=f"Negotiation Round 3: Final Acceptance ({rfq_number})",
-            body="Dear Softstandard Team,\n\nThank you for your final quote. We accept your negotiated unit price of $5.20 per roll with a 5-day delivery lead time. We are submitting this proposal for internal management approval.\n\nRegards,\nAI Procurement Engine",
+            body="Dear Softstandard Team,\n\nThank you for your final quote. We accept your negotiated unit price of $5.20 per roll with a 5-day delivery lead time. We are submitting this proposal for internal management approval.\n\nRegards,\nProcureX Engine",
             sent_at=now - timedelta(hours=1),
             reply_received=True,
             is_final=True
@@ -149,7 +149,7 @@ try:
     ]
 
     summary_msg = (
-        "AI has successfully completed 3 negotiation rounds for Stretch Film. "
+        "ProcureX has successfully completed 3 negotiation rounds for Stretch Film. "
         "Softstandard Polymer Labs offered the best final unit price of $5.20 per roll (5.4% savings from original $5.50 quote), "
         "outperforming PetaBytz Plastics ($5.45) and SABIC Polymers ($5.60). "
         "Softstandard has also reduced lead time to 5 days, maintaining a Low risk profile. "

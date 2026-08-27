@@ -130,7 +130,7 @@ export default function Sidebar({ activeTab, onSelectTab, onLogout, user }) {
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
               </span>
               <span className="brand-logo-font text-[12px] font-extrabold text-white uppercase tracking-[0.18em] leading-none">
-                AI Procurement
+                ProcureX
               </span>
             </div>
             <span className="brand-logo-font text-[8px] text-zinc-500 font-bold uppercase tracking-[0.22em] mt-2.5 ml-4 leading-none">
@@ -173,7 +173,7 @@ export default function Sidebar({ activeTab, onSelectTab, onLogout, user }) {
             })}
           </div>
 
-          {/* Autonomous AI Agent (Special Feature - Rendered last with unique design) */}
+          {/* Autonomous ProcureX (Special Feature - Rendered last with unique design) */}
           <div className="mt-6 pt-4 border-t border-zinc-800/40 space-y-2">
             <div className="flex items-center justify-between px-3">
               <span className="text-[9px] font-black text-violet-400 uppercase tracking-widest flex items-center gap-1">
@@ -201,7 +201,7 @@ export default function Sidebar({ activeTab, onSelectTab, onLogout, user }) {
                     : 'text-violet-400/80 group-hover:text-violet-300'
                 }`}
               />
-              <span className={activeTab === 'ai_agent' ? 'text-white' : 'text-zinc-200'}>Autonomous AI Agent</span>
+              <span className={activeTab === 'ai_agent' ? 'text-white' : 'text-zinc-200'}>Autonomous ProcureX</span>
             </button>
           </div>
 

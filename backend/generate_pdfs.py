@@ -81,7 +81,7 @@ for idx in range(1, 101):
     story = []
     
     # Header block
-    story.append(Paragraph("NEPROPLAST MANUFACTURING CORP", title_style))
+    story.append(Paragraph("PROCUREX MANUFACTURING CORP", title_style))
     story.append(Paragraph(f"INQUIRY FOR PRODUCT SUPPLY • REQUEST FOR QUOTATION (RFQ)", subtitle_style))
     story.append(Spacer(1, 10))
     
@@ -128,7 +128,7 @@ for idx in range(1, 101):
     # Signature placeholder
     story.append(Paragraph("___________________________", body_style))
     story.append(Paragraph("Authorized Procurement Manager", bold_label))
-    story.append(Paragraph("Neproplast Supply Chain Division", body_style))
+    story.append(Paragraph("ProcureX Supply Chain Division", body_style))
     
     doc.build(story)
 

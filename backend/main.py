@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 import json
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query, WebSocket, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # Ensure tables are created
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Procurement AI Copilot API", version="1.0.0")
+app = FastAPI(title="ProcureX Copilot API", version="1.0.0")
 
 # CORS middleware config
 app.add_middleware(
@@ -88,11 +88,11 @@ def generate_negotiation_dialogue(rfq_item: str, supplier_name: str, orig_price:
         f"Our target rate is USD {requested_price:.2f}/unit with Net 60 Days payment terms to match our corporate policies.\n"
         f"Please let us know if you can accommodate this so we can submit your bid for management shortlist.\n\n"
         f"Best regards,\n"
-        f"AI Procurement Agent"
+        f"ProcureX Agent"
     )
     
     default_supplier = (
-        f"Dear AI Procurement Team,\n\n"
+        f"Dear ProcureX Team,\n\n"
         f"Thank you for your follow-up. We appreciate your partnership.\n"
         f"While we cannot meet your target of USD {requested_price:.2f}, we are pleased to offer a revised rate of USD {counter_price:.2f}/unit.\n"
         f"We can also adjust payment terms to Net 45 Days for this order. We hope this works for you.\n\n"
@@ -106,12 +106,12 @@ def generate_negotiation_dialogue(rfq_item: str, supplier_name: str, orig_price:
     try:
         client = OpenAI(api_key=openai_key.strip())
         system_prompt = (
-            "You are an expert AI Procurement Negotiator. Generate a realistic email negotiation exchange between:\n"
-            "1. AI Procurement Agent (Assistant)\n"
+            "You are an expert ProcureX Negotiator. Generate a realistic email negotiation exchange between:\n"
+            "1. ProcureX Agent (Assistant)\n"
             "2. The Supplier's Sales Manager (User)\n\n"
             "Ensure the emails sound authentic, formal, and specific to the procurement domain. Do not use generic placeholders.\n\n"
             "Generate a JSON object with two keys:\n"
-            "- agent_email: A professional email from AI Procurement Agent asking for the requested price and Net 60 Days terms.\n"
+            "- agent_email: A professional email from ProcureX Agent asking for the requested price and Net 60 Days terms.\n"
             "- supplier_email: A realistic response email from the supplier. They should decline the target, offer the counter-price, and propose Net 45 Days payment terms.\n\n"
             "Output ONLY a raw JSON string."
         )
@@ -168,7 +168,7 @@ def send_real_email(to_email: str, subject: str, body: str) -> bool:
                 subject = f"[Rerouted from {to_email}] {subject}"
                 to_email = "sathinath.padhi@petabytz.com"
 
-            from_display = "AI Procurement Copilot"
+            from_display = "ProcureX Copilot"
             from_header = f'"{from_display}" <{resend_from}>'
             
             payload = {
@@ -213,7 +213,7 @@ def send_real_email(to_email: str, subject: str, body: str) -> bool:
 
     try:
         msg = MIMEMultipart()
-        from_display = "AI Procurement Copilot"
+        from_display = "ProcureX Copilot"
         msg['From'] = f'"{from_display}" <{smtp_username}>'
         msg['To'] = to_email
         msg['Subject'] = subject
@@ -453,7 +453,7 @@ def sync_incoming_emails(db: Session):
 
 @app.get("/")
 def read_root():
-    return {"message": "AI Procurement Copilot API is running."}
+    return {"message": "ProcureX Copilot API is running."}
 
 # =====================================================================
 # MODULE 1: Procurement Dashboard
@@ -524,15 +524,15 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         # Get real supplier delivery risks from database
         high_medium_risk_suppliers = db.query(models.Supplier).filter(
             models.Supplier.risk_level.in_(["Medium", "High"])
-        ).order_by(models.Supplier.risk_level.desc()).all()
+        ).order_by(models.Supplier.risk_level.desc()).limit(10).all()
         
         real_delivery_risks = [
             {"id": s.id, "supplier": s.name, "risk": s.risk_level}
             for s in high_medium_risk_suppliers
         ]
 
-        # Get real RFQs
-        attention_rfqs = db.query(models.RFQ).order_by(models.RFQ.created_at.desc()).all()
+        # Get real RFQs (limit to 10 most recent to prevent N+1 performance bottleneck)
+        attention_rfqs = db.query(models.RFQ).order_by(models.RFQ.created_at.desc()).limit(10).all()
         real_rfqs_attention = []
         for r in attention_rfqs:
             latest_event = db.query(models.RFQTimeline).filter(
@@ -1668,7 +1668,7 @@ def generate_email_draft(data: Dict[str, Any], db: Session = Depends(get_db)):
             from openai import OpenAI
             client = OpenAI(api_key=OPENAI_API_KEY)
             prompt = (
-                f"Draft a formal procurement email on behalf of Neproplast requesting a quotation.\n"
+                f"Draft a formal procurement email on behalf of ProcureX requesting a quotation.\n"
                 f"RFQ Details:\n"
                 f"- RFQ Number: {rfq.rfq_number}\n"
                 f"- Item Name: {rfq.item_name}\n"
@@ -2217,7 +2217,7 @@ def generate_purchase_order(data: Dict[str, Any], db: Session = Depends(get_db))
             f"- Incoterms: {incoterms}\n\n"
             f"Please review the attached PDF document and reply to confirm order acceptance.\n\n"
             f"Best regards,\n"
-            f"AI Procurement Copilot"
+            f"ProcureX Copilot"
         )
         # Route to custom email override if it was used in initial invitation
         winner_email = supplier.email
@@ -2604,7 +2604,7 @@ def send_po_email(po_number: str, db: Session = Depends(get_db)):
             f"- Incoterms: {incoterms}\n\n"
             f"Please review the attached PDF document and reply to confirm order acceptance.\n\n"
             f"Best regards,\n"
-            f"AI Procurement Copilot"
+            f"ProcureX Copilot"
         )
         
         # Route to custom email override if it was used in initial invitation
@@ -2757,12 +2757,227 @@ def simulate_rfp_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
 
         # Select 30 suppliers
         item_lower = rfq.item_name.lower()
-        category_matches = [s for s in suppliers if s.categories and any(cat.lower() in item_lower for cat in s.categories.split(","))]
-        product_matches = [s for s in suppliers if s.products and item_lower in s.products.lower()]
-        
-        matches = list(set(category_matches + product_matches))
-        pool = matches if len(matches) >= 30 else list(set(matches + suppliers))
-        
+        if "pump" in item_lower or "dosing" in item_lower:
+            # Custom Veolia Dosing Pump Simulation!
+            pump_suppliers = db.query(models.Supplier).filter(
+                (models.Supplier.name.like("%Pump%")) | 
+                (models.Supplier.name.like("%Flow%")) | 
+                (models.Supplier.name.like("%Fluid%")) |
+                (models.Supplier.name.like("%Dosing%"))
+            ).all()
+            if not pump_suppliers:
+                pump_suppliers = db.query(models.Supplier).limit(12).all()
+                
+            # Clear existing quotes for this RFQ to make it fresh
+            db.query(models.QuoteResponse).filter(models.QuoteResponse.rfq_number == rfq_number).delete()
+            db.commit()
+            
+            # Map specific quote prices and lead times
+            quotes = []
+            quote_metrics = {
+                "Houston Pump Solutions": {"price": 2500.0, "final_price": 2350.0, "lead_time": 15, "final_lead_time": 14, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"},
+                "Gulf Flow Control": {"price": 2650.0, "final_price": 2650.0, "lead_time": 14, "final_lead_time": 14, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 30 Days"},
+                "Apex Fluids Corp": {"price": 2600.0, "final_price": 2500.0, "lead_time": 15, "final_lead_time": 15, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"},
+                "Standard Dosing Systems": {"price": 2400.0, "final_price": 2300.0, "lead_time": 18, "final_lead_time": 18, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 30 Days"},
+                "Texas Pump Depot": {"price": 2450.0, "final_price": 2380.0, "lead_time": 16, "final_lead_time": 16, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"},
+                "Vector Fluidics": {"price": 2550.0, "final_price": 2480.0, "lead_time": 17, "final_lead_time": 17, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 30 Days"},
+                "Innovate Flow Tech": {"price": 2300.0, "final_price": 2250.0, "lead_time": 20, "final_lead_time": 20, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"},
+                "Precision Metering Co": {"price": 2350.0, "final_price": 2280.0, "lead_time": 18, "final_lead_time": 18, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"},
+                "Alpha Pumps & Valves": {"price": 2400.0, "final_price": 2320.0, "lead_time": 19, "final_lead_time": 19, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"},
+                "Budget Pumps Inc": {"price": 1900.0, "final_price": 1900.0, "lead_time": 30, "final_lead_time": 30, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 30 Days"},
+                "Munich Dosing Systems": {"price": 2300.0, "final_price": 2150.0, "lead_time": 12, "final_lead_time": 12, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"},
+                "Tokyo Precision Flow": {"price": 2380.0, "final_price": 2220.0, "lead_time": 13, "final_lead_time": 13, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"},
+            }
+            
+            negotiation_logs = []
+            for s in pump_suppliers:
+                metrics = quote_metrics.get(s.name, {"price": 2400.0, "final_price": 2300.0, "lead_time": 15, "final_lead_time": 15, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"})
+                q = models.QuoteResponse(
+                    rfq_number=rfq_number,
+                    supplier_id=s.id,
+                    price=metrics["final_price"],
+                    currency="USD",
+                    moq=1.0,
+                    lead_time_days=metrics["final_lead_time"],
+                    payment_terms=metrics["final_payment_terms"],
+                    incoterms="CIF",
+                    warranty="12 Months",
+                    validity="60 Days",
+                    delivery_details="FOB/CIF standard delivery.",
+                    status="Quotation Received"
+                )
+                db.add(q)
+                db.flush()
+                quotes.append(q)
+                
+                # Populate NegotiationLog for Munich Dosing Systems, Houston Pump Solutions, and Budget Pumps Inc
+                if s.name in ["Munich Dosing Systems", "Houston Pump Solutions", "Budget Pumps Inc"]:
+                    now = datetime.utcnow()
+                    orig = metrics["price"]
+                    final = metrics["final_price"]
+                    lt = metrics["lead_time"]
+                    target = round(orig * 0.9, 2)
+                    
+                    # Round 1 Inbound
+                    db.add(models.NegotiationLog(
+                        rfq_number=rfq_number, supplier_id=s.id, supplier_email=s.email, round_number=1, direction="inbound",
+                        subject=f"Quote for RFQ {rfq_number}", body=f"Dear ProcureX Team, We submit our quotation of ${orig}/unit. Lead time is {lt} days.",
+                        extracted_price=orig, extracted_currency="USD", extracted_lead_time=lt, sent_at=now - timedelta(minutes=5), reply_received=True
+                    ))
+                    # Round 1 Outbound (Counter-offer)
+                    db.add(models.NegotiationLog(
+                        rfq_number=rfq_number, supplier_id=s.id, supplier_email=s.email, round_number=1, direction="outbound",
+                        subject=f"RE: Quote for RFQ {rfq_number}", body=f"Dear {s.name} team, thank you for your offer. Our target price is ${target}/unit. Can you adjust terms?",
+                        extracted_price=target, extracted_currency="USD", sent_at=now - timedelta(minutes=4)
+                    ))
+                    
+                    # Round 2 Inbound (Final offer)
+                    if s.name == "Budget Pumps Inc":
+                        body_r2 = f"We cannot offer any further discount. Our price of ${orig}/unit is firm. Lead time is 30 days."
+                        is_final = True
+                    elif s.name == "Munich Dosing Systems":
+                        body_r2 = f"Thank you for the counter-offer. We accept a revised price of ${final}/unit as our best and final offer with a lead time of 12 days."
+                        is_final = True
+                    else:
+                        body_r2 = f"We can offer a revised price of ${final}/unit with 14 days lead time."
+                        is_final = False
+                        
+                    db.add(models.NegotiationLog(
+                        rfq_number=rfq_number, supplier_id=s.id, supplier_email=s.email, round_number=2, direction="inbound",
+                        subject=f"RE: Target Price for RFQ {rfq_number}", body=body_r2,
+                        extracted_price=final, extracted_currency="USD", extracted_lead_time=metrics["final_lead_time"], sent_at=now - timedelta(minutes=3), reply_received=True, is_final=is_final
+                    ))
+                    
+                    # Add EmailHistory entries for them
+                    db.add(models.EmailHistory(
+                        rfq_number=rfq_number, supplier_id=s.id, supplier_email=s.email, subject=f"RFQ Invitation: Industrial Chemical Dosing Pump - {rfq_number}",
+                        body=f"Dear {s.name} team, we invite you to quote...", type="RFQ Invitation", sent_at=now - timedelta(hours=1), response_received=True
+                    ))
+                    db.add(models.EmailHistory(
+                        rfq_number=rfq_number, supplier_id=s.id, supplier_email=s.email, subject=f"RE: Quote negotiation - {rfq_number}",
+                        body=body_r2, type="Negotiation Inbox", sent_at=now - timedelta(minutes=3), response_received=True
+                    ))
+                    
+                    negotiation_logs.append({
+                        "supplier_name": s.name,
+                        "original_price": orig,
+                        "negotiated_price": final,
+                        "original_terms": "Net 30 Days",
+                        "negotiated_terms": metrics["final_payment_terms"],
+                        "chat_history": [
+                            {"role": "user", "content": f"Dear ProcureX Team, We submit our quotation of ${orig}/unit. Lead time is {lt} days."},
+                            {"role": "assistant", "content": f"Dear {s.name} team, thank you for your offer. Our target price is ${target}/unit. Can you adjust terms?"},
+                            {"role": "user", "content": body_r2}
+                        ]
+                    })
+            
+            db.commit()
+            
+            # Calculate scores
+            prices = [q.price for q in quotes]
+            min_price = min(prices) if prices else 1.0
+            max_price = max(prices) if prices else 2.0
+            price_range = max_price - min_price if max_price != min_price else 1.0
+            
+            shortlist = []
+            for q in quotes:
+                s = q.supplier
+                price_score = 100.0 - ((q.price - min_price) / price_range * 100.0) if price_range > 0 else 100.0
+                delivery_score = s.delivery_score
+                quality_score = s.quality_score
+                risk_score = 100.0 if s.risk_level == "Low" else (70.0 if s.risk_level == "Medium" else 40.0)
+                
+                weighted_score = round(
+                    (price_score * 0.40) + 
+                    (delivery_score * 0.30) + 
+                    (quality_score * 0.20) + 
+                    (risk_score * 0.10),
+                    1
+                )
+                
+                shortlist.append({
+                    "supplier_id": s.id,
+                    "supplier_name": s.name,
+                    "country": s.country,
+                    "rating": s.rating,
+                    "price": q.price,
+                    "lead_time": q.lead_time_days,
+                    "quality_score": s.quality_score,
+                    "delivery_score": s.delivery_score,
+                    "risk_level": s.risk_level,
+                    "price_score": round(price_score, 1),
+                    "weighted_score": weighted_score
+                })
+            
+            shortlist.sort(key=lambda x: x["weighted_score"], reverse=True)
+            top_3 = shortlist[:3]
+            
+            rfq.status = "Under Comparison"
+            
+            # Generate the WorkflowNotification card (Pending Approval)
+            db.query(models.WorkflowNotification).filter(models.WorkflowNotification.rfq_number == rfq_number).delete()
+            
+            best_bid = shortlist[0]
+            summary_msg = (
+                "AI has successfully completed 2 negotiation rounds. "
+                "Munich Dosing Systems (Oppora-discovered) is recommended for award, offering the lowest conforming negotiated price of $2,150/unit "
+                "(6.5% savings from original $2,300 quote). Houston Pump Solutions is the premium alternative ($2,350/unit). "
+                "Budget Pumps Inc offered $1,900/unit but was REJECTED because their 30-day lead time violates the 21-day Houston site deadline and carries high delivery risk (62% compliance score). "
+                "Action Required: Approve this proposal to generate the Purchase Order and sync to Odoo ERP."
+            )
+            
+            comparison_data = [
+                {"supplier_id": q.supplier_id, "supplier_name": q.supplier.name, "price": q.price, "currency": q.currency, "lead_time_days": q.lead_time_days, "payment_terms": q.payment_terms, "rating": q.supplier.rating, "delivery_score": q.supplier.delivery_score, "risk_level": q.supplier.risk_level, "status": "Best Offer" if q.supplier.name == "Munich Dosing Systems" else ("Matched" if q.supplier.name == "Houston Pump Solutions" else ("High Delivery Risk" if q.supplier.name == "Budget Pumps Inc" else "Conforming"))}
+                for q in quotes if q.supplier.name in ["Munich Dosing Systems", "Houston Pump Solutions", "Budget Pumps Inc"]
+            ]
+            
+            notification = models.WorkflowNotification(
+                rfq_number=rfq_number,
+                rfq_item=rfq.item_name,
+                type="approval_required",
+                status="pending",
+                recommended_supplier=best_bid["supplier_name"],
+                recommended_price=best_bid["price"],
+                recommended_currency="USD",
+                comparison_json=json.dumps(comparison_data),
+                summary_message=summary_msg,
+                notification_email_sent=True,
+                created_at=datetime.utcnow()
+            )
+            db.add(notification)
+            
+            db.add(models.RFQTimeline(
+                rfq_number=rfq_number,
+                stage="Comparison Generated",
+                timestamp=datetime.utcnow(),
+                details=f"Broad RFP campaign launched. Received {len(quotes)} quotes. AI conducted negotiation sessions with top bidders & compiled shortlist."
+            ))
+            db.commit()
+            
+            quotes_list = []
+            for q in quotes:
+                quotes_list.append({
+                    "supplier_id": q.supplier_id,
+                    "supplier_name": q.supplier.name,
+                    "price": q.price,
+                    "lead_time_days": q.lead_time_days,
+                    "payment_terms": q.payment_terms,
+                    "incoterms": q.incoterms,
+                    "rating": q.supplier.rating,
+                    "delivery_score": q.supplier.delivery_score,
+                    "risk_level": q.supplier.risk_level
+                })
+                
+            return {
+                "success": True,
+                "rfq_number": rfq_number,
+                "quotes_received": len(quotes),
+                "all_quotes": quotes_list,
+                "negotiations": negotiation_logs,
+                "shortlist": top_3
+            }
+            
+        # Select 30 suppliers (normal fallback)
         import random
         selected_suppliers = random.sample(pool, min(30, len(pool)))
 
@@ -2869,7 +3084,7 @@ def simulate_rfp_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
                         f"Target Delivery Date: {rfq.required_date or 'As soon as possible'}\n\n"
                         f"Please reply directly to this email with your quote (Price per unit, currency, payment terms, and lead time) to begin the negotiation process.\n\n"
                         f"Best regards,\n"
-                        f"AI Procurement Agent"
+                        f"ProcureX Agent"
                     )
                     send_real_email_direct(supplier_email, outbound_subject, outbound_body)
                     logger.info(f"Dispatched real outreach email to test supplier: {supplier_email}")
@@ -3168,7 +3383,7 @@ def sync_to_dynamics_erp(data: Dict[str, Any], db: Session = Depends(get_db)):
         object_type = data.get("object_type")
         object_id = data.get("object_id")
         
-        erp_base_url = os.getenv("DYNAMICS_ERP_URL", "https://neproplast-erp.operations.dynamics.com").rstrip("/")
+        erp_base_url = os.getenv("DYNAMICS_ERP_URL", "https://procurex-erp.operations.dynamics.com").rstrip("/")
         
         url = ""
         method = "POST"
@@ -3601,7 +3816,7 @@ def get_erp_config(db: Session = Depends(get_db)):
     if not config:
         config = models.ERPConfig(
             erp_system="Dynamics365",
-            base_url="https://neproplast-prod.operations.dynamics.com/data",
+            base_url="https://procurex-prod.operations.dynamics.com/data",
             tenant_id="72f988bf-86f1-41af-91ab-2d7cd011db47",
             client_id="d365-ai-procurement-app-client-id",
             client_secret="••••••••••••••••••••••••••••",
@@ -3654,7 +3869,7 @@ def save_erp_config(cfg_data: dict, db: Session = Depends(get_db)):
 @app.post("/api/erp/test-connection")
 def test_erp_connection(cfg_data: dict, db: Session = Depends(get_db)):
     erp_system = cfg_data.get("erp_system", "Dynamics365")
-    base_url = cfg_data.get("base_url", "https://neproplast-prod.operations.dynamics.com/data")
+    base_url = cfg_data.get("base_url", "https://procurex-prod.operations.dynamics.com/data")
     
     # Perform a live OData handshake check
     return {
@@ -4361,12 +4576,12 @@ def download_procurement_audit_pdf(db: Session = Depends(get_db)):
     body_style = ParagraphStyle('BodyStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=14, textColor=colors.HexColor('#334155'))
     header_style = ParagraphStyle('HeaderStyle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, textColor=colors.white)
     
-    story.append(Paragraph("AI PROCUREMENT CORP", title_style))
-    story.append(Paragraph("EXECUTIVE AI PROCUREMENT & ERP AUDIT REPORT", subtitle_style))
+    story.append(Paragraph("PROCUREX CORP", title_style))
+    story.append(Paragraph("EXECUTIVE PROCUREX & ERP AUDIT REPORT", subtitle_style))
     story.append(Spacer(1, 10))
     
     overview_text = (
-        f"This document provides an executive summary of Neproplast's AI-automated procurement operations "
+        f"This document provides an executive summary of ProcureX's AI-automated procurement operations "
         f"and Microsoft Dynamics 365 ERP data synchronization. The system has governed <b>{total_rfqs} Requisitions</b>, "
         f"<b>{total_suppliers} Verified Suppliers</b>, and <b>{total_pos} Released Purchase Orders</b> with a cumulative spend of "
         f"<b>USD {total_spend:,.2f}</b>."
@@ -4416,7 +4631,7 @@ def download_procurement_audit_pdf(db: Session = Depends(get_db)):
     story.append(t_sup)
     story.append(Spacer(1, 25))
     
-    sign_text = f"Audit Report Certified by Neproplast AI Procurement Engine & Microsoft Dynamics 365 Link.<br/>Generated on: {datetime.now().strftime('%B %d, %Y - %H:%M UTC')}"
+    sign_text = f"Audit Report Certified by ProcureX Engine & Microsoft Dynamics 365 Link.<br/>Generated on: {datetime.now().strftime('%B %d, %Y - %H:%M UTC')}"
     story.append(Paragraph(sign_text, body_style))
     
     doc.build(story)
@@ -4429,16 +4644,10 @@ def download_procurement_audit_pdf(db: Session = Depends(get_db)):
 @app.post("/api/db/seed")
 def trigger_seed(db: Session = Depends(get_db)):
     try:
-        from seed import seed_database
+        from seed_veolia_demo import seed_veolia_demo
         
-        # Drop and recreate schema to apply table updates & new columns
-        models.Base.metadata.drop_all(bind=engine)
-        models.Base.metadata.create_all(bind=engine)
-        
-        # Seed the database
-        seed_database()
-        
-        return {"success": True, "message": "Database successfully re-seeded with 100 suppliers."}
+        seed_veolia_demo()
+        return {"success": True, "message": "Database successfully re-seeded with 100 suppliers for Veolia Dosing Pumps demo."}
     except Exception as e:
         logger.error(f"Error seeding database: {e}")
         db.rollback()
@@ -4666,7 +4875,7 @@ def approve_notification(id: int, db: Session = Depends(get_db)):
                 f"- Incoterms: {incoterms}\n\n"
                 f"Please review the details above and reply to this email to confirm order acceptance.\n\n"
                 f"Best regards,\n"
-                f"AI Procurement Copilot"
+                f"ProcureX Copilot"
             )
             # Route to custom email override if it was used in initial invitation
             winner_email = supplier.email
@@ -4777,7 +4986,7 @@ def launch_real_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
                 f"Target Delivery Date: {rfq.required_date or 'As soon as possible'}\n\n"
                 f"Please reply directly to this email with your quote (Price per unit, currency, payment terms, and lead time) to begin the negotiation process.\n\n"
                 f"Best regards,\n"
-                f"AI Procurement Agent"
+                f"ProcureX Agent"
             )
             
             # Record in EmailHistory (use dispatch_email for the email field, keep DB email untouched)
@@ -4846,7 +5055,7 @@ def inject_mock_reply(data: Dict[str, Any], db: Session = Depends(get_db)):
 @app.post("/api/campaign/agree-to-price")
 def agree_to_target_price(data: Dict[str, Any], db: Session = Depends(get_db)):
     """
-    Supplier agrees to the AI agent's target price for a given RFQ.
+    Supplier agrees to the ProcureX agent's target price for a given RFQ.
     Saves the final QuoteResponse, marks the inbound log as final, then
     ALWAYS triggers run_comparison_and_notify to auto-generate the PO and
     send confirmation emails — regardless of whether EmailHistory invitation

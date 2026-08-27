@@ -193,7 +193,7 @@ def setup_test_records(tester_email):
 
 def run_self_negotiation_workflow(rfq_num, supplier_id):
     print("\n--- [4] Starting Fully Automated Self-Negotiation Workflow ---")
-    print("This mode acts as both the AI Agent and the Supplier using your credentials.")
+    print("This mode acts as both the ProcureX Agent and the Supplier using your credentials.")
     from database import SessionLocal
     import models
     from automation_engine import send_real_email_direct, check_and_process_emails
@@ -215,11 +215,11 @@ def run_self_negotiation_workflow(rfq_num, supplier_id):
             f"- Required Delivery Date: {rfq.expected_delivery_date}\n\n"
             f"Please reply directly to this email with your pricing and lead time to proceed.\n\n"
             f"Best regards,\n"
-            f"AI Procurement Agent\n"
-            f"Neproplast Co."
+            f"ProcureX Agent\n"
+            f"ProcureX Co."
         )
         
-        print(f"Step 1: AI Agent sending outreach email to {supplier.email}...")
+        print(f"Step 1: ProcureX Agent sending outreach email to {supplier.email}...")
         sent = send_real_email_direct(supplier.email, subject, body)
         if not sent:
             print("[FAIL] Failed to send outreach email.")
@@ -252,7 +252,7 @@ def run_self_negotiation_workflow(rfq_num, supplier_id):
         # 2. Simulate Supplier reply by sending a quote email to IMAP_USERNAME
         supplier_reply_subject = f"Re: Inquiry: RFQ for PVC Resin K-67 - {rfq_num}"
         supplier_reply_body = (
-            f"Dear Neproplast team,\n\n"
+            f"Dear ProcureX team,\n\n"
             f"We can supply {rfq.item_name} at USD 1400.00 per MT with 10 days lead time.\n"
             f"Payment terms: Net 30 Days. Incoterms: CIF.\n\n"
             f"Best regards,\n"
@@ -283,10 +283,10 @@ def run_self_negotiation_workflow(rfq_num, supplier_id):
         ).first()
         
         if not inbound_1:
-            print("[FAIL] AI Agent did not detect or process the supplier quote email via IMAP!")
+            print("[FAIL] ProcureX Agent did not detect or process the supplier quote email via IMAP!")
             return False
             
-        print(f"[OK] AI Agent successfully read quote: USD {inbound_1.extracted_price} (Lead Time: {inbound_1.extracted_lead_time} days)")
+        print(f"[OK] ProcureX Agent successfully read quote: USD {inbound_1.extracted_price} (Lead Time: {inbound_1.extracted_lead_time} days)")
         
         # Verify Round 1 Outbound (Counter-Offer) was generated and sent
         outbound_1 = db.query(models.NegotiationLog).filter_by(
@@ -294,10 +294,10 @@ def run_self_negotiation_workflow(rfq_num, supplier_id):
         ).first()
         
         if not outbound_1:
-            print("[FAIL] AI Agent failed to generate and send a counter-offer!")
+            print("[FAIL] ProcureX Agent failed to generate and send a counter-offer!")
             return False
             
-        print(f"[OK] AI Agent sent counter-offer of USD {outbound_1.extracted_price} to supplier.")
+        print(f"[OK] ProcureX Agent sent counter-offer of USD {outbound_1.extracted_price} to supplier.")
         
         # Wait for delivery of counter-offer
         print("Waiting 10 seconds for counter-offer email to deliver...")
@@ -306,7 +306,7 @@ def run_self_negotiation_workflow(rfq_num, supplier_id):
         # 4. Simulate Supplier accepting counter-offer with final revised quote
         supplier_final_subject = f"Re: {outbound_1.subject}"
         supplier_final_body = (
-            f"Dear Neproplast,\n\n"
+            f"Dear ProcureX,\n\n"
             f"We accept your counter-offer target of USD 1260 but our absolute final price is USD 1300.00 per MT.\n"
             f"Lead time: 8 days. Payment terms: Net 45 Days.\n\n"
             f"Best regards,\n"
@@ -336,10 +336,10 @@ def run_self_negotiation_workflow(rfq_num, supplier_id):
         ).first()
         
         if not inbound_2:
-            print("[FAIL] AI Agent did not process the final supplier response via IMAP!")
+            print("[FAIL] ProcureX Agent did not process the final supplier response via IMAP!")
             return False
             
-        print(f"[OK] AI Agent logged final supplier quote: USD {inbound_2.extracted_price} (Lead Time: {inbound_2.extracted_lead_time} days)")
+        print(f"[OK] ProcureX Agent logged final supplier quote: USD {inbound_2.extracted_price} (Lead Time: {inbound_2.extracted_lead_time} days)")
         
         # Verify QuoteResponse is updated
         quote = db.query(models.QuoteResponse).filter_by(rfq_number=rfq_num, supplier_id=supplier_id).first()
@@ -492,7 +492,7 @@ def run_local_simulation(rfq_num, supplier_id):
 
 if __name__ == "__main__":
     print("=================================================================")
-    print("    NEPROPLAST AI COPILOT: INTEGRATION & WORKFLOW VALIDATOR      ")
+    print("    PROCUREX COPILOT: INTEGRATION & WORKFLOW VALIDATOR      ")
     print("=================================================================")
     
     print("\nRunning Environment & Credentials Check...")

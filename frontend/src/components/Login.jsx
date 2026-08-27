@@ -179,8 +179,8 @@ export default function Login({ onLogin }) {
             </div>
           </div>
           <div className="space-y-1">
-            <h2 className="text-base font-extrabold text-white tracking-wide uppercase">AI Procurement Portal</h2>
-            <p className="text-[10px] text-blue-400 font-bold tracking-widest uppercase">Procurement AI</p>
+            <h2 className="text-base font-extrabold text-white tracking-wide uppercase">ProcureX Portal</h2>
+            <p className="text-[10px] text-blue-400 font-bold tracking-widest uppercase">ProcureX</p>
           </div>
         </div>
 
@@ -264,7 +264,7 @@ export default function Login({ onLogin }) {
 
         <div className="flex items-center justify-center gap-1.5 text-[9px] text-slate-500 text-center font-bold pt-4 border-t border-slate-900/40">
           <Shield size={10} className="text-blue-500/50" />
-          <span>AI Procurement Portal v1.0.0</span>
+          <span>ProcureX Portal v1.0.0</span>
         </div>
 
       </div>

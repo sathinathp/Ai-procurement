@@ -45,8 +45,8 @@ def wait_for_user(prompt_msg="Press Enter to advance to the next step..."):
     input(f"\n{BOLD}{YELLOW}>> {prompt_msg}{RESET}")
 
 def run_demo():
-    print_banner("NEPROPLAST AI PROCUREMENT: END-TO-END WORKFLOW SIMULATOR")
-    print_info("This script will guide you step-by-step through the live demo.")
+    print_banner("PROCUREX: END-TO-END WORKFLOW SIMULATOR (VEOLIA DEMO)")
+    print_info("This script will guide you step-by-step through the live Veolia dosing pump demo.")
     print_info("Open your browser dashboard at http://localhost:5173 (or your local frontend URL).")
     
     db = SessionLocal()
@@ -70,23 +70,23 @@ def run_demo():
         # STEP 1: RFQ Creation & Ingestion
         # ----------------------------------------------------
         print_step(1, "RFQ INGESTION & DOCUMENT PARSING")
-        print_info("A new procurement request has been uploaded to the AI Agent.")
-        print_info("Item: PVC Resin K-67 | Quantity: 150.0 MT | Site: Jeddah Plant")
+        print_info("A new procurement request has been uploaded to the ProcureX Agent.")
+        print_info("Item: Industrial Chemical Dosing Pump | Quantity: 12.0 Units | Site: Houston Site")
         
         new_rfq = models.RFQ(
             rfq_number=rfq_num,
-            project_name="PVC Resin Urgent Supply Campaign",
+            project_name="Veolia Houston Site Pump Refill",
             department="Procurement",
-            required_date=(datetime.now() + timedelta(days=20)).date(),
-            item_name="PVC Resin K-67",
-            item_code="ITM-RAW-PVC-K67",
-            description="Premium PVC Resin K-67 for extruding operations. High viscosity requested.",
-            quantity=150.0,
-            unit="MT",
-            specifications="K-Value: 67, Apparent Density: 0.55 g/ml, Volatiles < 0.3%",
+            required_date=(datetime.now() + timedelta(days=21)).date(),
+            item_name="Industrial Chemical Dosing Pump",
+            item_code="ITM-PMP-120",
+            description="Industrial Chemical Dosing Pump, heavy duty, diaphragm type, chemical resistant for Houston site.",
+            quantity=12.0,
+            unit="Units",
+            specifications="Capacity: 120 L/h, Pressure: 10 bar, 4-20mA control.",
             priority="High",
-            delivery_location="Jeddah Plant",
-            expected_delivery_date=(datetime.now() + timedelta(days=18)).date(),
+            delivery_location="Houston Site",
+            expected_delivery_date=(datetime.now() + timedelta(days=21)).date(),
             status="Created",
             created_at=datetime.utcnow()
         )
@@ -109,42 +109,47 @@ def run_demo():
         # STEP 2: Stock Check & Supplier Matching
         # ----------------------------------------------------
         print_step(2, "INVENTORY VERIFICATION & SUPPLIER MATCHING")
-        print_info("Checking warehouse stock levels for PVC Resin...")
+        print_info("Checking warehouse stock levels for Dosing Pumps...")
         
-        # Get or seed PVC Resin inventory stock
-        pvc_inv = db.query(models.InventoryItem).filter(models.InventoryItem.item_name == "PVC Resin").first()
+        pvc_inv = db.query(models.InventoryItem).filter(models.InventoryItem.item_name == "Industrial Chemical Dosing Pump").first()
         if not pvc_inv:
-            pvc_inv = models.InventoryItem(item_name="PVC Resin", stock_level=85.0, min_safety_stock=50.0, unit="MT")
+            pvc_inv = models.InventoryItem(item_name="Industrial Chemical Dosing Pump", stock_level=0.0, min_safety_stock=2.0, unit="Units")
             db.add(pvc_inv)
             db.commit()
             
-        print_info(f"Warehouse Inventory State: Stock = {pvc_inv.stock_level} MT | Min Safety Stock = {pvc_inv.min_safety_stock} MT")
-        stock_deficit = 150.0 - (pvc_inv.stock_level - pvc_inv.min_safety_stock)
-        print_warning(f"Calculated Deficit: {stock_deficit} MT. Sourcing check PASSED (deficit confirmed).")
+        print_info(f"Warehouse Inventory State: Stock = {pvc_inv.stock_level} Units | Min Safety Stock = {pvc_inv.min_safety_stock} Units")
+        stock_deficit = 12.0
+        print_warning(f"Calculated Deficit: {stock_deficit} Units. Sourcing check PASSED (deficit confirmed).")
         
         # Matching suppliers
-        suppliers = db.query(models.Supplier).filter(models.Supplier.name.in_(["SABIC Polymers", "Tasnee", "Oman Resin Co."])).all()
-        if not suppliers or len(suppliers) < 3:
-            # Re-seed if needed
-            print_warning("Required suppliers not found, seeding standard supplier dataset...")
-            from seed import seed_database
-            seed_database()
-            suppliers = db.query(models.Supplier).filter(models.Supplier.name.in_(["SABIC Polymers", "Tasnee", "Oman Resin Co."])).all()
+        target_names = [
+            "Houston Pump Solutions", "Gulf Flow Control", "Apex Fluids Corp", 
+            "Standard Dosing Systems", "Texas Pump Depot", "Vector Fluidics",
+            "Innovate Flow Tech", "Precision Metering Co", "Alpha Pumps & Valves",
+            "Budget Pumps Inc", "Munich Dosing Systems", "Tokyo Precision Flow"
+        ]
+        suppliers = db.query(models.Supplier).filter(models.Supplier.name.in_(target_names)).all()
+        if not suppliers or len(suppliers) < 12:
+            print_warning("Required dosing pump suppliers not found in database. Running seed script...")
+            from seed_veolia_demo import seed_veolia_demo
+            seed_veolia_demo()
+            suppliers = db.query(models.Supplier).filter(models.Supplier.name.in_(target_names)).all()
             
         print_info("Sourcing algorithm matched the following eligible vendors:")
-        for s in suppliers:
+        for s in suppliers[:6]:
             print_info(f" - {s.name} (Rating: {s.rating}/5, Country: {s.country}, Risk: {s.risk_level})")
+        print_info(f"...and {len(suppliers) - 6} other suppliers, including Oppora-discovered vendors.")
             
         db.add(models.RFQTimeline(
             rfq_number=rfq_num,
             stage="Created",
             timestamp=datetime.utcnow() + timedelta(seconds=2),
-            details=f"Warehouse inventory checked. Deficit confirmed. Matched {len(suppliers)} suppliers: " + ", ".join([s.name for s in suppliers])
+            details=f"Warehouse inventory checked. Deficit confirmed. Matched {len(suppliers)} suppliers: " + ", ".join([s.name for s in suppliers[:5]]) + "..."
         ))
         db.commit()
         
         print_success("Inventory audit complete & suppliers successfully mapped.")
-        print(f"{BOLD}[INFO] FRONTEND VIEW:{RESET} Go to {BOLD}Autonomous AI Agent{RESET} tab, select this RFQ. The milestones stepper will display Step 1 (Parsing), Step 2 (Inventory Audit), and Step 3 (Supplier Matching) as completed.")
+        print(f"{BOLD}[INFO] FRONTEND VIEW:{RESET} Go to {BOLD}Autonomous ProcureX{RESET} tab, select this RFQ. The milestones stepper will display Step 1 (Parsing), Step 2 (Inventory Audit), and Step 3 (Supplier Matching) as completed.")
         
         wait_for_user()
         
@@ -159,7 +164,7 @@ def run_demo():
             rfq_number=rfq_num,
             stage="RFQ Sent",
             timestamp=datetime.utcnow() + timedelta(seconds=5),
-            details="RFQ outreach emails dispatched via API to SABIC, Tasnee, and Oman Resin."
+            details="RFQ outreach emails dispatched via API to all matched suppliers."
         ))
         
         # Log outreach in email history
@@ -167,8 +172,8 @@ def run_demo():
             db.add(models.EmailHistory(
                 rfq_number=rfq_num,
                 supplier_id=s.id,
-                subject=f"RFQ Invitation: PVC Resin K-67 - {rfq_num}",
-                body=f"Dear {s.name} Sales Team, we invite you to quote for 150 MT of PVC Resin K-67...",
+                subject=f"RFQ Invitation: Industrial Chemical Dosing Pump - {rfq_num}",
+                body=f"Dear {s.name} Sales Team, we invite you to quote for 12 Units of Industrial Chemical Dosing Pump...",
                 type="RFQ Invitation",
                 sent_at=datetime.utcnow(),
                 response_received=False
@@ -176,7 +181,7 @@ def run_demo():
         db.commit()
         
         print_success("Outreach emails logged and campaign transitioned to 'RFQ Sent'.")
-        print(f"{BOLD}[INFO] FRONTEND VIEW:{RESET} Look at the {BOLD}Autonomous AI Agent{RESET} page logs console. The campaign is now marked active and emails are shown in dispatch log.")
+        print(f"{BOLD}[INFO] FRONTEND VIEW:{RESET} Look at the {BOLD}Autonomous ProcureX{RESET} page logs console. The campaign is now marked active and emails are shown in dispatch log.")
         
         wait_for_user()
         
@@ -186,33 +191,33 @@ def run_demo():
         print_step(4, "LIVE NEGOTIATION LOOP SIMULATION")
         print_info("Simulating incoming vendor responses and autonomous AI counter-offers...")
         
-        sabic = [s for s in suppliers if s.name == "SABIC Polymers"][0]
-        tasnee = [s for s in suppliers if s.name == "Tasnee"][0]
-        oman = [s for s in suppliers if s.name == "Oman Resin Co."][0]
+        houston = [s for s in suppliers if s.name == "Houston Pump Solutions"][0]
+        munich = [s for s in suppliers if s.name == "Munich Dosing Systems"][0]
+        budget = [s for s in suppliers if s.name == "Budget Pumps Inc"][0]
         
         # --- ROUND 1 ---
         print(f"\n{BOLD}--- Round 1 ---{RESET}")
-        print_info("SABIC quotes $1,050/MT, lead time 12 days.")
-        print_info("Tasnee quotes $1,080/MT, lead time 10 days.")
-        print_info("Oman Resin quotes $1,110/MT, lead time 9 days.")
+        print_info("Houston Pump Solutions quotes $2,500/unit, lead time 15 days.")
+        print_info("Munich Dosing Systems (Oppora-discovered) quotes $2,300/unit, lead time 12 days.")
+        print_info("Budget Pumps Inc quotes $1,900/unit, lead time 30 days.")
         
         now = datetime.utcnow()
         r1_logs = [
-            models.NegotiationLog(rfq_number=rfq_num, supplier_id=sabic.id, supplier_email=sabic.email, round_number=1, direction="inbound", subject="Re: RFQ Invitation", body="We quote $1050/MT, 12 days lead time.", extracted_price=1050.0, extracted_currency="USD", extracted_lead_time=12, sent_at=now, reply_received=True),
-            models.NegotiationLog(rfq_number=rfq_num, supplier_id=tasnee.id, supplier_email=tasnee.email, round_number=1, direction="inbound", subject="Re: RFQ Invitation", body="We can offer $1080/MT, 10 days delivery.", extracted_price=1080.0, extracted_currency="USD", extracted_lead_time=10, sent_at=now, reply_received=True),
-            models.NegotiationLog(rfq_number=rfq_num, supplier_id=oman.id, supplier_email=oman.email, round_number=1, direction="inbound", subject="Re: RFQ Invitation", body="Our price is $1110/MT, 9 days lead time.", extracted_price=1110.0, extracted_currency="USD", extracted_lead_time=9, sent_at=now, reply_received=True),
+            models.NegotiationLog(rfq_number=rfq_num, supplier_id=houston.id, supplier_email=houston.email, round_number=1, direction="inbound", subject="Re: RFQ Invitation", body="We quote $2500/unit, 15 days lead time.", extracted_price=2500.0, extracted_currency="USD", extracted_lead_time=15, sent_at=now, reply_received=True),
+            models.NegotiationLog(rfq_number=rfq_num, supplier_id=munich.id, supplier_email=munich.email, round_number=1, direction="inbound", subject="Re: RFQ Invitation", body="We can offer $2300/unit, 12 days delivery.", extracted_price=2300.0, extracted_currency="USD", extracted_lead_time=12, sent_at=now, reply_received=True),
+            models.NegotiationLog(rfq_number=rfq_num, supplier_id=budget.id, supplier_email=budget.email, round_number=1, direction="inbound", subject="Re: RFQ Invitation", body="Our price is $1900/unit, 30 days lead time.", extracted_price=1900.0, extracted_currency="USD", extracted_lead_time=30, sent_at=now, reply_received=True),
         ]
         for l in r1_logs:
             db.add(l)
         db.commit()
         
-        print_info("AI dispatches Counter-Offers targeting 10% discount:")
-        print_info(" -> SABIC Target: $945/MT | Tasnee Target: $972/MT | Oman Resin Target: $999/MT")
+        print_info("AI dispatches Counter-Offers targeting discount:")
+        print_info(" -> Houston Target: $2,300/unit | Munich Target: $2,100/unit | Budget Target: $1,800/unit")
         
         r1_outbounds = [
-            models.NegotiationLog(rfq_number=rfq_num, supplier_id=sabic.id, supplier_email=sabic.email, round_number=1, direction="outbound", subject="RE: RFQ Response", body="Thank you. We are targeting $945/MT for this quantity. Can you match?", extracted_price=945.0, extracted_currency="USD", sent_at=now + timedelta(seconds=1)),
-            models.NegotiationLog(rfq_number=rfq_num, supplier_id=tasnee.id, supplier_email=tasnee.email, round_number=1, direction="outbound", subject="RE: RFQ Response", body="Thank you. We are targeting $972/MT. Please let us know if possible.", extracted_price=972.0, extracted_currency="USD", sent_at=now + timedelta(seconds=1)),
-            models.NegotiationLog(rfq_number=rfq_num, supplier_id=oman.id, supplier_email=oman.email, round_number=1, direction="outbound", subject="RE: RFQ Response", body="Thank you. We are targeting $999/MT. Can you adjust price?", extracted_price=999.0, extracted_currency="USD", sent_at=now + timedelta(seconds=1)),
+            models.NegotiationLog(rfq_number=rfq_num, supplier_id=houston.id, supplier_email=houston.email, round_number=1, direction="outbound", subject="RE: RFQ Response", body="Thank you. We are targeting $2300/unit. Can you match?", extracted_price=2300.0, extracted_currency="USD", sent_at=now + timedelta(seconds=1)),
+            models.NegotiationLog(rfq_number=rfq_num, supplier_id=munich.id, supplier_email=munich.email, round_number=1, direction="outbound", subject="RE: RFQ Response", body="Thank you. We are targeting $2100/unit. Please let us know if possible.", extracted_price=2100.0, extracted_currency="USD", sent_at=now + timedelta(seconds=1)),
+            models.NegotiationLog(rfq_number=rfq_num, supplier_id=budget.id, supplier_email=budget.email, round_number=1, direction="outbound", subject="RE: RFQ Response", body="Thank you. We are targeting $1800/unit. Can you adjust price?", extracted_price=1800.0, extracted_currency="USD", sent_at=now + timedelta(seconds=1)),
         ]
         for l in r1_outbounds:
             db.add(l)
@@ -220,23 +225,39 @@ def run_demo():
         
         # --- ROUND 2 ---
         print(f"\n{BOLD}--- Round 2 ---{RESET}")
-        print_info("SABIC offers revised $980/MT, lead time 10 days (Best & Final Offer).")
-        print_info("Tasnee offers revised $1,010/MT, lead time 8 days.")
-        print_info("Oman Resin declines discount and stays at $1,110/MT.")
+        print_info("Houston Pump Solutions offers revised $2,350/unit, lead time 14 days.")
+        print_info("Munich Dosing Systems offers revised $2,150/unit, lead time 12 days (Best & Final Offer).")
+        print_info("Budget Pumps Inc declines discount and stays at $1,900/unit, 30 days lead time.")
         
         r2_logs = [
-            models.NegotiationLog(rfq_number=rfq_num, supplier_id=sabic.id, supplier_email=sabic.email, round_number=2, direction="inbound", subject="Re: RFQ Target Price", body="We accept $980/MT as our final best offer, Net 45 Days, 10 days delivery.", extracted_price=980.0, extracted_currency="USD", extracted_lead_time=10, sent_at=now + timedelta(seconds=2), reply_received=True, is_final=True),
-            models.NegotiationLog(rfq_number=rfq_num, supplier_id=tasnee.id, supplier_email=tasnee.email, round_number=2, direction="inbound", subject="Re: RFQ Target Price", body="We can go down to $1010/MT with 8 days lead time.", extracted_price=1010.0, extracted_currency="USD", extracted_lead_time=8, sent_at=now + timedelta(seconds=2), reply_received=True),
-            models.NegotiationLog(rfq_number=rfq_num, supplier_id=oman.id, supplier_email=oman.email, round_number=2, direction="inbound", subject="Re: RFQ Target Price", body="We cannot offer any further discount. Price is firm.", extracted_price=1110.0, extracted_currency="USD", extracted_lead_time=9, sent_at=now + timedelta(seconds=2), reply_received=True, is_final=True),
+            models.NegotiationLog(rfq_number=rfq_num, supplier_id=houston.id, supplier_email=houston.email, round_number=2, direction="inbound", subject="Re: RFQ Target Price", body="We accept $2350/unit, Net 45 Days, 14 days delivery.", extracted_price=2350.0, extracted_currency="USD", extracted_lead_time=14, sent_at=now + timedelta(seconds=2), reply_received=True),
+            models.NegotiationLog(rfq_number=rfq_num, supplier_id=munich.id, supplier_email=munich.email, round_number=2, direction="inbound", subject="Re: RFQ Target Price", body="We accept $2150/unit as our final best offer, Net 45 Days, 12 days delivery.", extracted_price=2150.0, extracted_currency="USD", extracted_lead_time=12, sent_at=now + timedelta(seconds=2), reply_received=True, is_final=True),
+            models.NegotiationLog(rfq_number=rfq_num, supplier_id=budget.id, supplier_email=budget.email, round_number=2, direction="inbound", subject="Re: RFQ Target Price", body="We cannot offer any further discount. Price is firm.", extracted_price=1900.0, extracted_currency="USD", extracted_lead_time=30, sent_at=now + timedelta(seconds=2), reply_received=True, is_final=True),
         ]
         for l in r2_logs:
             db.add(l)
         db.commit()
         
-        # Save Quote Responses
-        db.add(models.QuoteResponse(rfq_number=rfq_num, supplier_id=sabic.id, price=980.0, currency="USD", lead_time_days=10, payment_terms="Net 45 Days", incoterms="CIF", responded_at=datetime.utcnow(), status="Quotation Received"))
-        db.add(models.QuoteResponse(rfq_number=rfq_num, supplier_id=tasnee.id, price=1010.0, currency="USD", lead_time_days=8, payment_terms="Net 30 Days", incoterms="FOB", responded_at=datetime.utcnow(), status="Quotation Received"))
-        db.add(models.QuoteResponse(rfq_number=rfq_num, supplier_id=oman.id, price=1110.0, currency="USD", lead_time_days=9, payment_terms="Net 45 Days", incoterms="CIF", responded_at=datetime.utcnow(), status="Quotation Received"))
+        # Seed Quote Responses for all 12 suppliers to show side by side comparison
+        quotes_to_add = [
+            models.QuoteResponse(rfq_number=rfq_num, supplier_id=houston.id, price=2350.0, currency="USD", lead_time_days=14, payment_terms="Net 45 Days", incoterms="CIF", responded_at=datetime.utcnow(), status="Quotation Received"),
+            models.QuoteResponse(rfq_number=rfq_num, supplier_id=munich.id, price=2150.0, currency="USD", lead_time_days=12, payment_terms="Net 45 Days", incoterms="CIF", responded_at=datetime.utcnow(), status="Quotation Received"),
+            models.QuoteResponse(rfq_number=rfq_num, supplier_id=budget.id, price=1900.0, currency="USD", lead_time_days=30, payment_terms="Net 30 Days", incoterms="FOB", responded_at=datetime.utcnow(), status="Quotation Received"),
+        ]
+        
+        # Add remaining suppliers with default quotes
+        for s in suppliers:
+            if s.id not in [houston.id, munich.id, budget.id]:
+                quotes_to_add.append(
+                    models.QuoteResponse(
+                        rfq_number=rfq_num, supplier_id=s.id, price=2400.0 + (s.id * 15), currency="USD",
+                        lead_time_days=s.lead_time_days or 15, payment_terms="Net 30 Days", incoterms="FOB",
+                        responded_at=datetime.utcnow(), status="Quotation Received"
+                    )
+                )
+                
+        for q in quotes_to_add:
+            db.add(q)
         
         # Update RFQ status to Under Comparison
         new_rfq.status = "Under Comparison"
@@ -248,29 +269,30 @@ def run_demo():
             timestamp=datetime.utcnow() + timedelta(seconds=10),
             details="All quotes received and negotiated. Final offers locked for comparison."
         ))
+        db.commit()
         
         # Generate the WorkflowNotification card (Pending Approval)
         comparison_data = [
-            {"supplier_id": sabic.id, "supplier_name": sabic.name, "price": 980.0, "currency": "USD", "lead_time_days": 10, "payment_terms": "Net 45 Days", "rating": sabic.rating, "delivery_score": sabic.delivery_score, "risk_level": sabic.risk_level, "status": "Best Offer"},
-            {"supplier_id": tasnee.id, "supplier_name": tasnee.name, "price": 1010.0, "currency": "USD", "lead_time_days": 8, "payment_terms": "Net 30 Days", "rating": tasnee.rating, "delivery_score": tasnee.delivery_score, "risk_level": tasnee.risk_level, "status": "Matched"},
-            {"supplier_id": oman.id, "supplier_name": oman.name, "price": 1110.0, "currency": "USD", "lead_time_days": 9, "payment_terms": "Net 45 Days", "rating": oman.rating, "delivery_score": oman.delivery_score, "risk_level": oman.risk_level, "status": "High Price"}
+            {"supplier_id": munich.id, "supplier_name": munich.name, "price": 2150.0, "currency": "USD", "lead_time_days": 12, "payment_terms": "Net 45 Days", "rating": munich.rating, "delivery_score": munich.delivery_score, "risk_level": munich.risk_level, "status": "Best Offer"},
+            {"supplier_id": houston.id, "supplier_name": houston.name, "price": 2350.0, "currency": "USD", "lead_time_days": 14, "payment_terms": "Net 45 Days", "rating": houston.rating, "delivery_score": houston.delivery_score, "risk_level": houston.risk_level, "status": "Matched"},
+            {"supplier_id": budget.id, "supplier_name": budget.name, "price": 1900.0, "currency": "USD", "lead_time_days": 30, "payment_terms": "Net 30 Days", "rating": budget.rating, "delivery_score": budget.delivery_score, "risk_level": budget.risk_level, "status": "High Delivery Risk"}
         ]
         
         summary_msg = (
             "AI has successfully completed 2 negotiation rounds. "
-            "SABIC Polymers is recommended for award, offering the lowest final negotiated price of $980/MT "
-            "(6.7% savings from original $1050 quote). This out-performs Tasnee ($1010/MT) and Oman Resin ($1110/MT). "
-            "SABIC maintains low risk levels and conforms to plant delivery constraints. "
+            "Munich Dosing Systems (Oppora-discovered) is recommended for award, offering the lowest conforming negotiated price of $2,150/unit "
+            "(6.5% savings from original $2,300 quote). Houston Pump Solutions is the premium alternative ($2,350/unit). "
+            "Budget Pumps Inc offered $1,900/unit but was REJECTED because their 30-day lead time violates the 21-day Houston site deadline and carries high delivery risk (62% compliance score). "
             "Action Required: Approve this proposal to generate the Purchase Order and sync to Odoo ERP."
         )
         
         notification = models.WorkflowNotification(
             rfq_number=rfq_num,
-            rfq_item="PVC Resin K-67",
+            rfq_item="Industrial Chemical Dosing Pump",
             type="approval_required",
             status="pending",
-            recommended_supplier=sabic.name,
-            recommended_price=980.0,
+            recommended_supplier=munich.name,
+            recommended_price=2150.0,
             recommended_currency="USD",
             comparison_json=json.dumps(comparison_data),
             summary_message=summary_msg,
@@ -281,7 +303,7 @@ def run_demo():
         db.commit()
         
         print_success("Negotiations logged & Comparison Table populated with AI recommendation.")
-        print(f"{BOLD}[INFO] FRONTEND VIEW:{RESET} Go to {BOLD}Operations Dashboard{RESET}. You will see a 'Pending Approval' card for PVC Resin K-67.")
+        print(f"{BOLD}[INFO] FRONTEND VIEW:{RESET} Go to {BOLD}Operations Dashboard{RESET}. You will see a 'Pending Approval' card for Industrial Chemical Dosing Pump.")
         print(f"You can also click {BOLD}Quote Comparison{RESET} in the sidebar to review the side-by-side matrices and charts.")
         
         wait_for_user("Press Enter to approve proposal and release the Purchase Order...")
@@ -301,11 +323,11 @@ def run_demo():
         po = models.PurchaseOrder(
             po_number=po_num,
             rfq_number=rfq_num,
-            supplier_id=sabic.id,
-            item_name="PVC Resin K-67",
-            quantity=150.0,
-            unit_price=980.0,
-            total_amount=150.0 * 980.0,
+            supplier_id=munich.id,
+            item_name="Industrial Chemical Dosing Pump",
+            quantity=12.0,
+            unit_price=2150.0,
+            total_amount=12.0 * 2150.0,
             status="Sent",
             created_at=datetime.utcnow()
         )
@@ -319,7 +341,7 @@ def run_demo():
             rfq_number=rfq_num,
             stage="PO Generated",
             timestamp=datetime.utcnow(),
-            details=f"Purchase Order {po_num} approved and released to SABIC Polymers."
+            details=f"Purchase Order {po_num} approved and released to Munich Dosing Systems."
         ))
         db.commit()
         
@@ -347,9 +369,9 @@ def run_demo():
                 uid = common.authenticate(db_name, username, password, {})
                 if uid:
                     models_rpc = xmlrpc.client.ServerProxy(f"{url}/xmlrpc/2/object")
-                    partner_ids = models_rpc.execute_kw(db_name, uid, password, 'res.partner', 'search', [[['name', '=', 'SABIC Polymers']]])
+                    partner_ids = models_rpc.execute_kw(db_name, uid, password, 'res.partner', 'search', [[['name', '=', 'Munich Dosing Systems']]])
                     partner_id = partner_ids[0] if partner_ids else None
-                    product_ids = models_rpc.execute_kw(db_name, uid, password, 'product.product', 'search', [[['name', '=', 'PVC Resin K-67']]])
+                    product_ids = models_rpc.execute_kw(db_name, uid, password, 'product.product', 'search', [[['name', '=', 'Industrial Chemical Dosing Pump']]])
                     product_id = product_ids[0] if product_ids else None
                     
                     if partner_id and product_id:
@@ -358,10 +380,10 @@ def run_demo():
                             'origin': rfq_num,
                             'order_line': [
                                 (0, 0, {
-                                    'name': 'PVC Resin K-67',
+                                    'name': 'Industrial Chemical Dosing Pump',
                                     'product_id': product_id,
-                                    'product_qty': 150.0,
-                                    'price_unit': 980.0,
+                                    'product_qty': 12.0,
+                                    'price_unit': 2150.0,
                                     'date_planned': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
                                 })
                             ]
@@ -391,7 +413,7 @@ def run_demo():
             direction="Outbound",
             url=url or "http://odoo-simulated-rpc:8069/xmlrpc/2/object",
             method="execute_kw",
-            request_payload=json.dumps({"partner": "SABIC Polymers", "item": "PVC Resin K-67", "qty": 150.0, "price": 980.0}),
+            request_payload=json.dumps({"partner": "Munich Dosing Systems", "item": "Industrial Chemical Dosing Pump", "qty": 12.0, "price": 2150.0}),
             response_payload=json.dumps({"success": True, "odoo_id": odoo_po_id}),
             status_code=200,
             timestamp=datetime.utcnow()
