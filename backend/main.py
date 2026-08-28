@@ -3079,14 +3079,12 @@ def simulate_rfp_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
                 "shortlist": top_3
             }
 
-        # If we already have real negotiation logs or quotes in the DB for this RFQ,
+        # If we already have real quotes in the DB for this RFQ,
         # return those directly instead of overwriting them with mock simulation data!
-        existing_logs = db.query(models.NegotiationLog).filter_by(rfq_number=rfq_number).first()
-        existing_quotes = db.query(models.QuoteResponse).filter_by(rfq_number=rfq_number).first()
+        # Make sure there is actually at least one quote in the database to prevent returning an empty shortlist
+        quotes = db.query(models.QuoteResponse).filter_by(rfq_number=rfq_number).all()
         
-        if existing_logs or existing_quotes:
-            quotes = db.query(models.QuoteResponse).filter_by(rfq_number=rfq_number).all()
-            
+        if quotes and len(quotes) > 0:
             # Compute scores and build shortlist
             prices = [q.price for q in quotes if q.price > 0]
             min_price = min(prices) if prices else 1.0
@@ -3096,9 +3094,11 @@ def simulate_rfp_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
             shortlist = []
             for q in quotes:
                 s = q.supplier
+                if not s:
+                    continue
                 price_score = 100.0 - ((q.price - min_price) / price_range * 100.0) if price_range > 0 else 100.0
-                delivery_score = s.delivery_score
-                quality_score = s.quality_score
+                delivery_score = s.delivery_score if s.delivery_score is not None else 80.0
+                quality_score = s.quality_score if s.quality_score is not None else 80.0
                 risk_score = 100.0 if s.risk_level == "Low" else (70.0 if s.risk_level == "Medium" else 40.0)
                 
                 weighted_score = round(

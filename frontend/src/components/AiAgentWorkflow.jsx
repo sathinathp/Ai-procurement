@@ -338,7 +338,8 @@ export default function AiAgentWorkflow() {
     } catch (err) {
       console.error(err);
       setAgentStatus('failed');
-      addLog(`[CRITICAL ERROR] Autonomous execution aborted. Reason: ${err.message || 'API Failure'}`, 'error');
+      const errReason = err.response?.data?.detail || err.response?.data?.message || err.message || 'API Failure';
+      addLog(`[CRITICAL ERROR] Autonomous execution aborted. Reason: ${errReason}`, 'error');
 
       try {
         const failedHistoryItem = {
@@ -666,9 +667,14 @@ export default function AiAgentWorkflow() {
       }
       if (!finalData) return;
       
-      const bestBid = finalData.shortlist[0];
+      const bestBid = finalData.shortlist && finalData.shortlist.length > 0 ? finalData.shortlist[0] : null;
+      if (!bestBid) {
+        throw new Error("No shortlist returned from sourcing campaign.");
+      }
       addLog(`[Negotiation Complete] Best bid from "${bestBid.supplier_name}" (${bestBid.country}) is recommended.`, 'success');
-      addLog(`  -> Negotiated Price: $${bestBid.price}/unit (saved $${(finalData.negotiations[0]?.original_price - bestBid.price).toFixed(2)}/unit)`, 'success');
+      const origPrice = finalData.negotiations && finalData.negotiations.length > 0 ? finalData.negotiations[0].original_price : bestBid.price;
+      const savings = origPrice - bestBid.price;
+      addLog(`  -> Negotiated Price: $${bestBid.price}/unit (saved $${savings.toFixed(2)}/unit)`, 'success');
       addLog(`  -> Agreed Delivery: ${bestBid.lead_time} Days | Risk Level: ${bestBid.risk_level}`, 'info');
       addLog(`[AWAITING APPROVAL] Awaiting human review & approval to release Purchase Order and sync ERP.`, 'warning');
 
@@ -677,7 +683,8 @@ export default function AiAgentWorkflow() {
     } catch (err) {
       console.error(err);
       setAgentStatus('failed');
-      addLog(`[CRITICAL ERROR] Autonomous execution aborted. Reason: ${err.message || 'API Failure'}`, 'error');
+      const errReason = err.response?.data?.detail || err.response?.data?.message || err.message || 'API Failure';
+      addLog(`[CRITICAL ERROR] Autonomous execution aborted. Reason: ${errReason}`, 'error');
 
       try {
         const failedHistoryItem = {
@@ -853,9 +860,10 @@ export default function AiAgentWorkflow() {
   ];
 
   const handleApproveAndRelease = async (forceRelease = false) => {
-    if (!realStatusRfq || !negotiationResult || !selectedSupplierId) return;
+    if (!realStatusRfq || !negotiationResult || !negotiationResult.shortlist || negotiationResult.shortlist.length === 0 || !selectedSupplierId) return;
     
     const bestBid = negotiationResult.shortlist.find(s => s.supplier_id === selectedSupplierId) || negotiationResult.shortlist[0];
+    if (!bestBid) return;
     
     // Check compliance
     const complianceRecord = COMPLIANCE_SUPPLIERS.find(s => s.name.toLowerCase() === bestBid.supplier_name.toLowerCase()) || { approved: false, sourceType: 'new', compliance: { supplierApproved: 'fail', complianceReview: 'pending', technicalMatch: 'pass', commercialMatch: 'pass', countryOfOrigin: 'pending', hseDocumentation: 'pending', cyberSecurity: 'pending', integrityCheck: 'pending' } };
@@ -908,7 +916,7 @@ export default function AiAgentWorkflow() {
           item: parsedData?.item_name || 'HDPE Pipes 110mm',
           quantity: `${parsedData?.quantity || 250} ${parsedData?.unit || 'MT'}`,
           supplier: bestBid?.supplier_name || 'N/A',
-          savings: negotiationResult?.negotiations?.find(n => n.supplier_name === bestBid.supplier_name)
+          savings: (bestBid && negotiationResult?.negotiations?.find(n => n.supplier_name === bestBid.supplier_name))
             ? `+$${(negotiationResult.negotiations.find(n => n.supplier_name === bestBid.supplier_name).original_price - bestBid.price).toFixed(2)}/unit`
             : '14.2%',
           erpStatus: settings.autoSyncErp ? 'Synced (D365)' : 'Skipped',
@@ -1354,7 +1362,7 @@ export default function AiAgentWorkflow() {
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Shortlisted Bids</div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {negotiationResult.shortlist.map((supplier) => {
-                  const isRecommended = supplier.supplier_name === negotiationResult.shortlist[0].supplier_name;
+                  const isRecommended = negotiationResult.shortlist[0] && supplier.supplier_name === negotiationResult.shortlist[0].supplier_name;
                   const isSelected = selectedSupplierId === supplier.supplier_id;
                   
                   return (
