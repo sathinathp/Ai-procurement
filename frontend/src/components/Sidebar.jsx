@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   BarChart2, FileText, Search, Mail, Sparkles, 
   Bot, Clock, Lock, ShieldAlert, LogOut, ShoppingCart,
-  MoreVertical, Zap, Cpu
+  MoreVertical, Zap, Cpu, ShieldCheck
 } from 'lucide-react';
 
 export default function Sidebar({ activeTab, onSelectTab, onLogout, user }) {
@@ -16,6 +16,7 @@ export default function Sidebar({ activeTab, onSelectTab, onLogout, user }) {
     { id: 'suppliers', label: 'Supplier Search', icon: <Search size={16} /> },
     { id: 'email', label: 'Email Automation', icon: <Mail size={16} /> },
     { id: 'comparison', label: 'Quote Comparison', icon: <Sparkles size={16} /> },
+    { id: 'supplier_compliance', label: 'Supplier Compliance', icon: <ShieldCheck size={16} className="text-violet-400" /> },
     { id: 'purchase_orders', label: 'Purchase Orders', icon: <ShoppingCart size={16} className="text-emerald-400" /> },
     { id: 'copilot', label: 'AI Copilot Chat', icon: <Bot size={16} /> }
   ];

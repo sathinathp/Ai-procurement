@@ -19,21 +19,21 @@ def run_verification():
         return
 
     # 2. Ingest RFQ
-    print("\n[STEP 2] Creating RFQ for 12 Industrial Chemical Dosing Pumps...")
+    print("\n[STEP 2] Creating RFQ for 12 Chemical Dosing Pump Assemblies...")
     rfq_data = {
-        "rfq_number": "RFQ-2026-DEMO",
-        "project_name": "Veolia Houston Site Pump Refill",
-        "department": "Procurement",
-        "required_date": "2026-09-17",
-        "item_name": "Industrial Chemical Dosing Pump",
-        "item_code": "ITM-PMP-120",
-        "description": "Industrial Chemical Dosing Pump for Houston site.",
+        "rfq_number": "RFQ-WWT-2026-0847",
+        "project_name": "Wastewater Treatment Plant Chemical Dosing System Upgrade",
+        "department": "Operations / Procurement",
+        "required_date": "2026-09-05",
+        "item_name": "Chemical Dosing Pump Assembly",
+        "item_code": "ITM-WWT-PUMP-0847",
+        "description": "Supply 12 industrial chemical dosing pump assemblies for Veolia facility.",
         "quantity": 12.0,
         "unit": "Units",
-        "specifications": "Capacity: 120 L/h, Pressure: 10 bar.",
+        "specifications": "Flow Range: 0-120 L/hr | Discharge Pressure: min 7 bar.",
         "priority": "High",
-        "delivery_location": "Houston Site",
-        "expected_delivery_date": "2026-09-17"
+        "delivery_location": "Houston, Texas, USA",
+        "expected_delivery_date": "2026-09-05"
     }
     resp = requests.post(f"{BASE_URL}/api/rfqs/create", json=rfq_data)
     if resp.status_code == 200:
@@ -45,7 +45,7 @@ def run_verification():
     # 3. Validate Material / Stock Check
     print("\n[STEP 3] Validating material inventory check...")
     validate_data = {
-        "item_name": "Industrial Chemical Dosing Pump",
+        "item_name": "Chemical Dosing Pump Assembly",
         "quantity": 12.0
     }
     resp = requests.post(f"{BASE_URL}/api/materials/validate", json=validate_data)
@@ -59,7 +59,7 @@ def run_verification():
     # 4. Run RFP Campaign Simulation
     print("\n[STEP 4] Launching RFP campaign simulation...")
     sim_data = {
-        "rfq_number": "RFQ-2026-DEMO"
+        "rfq_number": "RFQ-WWT-2026-0847"
     }
     resp = requests.post(f"{BASE_URL}/api/campaign/simulate", json=sim_data)
     if resp.status_code == 200:
@@ -77,7 +77,7 @@ def run_verification():
     resp = requests.get(f"{BASE_URL}/api/workflow/notifications")
     if resp.status_code == 200:
         notifications = resp.json()
-        pending = [n for n in notifications if n.get('status') == 'pending' and n.get('rfq_number') == 'RFQ-2026-DEMO']
+        pending = [n for n in notifications if n.get('status') == 'pending' and n.get('rfq_number') == 'RFQ-WWT-2026-0847']
         if pending:
             n = pending[0]
             print(f"SUCCESS: Found pending notification ID {n.get('id')}")
@@ -87,7 +87,7 @@ def run_verification():
             print(f"  Summary: {n.get('summary_message')}")
             notification_id = n.get('id')
         else:
-            print("FAILED: No pending notification found for RFQ-2026-DEMO")
+            print("FAILED: No pending notification found for RFQ-WWT-2026-0847")
             return
     else:
         print(f"FAILED: {resp.status_code} - {resp.text}")
@@ -111,7 +111,7 @@ def run_verification():
     resp = requests.get(f"{BASE_URL}/api/purchase-orders")
     if resp.status_code == 200:
         pos = resp.json()
-        demo_pos = [po for po in pos if po.get('rfq_number') == 'RFQ-2026-DEMO']
+        demo_pos = [po for po in pos if po.get('rfq_number') == 'RFQ-WWT-2026-0847']
         if demo_pos:
             po = demo_pos[0]
             print(f"SUCCESS: Found PO {po.get('po_number')}")
@@ -122,7 +122,7 @@ def run_verification():
             print(f"  Total: ${po.get('total_amount')}")
             print(f"  Synced to ERP: {po.get('synced_to_erp')}")
         else:
-            print("FAILED: No PO found for RFQ-2026-DEMO")
+            print("FAILED: No PO found for RFQ-WWT-2026-0847")
     else:
         print(f"FAILED: {resp.status_code} - {resp.text}")
 

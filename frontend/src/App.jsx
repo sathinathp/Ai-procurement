@@ -12,6 +12,7 @@ import AiAgentWorkflow from './components/AiAgentWorkflow';
 import PurchaseOrders from './components/PurchaseOrders';
 import EmailBot from './components/EmailBot';
 import Login from './components/Login';
+import SupplierCompliance from './components/SupplierCompliance';
 import { Bot, RefreshCw, Database, Menu, Plus } from 'lucide-react';
 import { dbService } from './services/api';
 import FloatingRfqModal from './components/FloatingRfqModal';
@@ -48,7 +49,7 @@ export default function App() {
   const [openCreateRfq, setOpenCreateRfq] = useState(false);
   const [reseeding, setReseeding] = useState(false);
   const [initialSearchQuery, setInitialSearchQuery] = useState('');
-  const [activeRfqNum, setActiveRfqNum] = useState(localStorage.getItem('activeRfqNum') || 'RFQ-2026-1003');
+  const [activeRfqNum, setActiveRfqNum] = useState(localStorage.getItem('activeRfqNum') || 'RFQ-WWT-2026-0847');
   const [showFloatingRfqModal, setShowFloatingRfqModal] = useState(false);
   const [initialSelectedRfq, setInitialSelectedRfq] = useState(null);
 
@@ -127,6 +128,7 @@ export default function App() {
       suppliers: 'Supplier Search',
       email: 'Email Automation',
       comparison: 'Quote Comparison',
+      supplier_compliance: 'Supplier Compliance',
       purchase_orders: 'Purchase Orders',
       copilot: 'AI Copilot Chat',
       prod_planning: 'Production Planning & Scheduling (Phase 2)',
@@ -264,6 +266,10 @@ export default function App() {
 
           {activeTab === 'comparison' && (
             <QuoteComparison activeRfqNum={activeRfqNum} />
+          )}
+
+          {activeTab === 'supplier_compliance' && (
+            <SupplierCompliance />
           )}
 
           {activeTab === 'purchase_orders' && (

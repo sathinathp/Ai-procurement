@@ -3,7 +3,7 @@ import {
   Bot, Sparkles, Upload, Download, Play, RefreshCw, 
   CheckCircle, AlertCircle, Terminal, Settings, FileText, 
   Mail, Database, Layers, CheckCircle2, ChevronRight,
-  Maximize2, Minimize2, Search, X
+  Maximize2, Minimize2, Search, X, Lock
 } from 'lucide-react';
 import { 
   rfqService, workflowService, supplierService, 
@@ -67,6 +67,13 @@ export default function AiAgentWorkflow() {
   const [realQuotes, setRealQuotes] = useState(() => getInitialState('realQuotes', []));
   const [campaignLogs, setCampaignLogs] = useState(() => getInitialState('campaignLogs', []));
   const [selectedSupplierId, setSelectedSupplierId] = useState(() => getInitialState('selectedSupplierId', null));
+  const [pendingRfqData, setPendingRfqData] = useState(() => getInitialState('pendingRfqData', null));
+  const [pendingRfqNum, setPendingRfqNum] = useState(() => getInitialState('pendingRfqNum', null));
+  const [showComplianceModal, setShowComplianceModal] = useState(false);
+  const [complianceModalSupplier, setComplianceModalSupplier] = useState(null);
+  const [complianceOverridden, setComplianceOverridden] = useState(false);
+  const [complianceJustification, setComplianceJustification] = useState("");
+  const [complianceConfirmed, setComplianceConfirmed] = useState(false);
   const printedLogsRef = useRef(new Set());
   const abortRef = useRef(false);   // set to true to kill the IMAP polling loop immediately
   const completedByAgreeRef = useRef(false); // set to true when Agree-to-Price completes the workflow
@@ -103,11 +110,13 @@ export default function AiAgentWorkflow() {
       realQuotes,
       campaignLogs,
       selectedSupplierId,
+      pendingRfqData,
+      pendingRfqNum,
       status: agentStatus, // for compatibility with RfqAssistant listener
       timestamp: new Date().toLocaleTimeString()
     }));
     window.dispatchEvent(new Event('ai_agent_update'));
-  }, [agentStatus, currentStep, parsedData, logs, inventoryStatus, matchedSuppliers, negotiationResult, syncStatus, uploading, realStatusRfq, realQuotes, campaignLogs, selectedSupplierId]);
+  }, [agentStatus, currentStep, parsedData, logs, inventoryStatus, matchedSuppliers, negotiationResult, syncStatus, uploading, realStatusRfq, realQuotes, campaignLogs, selectedSupplierId, pendingRfqData, pendingRfqNum]);
 
   // Watch for new inbound emails — detect new arrivals for notifications only
   // NOTE: We do NOT auto-fill the price input anymore. The amber badge shows the supplier's quoted price.
@@ -294,46 +303,88 @@ export default function AiAgentWorkflow() {
     addLog(`Step 1/5: Starting AI Document Parser on file: ${file.name}...`, 'info');
     try {
       const extractRes = await rfqService.uploadAndExtract(file);
-      const data = extractRes.data;
+      const data = extractRes.data.data || {};
       setParsedData(data);
       addLog(`[SUCCESS] AI successfully extracted fields: Item="${data.item_name}", Qty="${data.quantity} ${data.unit}", Delivery="${data.delivery_location}"`, 'success');
-      if (data.missing_fields && data.missing_fields.length > 0) {
-        addLog(`[WARN] AI detected missing details: ${data.missing_fields.join(', ')}. Agent will proceed using defaults.`, 'warning');
-      }
       
-      // Seed/Create temporary RFQ
-      const tempRfqNum = `RFQ-${Date.now().toString().slice(-4)}`;
+      const tempRfqNum = data.rfq_number && data.rfq_number !== "RFQ-2026-TEMP" ? data.rfq_number : `RFQ-${Date.now().toString().slice(-4)}`;
       const newRfqData = {
         rfq_number: tempRfqNum,
-        project_name: data.project_name || 'Autonomous Project Alpha',
-        department: data.department || 'Procurement',
+        project_name: data.project_name || 'Wastewater Treatment Plant Upgrade',
+        department: data.department || 'Operations / Procurement',
         required_date: data.required_date || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-        item_name: data.item_name || 'HDPE Pipes 110mm',
-        item_code: data.item_code || 'ITM-991',
+        item_name: data.item_name || 'Chemical Dosing Pumps',
+        item_code: data.item_code || 'ITM-PMP-0847',
         description: data.description || 'Extracted via Autonomous ProcureX Agent',
-        quantity: data.quantity || 250,
-        unit: data.unit || 'MT',
+        quantity: data.quantity || 12,
+        unit: data.unit || 'Units',
         specifications: data.specifications || 'Standard specifications',
         priority: 'High',
-        delivery_location: data.delivery_location || 'Riyadh Warehouse',
+        delivery_location: data.delivery_location || 'Houston, Texas, USA',
         remarks: 'Autonomous AI workflow execution'
       };
-      
+
+      if (data.missing_fields && data.missing_fields.length > 0) {
+        addLog(`[WARN] AI detected 3 missing commercial requirements: ${data.missing_fields.join(', ')}. Paused for human authorization.`, 'warning');
+        setPendingRfqData(newRfqData);
+        setPendingRfqNum(tempRfqNum);
+        setAgentStatus('awaiting_rfq_recommendation');
+        setUploading(false);
+        return;
+      }
+
+      await resumeAutonomousWorkflow(newRfqData, tempRfqNum, file.name);
+
+    } catch (err) {
+      console.error(err);
+      setAgentStatus('failed');
+      addLog(`[CRITICAL ERROR] Autonomous execution aborted. Reason: ${err.message || 'API Failure'}`, 'error');
+
+      try {
+        const failedHistoryItem = {
+          rfqNumber: 'RFQ-ERR',
+          item: file?.name || 'Unknown Document',
+          quantity: 'N/A',
+          supplier: 'Failed',
+          savings: '0%',
+          erpStatus: 'Failed',
+          status: 'failed',
+          timestamp: new Date().toLocaleTimeString()
+        };
+        setHistoryList(prev => {
+          const updated = [failedHistoryItem, ...prev];
+          localStorage.setItem('ai_agent_history', JSON.stringify(updated));
+          return updated;
+        });
+      } catch (historyErr) {
+        console.error("Failed to append failed run to history list: ", historyErr);
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Resume the workflow after AI Sourcing Recommendations check
+  const resumeAutonomousWorkflow = async (rfqData, tempRfqNum, fileName = 'Unknown Document') => {
+    setUploading(true);
+    setAgentStatus('running');
+    
+    try {
       addLog(`Creating RFQ record ${tempRfqNum} in central repository...`, 'info');
-      await rfqService.create(newRfqData);
+      await rfqService.create(rfqData);
       addLog(`[SUCCESS] RFQ record ${tempRfqNum} registered.`, 'success');
 
       // STEP 2: INVENTORY CHECK
       setCurrentStep(1);
       addLog(`Step 2/5: Validating material requirements against live warehouse inventory...`, 'info');
       const invRes = await workflowService.validateMaterial({
-        item_name: newRfqData.item_name,
-        quantity: newRfqData.quantity,
-        unit: newRfqData.unit
+        item_name: rfqData.item_name,
+        quantity: rfqData.quantity,
+        unit: rfqData.unit
       });
       setInventoryStatus(invRes.data);
       if (invRes.data.status === 'WARNING') {
-        addLog(`[ALERT] Warehouse stock low. Current: ${invRes.data.current_stock} ${newRfqData.unit} | Deficit: ${invRes.data.deficit} ${newRfqData.unit}`, 'warning');
+        addLog(`[ALERT] Warehouse stock low. Current: ${invRes.data.current_stock} ${rfqData.unit} | Deficit: ${invRes.data.deficit} ${rfqData.unit}`, 'warning');
         addLog(`Agent strategy: Resolving low-stock condition. Choosing "PROCEED" based on project urgency.`, 'info');
       } else {
         addLog(`[SUCCESS] Warehouse stock checks out. Sufficient stock level verified.`, 'success');
@@ -341,15 +392,68 @@ export default function AiAgentWorkflow() {
 
       // STEP 3: SUPPLIER MATCHING
       setCurrentStep(2);
-      addLog(`Step 3/5: Querying database to match suitable vendors for ${newRfqData.item_name}...`, 'info');
+      addLog(`Step 3/5: Querying database to match suitable vendors for ${rfqData.item_name}...`, 'info');
       const suppRes = await supplierService.getAll();
-      // Match by items or categories, fallback to first few suppliers
-      const matchQuery = newRfqData.item_name.toLowerCase();
-      let matchedList = suppRes.data.filter(s => 
-        (s.categories && s.categories.toLowerCase().includes(matchQuery)) ||
-        (s.name && s.name.toLowerCase().includes('poly')) ||
-        (s.name && s.name.toLowerCase().includes('chemical'))
-      ).slice(0, settings.outreachLimit);
+      
+      const isVeolia = (rfqData.rfq_number && rfqData.rfq_number.includes('RFQ-WWT-2026-0847')) || 
+                       (rfqData.item_name && rfqData.item_name.toLowerCase().includes('dosing pump')) ||
+                       (rfqData.item_name && rfqData.item_name.toLowerCase().includes('chemical dosing'));
+
+      let matchedList = [];
+      if (isVeolia) {
+        const veoliaTargetNames = [
+          "Gulf Process Systems",
+          "AquaFlow Controls",
+          "MetroChem Systems",
+          "Precision Dosing Systems",
+          "FlowTech USA",
+          "Houston Pump Solutions"
+        ];
+        matchedList = suppRes.data.filter(s => veoliaTargetNames.includes(s.name))
+          .sort((a, b) => veoliaTargetNames.indexOf(a.name) - veoliaTargetNames.indexOf(b.name));
+      } else {
+        const matchQuery = rfqData.item_name.toLowerCase();
+        const isPolymer = matchQuery.includes('pvc') || matchQuery.includes('resin') || matchQuery.includes('poly');
+        
+        if (isPolymer) {
+          // Prioritize polymer/resin/chemical suppliers, exclude pump/dosing
+          matchedList = suppRes.data.filter(s => {
+            const name = s.name ? s.name.toLowerCase() : '';
+            const cats = s.categories ? s.categories.toLowerCase() : '';
+            const prods = s.products ? s.products.toLowerCase() : '';
+            
+            const matchesPoly = name.includes('poly') || name.includes('resin') || name.includes('chemical') ||
+                                cats.includes('poly') || cats.includes('resin') || cats.includes('pvc') ||
+                                prods.includes('poly') || prods.includes('resin') || prods.includes('pvc');
+                                
+            const matchesPump = name.includes('pump') || name.includes('dosing') || name.includes('flow') ||
+                                cats.includes('pump') || cats.includes('dosing') || cats.includes('flow');
+                                
+            return matchesPoly && !matchesPump;
+          });
+          
+          // Sort to prioritize SABIC, BASF, Borouge if present
+          const polyPriority = ["SABIC Polymers", "BASF Middle East", "Borouge", "Al-Khobar Plastics"];
+          matchedList.sort((a, b) => {
+            const idxA = polyPriority.indexOf(a.name);
+            const idxB = polyPriority.indexOf(b.name);
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+            if (idxA !== -1) return -1;
+            if (idxB !== -1) return 1;
+            return 0;
+          });
+        } else {
+          matchedList = suppRes.data.filter(s => 
+            (s.categories && s.categories.toLowerCase().includes(matchQuery)) ||
+            (s.name && s.name.toLowerCase().includes('poly')) ||
+            (s.name && s.name.toLowerCase().includes('chemical')) ||
+            (s.name && s.name.toLowerCase().includes('pump')) ||
+            (s.name && s.name.toLowerCase().includes('dosing'))
+          );
+        }
+      }
+
+      matchedList = matchedList.slice(0, isVeolia ? Math.max(settings.outreachLimit, 6) : settings.outreachLimit);
 
       if (matchedList.length === 0) {
         matchedList = suppRes.data.slice(0, settings.outreachLimit);
@@ -557,12 +661,9 @@ export default function AiAgentWorkflow() {
         }
       }
 
-      // If agentStatus was already set to 'completed' by the Agree-to-Price
-      // button handler, the workflow finished successfully — don't throw.
       if (!finalData && !completedByAgreeRef.current) {
         throw new Error("Workflow aborted or negotiation failed.");
       }
-      // If the agree path already completed the workflow, exit gracefully.
       if (!finalData) return;
       
       const bestBid = finalData.shortlist[0];
@@ -580,8 +681,8 @@ export default function AiAgentWorkflow() {
 
       try {
         const failedHistoryItem = {
-          rfqNumber: 'RFQ-ERR',
-          item: file?.name || 'Unknown Document',
+          rfqNumber: tempRfqNum || 'RFQ-ERR',
+          item: fileName,
           quantity: 'N/A',
           supplier: 'Failed',
           savings: '0%',
@@ -602,16 +703,178 @@ export default function AiAgentWorkflow() {
     }
   };
 
-  const handleApproveAndRelease = async () => {
+  const handleAcceptRfqRecommendations = async () => {
+    if (!pendingRfqData || !pendingRfqNum) return;
+    
+    setAgentStatus('running');
+    setUploading(true);
+    setCurrentStep(1); // Set current step to Step 2/5 (Inventory check)
+    
+    const updatedRfqData = {
+      ...pendingRfqData,
+      warranty_requirement: '24 Months',
+      remarks: 'Payment Terms: Net 45. Equivalent manufacturers: Accepted.'
+    };
+    
+    addLog(`[Human Approved] AI Sourcing Recommendations accepted.`, 'success');
+    addLog(`  -> Warranty applied: 24 Months`, 'success');
+    addLog(`  -> Payment Terms applied: Net 45`, 'success');
+    addLog(`  -> Alternative Manufacturers: Allowed`, 'success');
+    
+    const rfNum = pendingRfqNum;
+    setPendingRfqData(null);
+    setPendingRfqNum(null);
+    
+    await resumeAutonomousWorkflow(updatedRfqData, rfNum, 'Demo RFQ');
+  };
+
+  const handleDismissRfqRecommendations = async () => {
+    if (!pendingRfqData || !pendingRfqNum) return;
+    
+    setAgentStatus('running');
+    setUploading(true);
+    setCurrentStep(1);
+    
+    addLog(`[Human Overrode] Proceeding with RFQ as draft without AI suggestions.`, 'warning');
+    
+    const rfNum = pendingRfqNum;
+    setPendingRfqData(null);
+    setPendingRfqNum(null);
+    
+    await resumeAutonomousWorkflow(pendingRfqData, rfNum, 'Demo RFQ');
+  };
+
+  const COMPLIANCE_SUPPLIERS = [
+    {
+      name: 'Gulf Process Systems',
+      sourceType: 'existing',
+      approved: true,
+      compliance: {
+        technicalMatch: 'pass',
+        commercialMatch: 'pass',
+        supplierApproved: 'pass',
+        complianceReview: 'pass',
+        countryOfOrigin: 'pass',
+        hseDocumentation: 'pass',
+        cyberSecurity: 'pass',
+        integrityCheck: 'pass',
+      }
+    },
+    {
+      name: 'AquaFlow Controls',
+      sourceType: 'preferred',
+      approved: true,
+      compliance: {
+        technicalMatch: 'pass',
+        commercialMatch: 'pass',
+        supplierApproved: 'pass',
+        complianceReview: 'pass',
+        countryOfOrigin: 'pass',
+        hseDocumentation: 'pass',
+        cyberSecurity: 'pass',
+        integrityCheck: 'pass',
+      }
+    },
+    {
+      name: 'Houston Pump Solutions',
+      sourceType: 'existing',
+      approved: true,
+      compliance: {
+        technicalMatch: 'pass',
+        commercialMatch: 'pass',
+        supplierApproved: 'pass',
+        complianceReview: 'pass',
+        countryOfOrigin: 'pass',
+        hseDocumentation: 'pass',
+        cyberSecurity: 'pass',
+        integrityCheck: 'pass',
+      }
+    },
+    {
+      name: 'MetroChem Systems',
+      sourceType: 'existing',
+      approved: true,
+      compliance: {
+        technicalMatch: 'pass',
+        commercialMatch: 'warning',
+        supplierApproved: 'pass',
+        complianceReview: 'warning',
+        countryOfOrigin: 'pass',
+        hseDocumentation: 'pass',
+        cyberSecurity: 'warning',
+        integrityCheck: 'pass',
+      }
+    },
+    {
+      name: 'FlowTech USA',
+      sourceType: 'new',
+      approved: false,
+      compliance: {
+        technicalMatch: 'pass',
+        commercialMatch: 'pass',
+        supplierApproved: 'fail',
+        complianceReview: 'pending',
+        countryOfOrigin: 'pending',
+        hseDocumentation: 'pending',
+        cyberSecurity: 'pending',
+        integrityCheck: 'warning',
+      }
+    },
+    {
+      name: 'Precision Dosing Systems',
+      sourceType: 'new',
+      approved: false,
+      compliance: {
+        technicalMatch: 'pass',
+        commercialMatch: 'warning',
+        supplierApproved: 'fail',
+        complianceReview: 'pending',
+        countryOfOrigin: 'pending',
+        hseDocumentation: 'fail',
+        cyberSecurity: 'pending',
+        integrityCheck: 'pending',
+      }
+    },
+    {
+      name: 'Industrial Pump Solutions',
+      sourceType: 'new',
+      approved: false,
+      compliance: {
+        technicalMatch: 'warning',
+        commercialMatch: 'pending',
+        supplierApproved: 'fail',
+        complianceReview: 'pending',
+        countryOfOrigin: 'pending',
+        hseDocumentation: 'pending',
+        cyberSecurity: 'pending',
+        integrityCheck: 'pending',
+      }
+    }
+  ];
+
+  const handleApproveAndRelease = async (forceRelease = false) => {
     if (!realStatusRfq || !negotiationResult || !selectedSupplierId) return;
     
+    const bestBid = negotiationResult.shortlist.find(s => s.supplier_id === selectedSupplierId) || negotiationResult.shortlist[0];
+    
+    // Check compliance
+    const complianceRecord = COMPLIANCE_SUPPLIERS.find(s => s.name.toLowerCase() === bestBid.supplier_name.toLowerCase()) || { approved: false, sourceType: 'new', compliance: { supplierApproved: 'fail', complianceReview: 'pending', technicalMatch: 'pass', commercialMatch: 'pass', countryOfOrigin: 'pending', hseDocumentation: 'pending', cyberSecurity: 'pending', integrityCheck: 'pending' } };
+    
+    if (!complianceRecord.approved && !complianceOverridden && !forceRelease) {
+      addLog(`[Compliance Hold] Enforcing mandatory review gate for non-approved supplier "${bestBid.supplier_name}". Release blocked.`, 'warning');
+      setComplianceModalSupplier({
+        ...bestBid,
+        complianceRecord
+      });
+      setShowComplianceModal(true);
+      return;
+    }
+
     setAgentStatus('running');
     setUploading(true);
     setCurrentStep(4);
     
     try {
-      const bestBid = negotiationResult.shortlist.find(s => s.supplier_id === selectedSupplierId) || negotiationResult.shortlist[0];
-      
       addLog(`[Human Approved] Sourcing recommendation approved for ${bestBid.supplier_name}.`, 'success');
       addLog(`Generating Purchase Order PDF for ${bestBid.supplier_name}...`, 'info');
       
@@ -704,6 +967,13 @@ export default function AiAgentWorkflow() {
     setSyncStatus(null);
     setRealStatusRfq(null);
     setSelectedSupplierId(null);
+    setPendingRfqData(null);
+    setPendingRfqNum(null);
+    setComplianceOverridden(false);
+    setShowComplianceModal(false);
+    setComplianceModalSupplier(null);
+    setComplianceJustification("");
+    setComplianceConfirmed(false);
   };
 
   const steps = [
@@ -890,6 +1160,11 @@ export default function AiAgentWorkflow() {
                     <RefreshCw className="animate-spin" size={12} /> Executing...
                   </span>
                 )}
+                {agentStatus === 'awaiting_rfq_recommendation' && (
+                  <span className="text-xs font-bold text-amber-600 flex items-center gap-1 animate-pulse">
+                    <Sparkles size={12} className="text-amber-500 animate-pulse" /> Recommendations Available
+                  </span>
+                )}
                 {agentStatus === 'awaiting_approval' && (
                   <span className="text-xs font-bold text-amber-600 flex items-center gap-1 animate-pulse">
                     <AlertCircle size={12} /> Awaiting Approval
@@ -929,8 +1204,8 @@ export default function AiAgentWorkflow() {
             <div className="space-y-4">
               {steps.map((step, idx) => {
                 const isPassed = agentStatus === 'completed' || currentStep > idx || (agentStatus === 'awaiting_approval' && idx <= 3);
-                const isCurrent = agentStatus !== 'completed' && agentStatus !== 'awaiting_approval' && currentStep === idx;
-                const isPending = (agentStatus !== 'completed' && agentStatus !== 'awaiting_approval' && currentStep < idx) || (agentStatus === 'awaiting_approval' && idx > 3);
+                const isCurrent = (agentStatus !== 'completed' && agentStatus !== 'awaiting_approval' && currentStep === idx) || (agentStatus === 'awaiting_rfq_recommendation' && idx === 0);
+                const isPending = (agentStatus !== 'completed' && agentStatus !== 'awaiting_approval' && agentStatus !== 'awaiting_rfq_recommendation' && currentStep < idx) || (agentStatus === 'awaiting_rfq_recommendation' && idx > 0) || (agentStatus === 'awaiting_approval' && idx > 3);
                 
                 return (
                   <div key={idx} className={`flex items-center gap-4 p-3 rounded-xl border transition-all ${
@@ -997,6 +1272,65 @@ export default function AiAgentWorkflow() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* AI Recommendations Card */}
+        {agentStatus === 'awaiting_rfq_recommendation' && (
+          <div className="bg-gradient-to-r from-amber-50 to-amber-100/50 border border-amber-300 rounded-2xl p-6 shadow-md space-y-5">
+            <div className="flex justify-between items-center">
+              <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5 animate-pulse">
+                <Sparkles size={14} className="text-amber-600" /> AI Sourcing Recommendations
+              </h4>
+              <span className="text-[9px] bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-bold">
+                Verification Required
+              </span>
+            </div>
+            
+            <p className="text-xs text-slate-700 leading-relaxed font-bold">
+              “I identified 3 missing commercial requirements before releasing this RFQ.”
+            </p>
+
+            <div className="space-y-3 bg-white p-4 rounded-xl border border-amber-200">
+              <div className="space-y-3 text-xs text-slate-600 font-medium">
+                <div className="flex items-start gap-2">
+                  <span className="w-4 h-4 rounded-full bg-amber-150 text-amber-800 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">1</span>
+                  <div>
+                    <strong className="text-slate-800 block">Warranty period not specified</strong>
+                    <span className="text-slate-500">Recommended: <span className="text-emerald-750 font-bold">24 months</span>, based on procurement policy/history.</span>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2 border-t border-slate-100 pt-2.5">
+                  <span className="w-4 h-4 rounded-full bg-amber-150 text-amber-800 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">2</span>
+                  <div>
+                    <strong className="text-slate-800 block">Payment terms not specified</strong>
+                    <span className="text-slate-500">Historical preferred term: <span className="text-emerald-750 font-bold">Net 45</span>.</span>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2 border-t border-slate-100 pt-2.5">
+                  <span className="w-4 h-4 rounded-full bg-amber-150 text-amber-800 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">3</span>
+                  <div>
+                    <strong className="text-slate-800 block">Alternate manufacturers unclear</strong>
+                    <span className="text-slate-500">Would you like equivalent products to be accepted? <span className="text-emerald-750 font-bold">Yes (Recommended)</span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleAcceptRfqRecommendations}
+                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                Accept AI Recommendations
+              </button>
+              <button
+                onClick={handleDismissRfqRecommendations}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2.5 px-4 rounded-xl transition-colors cursor-pointer border border-slate-200"
+              >
+                Proceed as Draft
+              </button>
             </div>
           </div>
         )}
@@ -1938,6 +2272,156 @@ export default function AiAgentWorkflow() {
         )}
 
       </div>
+
+      {/* Supplier Compliance Governance Modal */}
+      {showComplianceModal && complianceModalSupplier && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white border border-slate-250 rounded-3xl p-6 shadow-2xl max-w-lg w-full space-y-5 transform scale-100 transition-all">
+            
+            {/* Modal Header */}
+            <div className="flex justify-between items-start">
+              <div className="space-y-1">
+                <span className="text-[10px] bg-rose-100 text-rose-800 px-2.5 py-0.5 rounded-full font-bold border border-rose-250 uppercase tracking-wider flex items-center gap-1 w-fit">
+                  <Lock size={10} className="animate-pulse text-rose-600" /> Compliance Lock
+                </span>
+                <h3 className="text-base font-extrabold text-slate-800">
+                  Compliance Governance Gate
+                </h3>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowComplianceModal(false);
+                  setAgentStatus('awaiting_approval');
+                  setUploading(false);
+                }}
+                className="text-slate-400 hover:text-slate-650 hover:bg-slate-100 p-1.5 rounded-full transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Warning Message */}
+            <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-start gap-3">
+              <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={16} />
+              <div className="text-[11px] leading-relaxed text-amber-905 font-semibold">
+                <strong>{complianceModalSupplier.supplier_name}</strong> is a non-approved supplier (Source: {complianceModalSupplier.complianceRecord?.sourceType?.toUpperCase() || 'NEW'}). 
+                PO release is blocked until compliance review holds are cleared or an authorized override is signed.
+              </div>
+            </div>
+
+            {/* Checklist items */}
+            <div className="space-y-2 bg-slate-50 p-4 rounded-2xl border border-slate-200/60 max-h-[220px] overflow-y-auto">
+              <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                Governance Checklist Verification
+              </h4>
+              
+              {/* Render the 8 points */}
+              {[
+                { key: 'technicalMatch', label: 'Technical Specifications Match', desc: 'Flow range 0-120 L/hr, PVDF/PTFE compatibility, 7 bar' },
+                { key: 'commercialMatch', label: 'Commercial terms verification', desc: 'Warranty term (24m), Net 45 preferred payment terms' },
+                { key: 'supplierApproved', label: 'Approved Vendor List (AVL)', desc: 'Must be registered in corporate supplier master' },
+                { key: 'complianceReview', label: 'Regulatory compliance review', desc: 'Local and global compliance audit certificates' },
+                { key: 'countryOfOrigin', label: 'Country of Origin validation', desc: 'Trade compliance and sanctions verification' },
+                { key: 'hseDocumentation', label: 'HSE certification & documentation', desc: 'ISO 14001, OSHA cert verification' },
+                { key: 'cyberSecurity', label: 'Cybersecurity requirements', desc: 'SOC 2 or NIST compliance checks' },
+                { key: 'integrityCheck', label: 'Supplier Integrity check', desc: 'Sanctions list, legal and corporate standing' }
+              ].map((item, idx) => {
+                const status = complianceModalSupplier.complianceRecord?.compliance[item.key] || 'pending';
+                
+                // config
+                const iconMap = {
+                  pass: { color: 'text-emerald-500', bg: 'bg-emerald-100', label: 'Cleared' },
+                  fail: { color: 'text-rose-500', bg: 'bg-rose-100', label: 'Hold / Failed' },
+                  warning: { color: 'text-amber-500', bg: 'bg-amber-100', label: 'Warning' },
+                  pending: { color: 'text-slate-400', bg: 'bg-slate-100', label: 'Pending Assessment' }
+                };
+                const cfg = iconMap[status];
+
+                return (
+                  <div key={idx} className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-150">
+                    <div className="min-w-0 flex-1 pr-3">
+                      <div className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                        <span className={`w-1.5 h-1.5 rounded-full ${status === 'pass' ? 'bg-emerald-500' : (status === 'fail' ? 'bg-rose-500' : 'bg-amber-500')}`} />
+                        {item.label}
+                      </div>
+                      <div className="text-[9px] text-slate-400 truncate mt-0.5">{item.desc}</div>
+                    </div>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border uppercase shrink-0 ${
+                      status === 'pass' ? 'bg-emerald-50 text-emerald-700 border-emerald-250' : 
+                      status === 'fail' ? 'bg-rose-50 text-rose-705 border-rose-250 animate-pulse font-extrabold' : 
+                      'bg-amber-50 text-amber-750 border-amber-250'
+                    }`}>
+                      {cfg.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Override Control */}
+            <div className="space-y-3 pt-2">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={complianceConfirmed}
+                  onChange={(e) => setComplianceConfirmed(e.target.checked)}
+                  className="mt-0.5 rounded border-slate-350 text-[#0078d4] focus:ring-[#0078d4] cursor-pointer"
+                />
+                <span className="text-[10px] text-slate-650 font-semibold select-none leading-normal">
+                  I authorize emergency compliance clearance and override all active holds for this vendor.
+                </span>
+              </label>
+
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                  Override Justification / Comments
+                </span>
+                <textarea 
+                  value={complianceJustification}
+                  onChange={(e) => setComplianceJustification(e.target.value)}
+                  placeholder="Enter compliance override justification (e.g. Veolia project deadline critical path)..."
+                  className="w-full text-[11px] p-2.5 border border-slate-250 rounded-xl focus:ring-1 focus:ring-[#0078d4] focus:outline-none resize-none font-medium h-16 text-slate-800"
+                />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                disabled={!complianceConfirmed || !complianceJustification.trim()}
+                onClick={async () => {
+                  setComplianceOverridden(true);
+                  setShowComplianceModal(false);
+                  
+                  addLog(`[Compliance Override] Compliance holds manually overridden by Authorized Auditor.`, 'success');
+                  addLog(`  -> Justification: "${complianceJustification}"`, 'info');
+                  
+                  // Clear fields
+                  setComplianceJustification("");
+                  setComplianceConfirmed(false);
+                  
+                  // Force release
+                  await handleApproveAndRelease(true);
+                }}
+                className="flex-1 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                Clear Holds & Release PO
+              </button>
+              <button
+                onClick={() => {
+                  setShowComplianceModal(false);
+                  setAgentStatus('awaiting_approval');
+                  setUploading(false);
+                }}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2.5 px-4 rounded-xl transition-colors cursor-pointer border border-slate-200"
+              >
+                Cancel Release
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* Maximized Live Logs Modal */}
       {isLogsMaximized && (() => {

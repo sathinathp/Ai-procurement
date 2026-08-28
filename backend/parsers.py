@@ -83,6 +83,34 @@ def ai_extract_rfq(text: str, openai_key: Optional[str] = None) -> Dict[str, Any
     Use OpenAI to extract RFQ metadata from the text.
     If no key is present, returns a structured mockup.
     """
+    lowered = text.lower() if text else ""
+    
+    # 0. Intercept for Wastewater Dosing Pump Demo
+    if any(k in lowered for k in ["dosing", "pump", "wastewater", "wwt", "sodium hypochlorite", "veolia"]):
+        return {
+            "rfq_number": "RFQ-WWT-2026-0847",
+            "project_name": "Wastewater Treatment Plant Chemical Dosing System Upgrade",
+            "department": "Operations / Procurement",
+            "required_date": "2026-09-15",
+            "item_name": "Chemical Dosing Pumps",
+            "item_code": "ITM-PMP-0847",
+            "description": "Supply 12 motor-driven chemical dosing pump assemblies for sodium hypochlorite dosing at wastewater treatment facility.",
+            "quantity": 12.0,
+            "unit": "Units",
+            "specifications": "Flow range 0-120 L/hr, Discharge pressure min 7 bar, Wetted materials PVDF/PTFE, Power 460V / 3 Phase / 60 Hz, Control 4-20 mA + manual, Enclosure NEMA 4X, Accuracy ±2% or better",
+            "priority": "High",
+            "delivery_location": "Houston, Texas, USA",
+            "expected_delivery_date": "2026-09-15",
+            "remarks": "Delivery within 21 calendar days from PO. Quote due September 5, 2026.",
+            "warranty_requirement": "",
+            "delivery_tolerance": "",
+            "missing_fields": [
+                "Warranty requirement",
+                "Preferred payment terms",
+                "Alternate manufacturers acceptance"
+            ]
+        }
+
     # 1. Mocked Fallback
     mock_data = {
         "rfq_number": "RFQ-2026-TEMP",
@@ -105,7 +133,6 @@ def ai_extract_rfq(text: str, openai_key: Optional[str] = None) -> Dict[str, Any
     }
     
     # Customize mock output depending on file text
-    lowered = text.lower()
     if "hdpe" in lowered or "granule" in lowered:
         mock_data["item_name"] = "HDPE Granules"
         mock_data["item_code"] = "ITM-POL-0495"

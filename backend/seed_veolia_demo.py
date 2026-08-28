@@ -221,6 +221,17 @@ def seed_veolia_demo():
     db.commit()
     print(f"Seeded {len(general_suppliers)} general suppliers. Total: 100 suppliers.")
     
+    # Automatically add Veolia suppliers to database early so they can be queried for old POs
+    try:
+        from add_veolia_suppliers import main as add_veolia_suppliers_main
+        print("Registering Veolia demo suppliers...")
+        add_veolia_suppliers_main()
+    except Exception as e:
+        print(f"Warning: could not register Veolia suppliers: {e}")
+        
+    # Re-fetch session state to ensure they are visible
+    db.commit()
+    
     # 3. Seed Inventory Levels with a Deficit in Pumps
     inventory_items = [
         {"item_name": "Industrial Chemical Dosing Pump", "stock_level": 0.0, "min_safety_stock": 2.0, "unit": "Units"},
@@ -336,6 +347,12 @@ def seed_veolia_demo():
     db.add(old_rfq_2)
     db.commit()
 
+    # Query preferred/approved suppliers to seed history
+    houston = db.query(models.Supplier).filter(models.Supplier.name == "Houston Pump Solutions").first()
+    aquaflow = db.query(models.Supplier).filter(models.Supplier.name == "AquaFlow Controls").first()
+    gulfflow = db.query(models.Supplier).filter(models.Supplier.name == "Gulf Flow Control").first()
+    apex = db.query(models.Supplier).filter(models.Supplier.name == "Apex Fluids Corp").first()
+
     # Seed mock purchase orders to trigger "Previously Used" logic:
     # 1. Munich Dosing Systems (Pump category)
     if munich:
@@ -363,6 +380,79 @@ def seed_veolia_demo():
             status="Completed",
             created_at=datetime.utcnow() - timedelta(days=20)
         ))
+        
+    # 3. Houston Pump Solutions (Preferred Dosing Pumps - 10 prior orders)
+    if houston:
+        for idx in range(10):
+            days_ago = 30 + idx * 25
+            price = 2200.0 + (idx * 15) % 150  # variations in price
+            qty = float(4 + (idx * 2) % 10)
+            db.add(models.PurchaseOrder(
+                po_number=f"PO-2026-OLD-HP-{idx+1:03d}",
+                rfq_number="RFQ-2026-OLD-1",
+                supplier_id=houston.id,
+                item_name="Industrial Chemical Dosing Pump",
+                quantity=qty,
+                unit_price=price,
+                total_amount=qty * price,
+                status="Completed",
+                created_at=datetime.utcnow() - timedelta(days=days_ago)
+            ))
+        
+    # 4. AquaFlow Controls (Preferred Dosing Pumps - 5 prior orders)
+    if aquaflow:
+        for idx in range(5):
+            days_ago = 45 + idx * 30
+            price = 2050.0 + (idx * 25) % 120
+            qty = float(5 + (idx * 3) % 8)
+            db.add(models.PurchaseOrder(
+                po_number=f"PO-2026-OLD-AF-{idx+1:03d}",
+                rfq_number="RFQ-2026-OLD-1",
+                supplier_id=aquaflow.id,
+                item_name="Industrial Chemical Dosing Pump",
+                quantity=qty,
+                unit_price=price,
+                total_amount=qty * price,
+                status="Completed",
+                created_at=datetime.utcnow() - timedelta(days=days_ago)
+            ))
+        
+    # 5. Gulf Flow Control (Preferred Dosing Pumps - 4 prior orders)
+    if gulfflow:
+        for idx in range(4):
+            days_ago = 60 + idx * 40
+            price = 2300.0 + (idx * 30) % 100
+            qty = float(3 + (idx * 2) % 6)
+            db.add(models.PurchaseOrder(
+                po_number=f"PO-2026-OLD-GF-{idx+1:03d}",
+                rfq_number="RFQ-2026-OLD-1",
+                supplier_id=gulfflow.id,
+                item_name="Industrial Chemical Dosing Pump",
+                quantity=qty,
+                unit_price=price,
+                total_amount=qty * price,
+                status="Completed",
+                created_at=datetime.utcnow() - timedelta(days=days_ago)
+            ))
+
+    # 6. Apex Fluids Corp (Preferred Dosing Pumps - 3 prior orders)
+    if apex:
+        for idx in range(3):
+            days_ago = 75 + idx * 45
+            price = 2250.0 + (idx * 40) % 110
+            qty = float(6 + idx % 4)
+            db.add(models.PurchaseOrder(
+                po_number=f"PO-2026-OLD-AP-{idx+1:03d}",
+                rfq_number="RFQ-2026-OLD-1",
+                supplier_id=apex.id,
+                item_name="Industrial Chemical Dosing Pump",
+                quantity=qty,
+                unit_price=price,
+                total_amount=qty * price,
+                status="Completed",
+                created_at=datetime.utcnow() - timedelta(days=days_ago)
+            ))
+
     db.commit()
 
     # Seed RFQ-2026-1001 (Pumps)
@@ -539,8 +629,58 @@ def seed_veolia_demo():
         notification_email_sent=True,
         created_at=datetime.utcnow()
     )
-    db.add(notification_2)
+    # 8. Seed Veolia Dosing Pump RFQ (RFQ-WWT-2026-0847)
+    existing_veolia = db.query(models.RFQ).filter(models.RFQ.rfq_number == "RFQ-WWT-2026-0847").first()
+    if not existing_veolia:
+        rfq_val = models.RFQ(
+            rfq_number          = "RFQ-WWT-2026-0847",
+            project_name        = "Wastewater Treatment Plant Chemical Dosing System Upgrade",
+            department          = "Operations / Procurement",
+            required_date       = datetime(2026, 9, 5).date(),
+            item_name           = "Chemical Dosing Pump Assembly",
+            item_code           = "ITM-WWT-PUMP-0847",
+            description         = (
+                "Supply 12 industrial chemical dosing pump assemblies for sodium hypochlorite "
+                "and water-treatment chemical dosing at Veolia wastewater treatment facility, Houston TX. "
+                "Motor-driven metering pump, 0-120 L/hr adjustable, min 7 bar discharge pressure, "
+                "PVDF/PTFE wetted materials, 460V/3Ph/60Hz, NEMA 4X, 4-20mA control input."
+            ),
+            quantity            = 12,
+            unit                = "Units",
+            specifications      = (
+                "Flow Range: 0-120 L/hr | Discharge Pressure: min 7 bar | "
+                "Wetted Materials: PVDF/PTFE | Power: 460V/3Ph/60Hz | "
+                "Enclosure: NEMA 4X minimum | Control: 4-20mA + manual/local | "
+                "Accuracy: ±2% or better | Warranty: 24 months preferred"
+            ),
+            priority            = "High",
+            delivery_location   = "Houston, Texas, USA",
+            expected_delivery_date = (datetime(2026, 9, 5) + timedelta(days=21)).date(),
+            remarks             = "Critical — project schedule impact if delivery exceeds 21 days.",
+            warranty_requirement = "24 months",
+            delivery_tolerance  = "21 days maximum",
+            status              = "RFQ Sent",
+            created_at          = datetime(2026, 8, 15, 9, 0, 0),
+        )
+        db.add(rfq_val)
+
+        # Add timeline events
+        db.add(models.RFQTimeline(
+            rfq_number = "RFQ-WWT-2026-0847",
+            stage      = "Created",
+            timestamp  = datetime(2026, 8, 15, 9, 0, 0),
+            details    = "RFQ initialized by Operations / Procurement Department for Veolia WWT Facility."
+        ))
+        db.add(models.RFQTimeline(
+            rfq_number = "RFQ-WWT-2026-0847",
+            stage      = "RFQ Sent",
+            timestamp  = datetime(2026, 8, 15, 12, 0, 0),
+            details    = "RFQ emailed to 5 shortlisted suppliers via ProcureX."
+        ))
+
     db.commit()
+
+    # Note: Veolia suppliers are registered early in this script
 
     # 7. Reset sequences if using postgres
     if "postgresql" in str(engine.url):

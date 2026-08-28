@@ -35,7 +35,7 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
   const [emailDrafts, setEmailDrafts] = useState([]); // [{supplier, subject, body}]
   const [sendProgress, setSendProgress] = useState([]);  // [{name, status}]
 
-  const activeRfqNum = localStorage.getItem('activeRfqNum') || 'RFQ-2026-1003';
+  const activeRfqNum = localStorage.getItem('activeRfqNum') || 'RFQ-WWT-2026-0847';
 
   const toggleSupplierSelect = (supplier) => {
     setSelectedSuppliers(prev => {
