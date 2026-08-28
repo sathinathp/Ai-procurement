@@ -171,7 +171,7 @@ export default function EmailBot() {
                 </span>
                 <span className="text-[10px] text-slate-400 font-semibold">• Real-Time Logging Console</span>
               </div>
-              <h1 className="text-xl font-bold text-slate-800">Email Bot Console</h1>
+              <h1 className="text-xl font-bold text-slate-800">Email Console</h1>
               <p className="text-xs text-slate-500">Monitor active RFQ communication, review unread IMAP checks, and optimize multi-round AI negotiations.</p>
             </div>
             

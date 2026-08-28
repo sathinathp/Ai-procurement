@@ -458,7 +458,7 @@ procurement@petabytz.com | +966 11 555 0100`;
             Supplier Sourcing & Discovery
           </h1>
           <p className="text-xs text-slate-500">
-            Search internal synced vendors, demo databases, and web marketplaces. Import or export supplier records instantly.
+            Search internal synced vendors, ERP databases, and web marketplaces. Import or export supplier records instantly.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
@@ -562,7 +562,7 @@ procurement@petabytz.com | +966 11 555 0100`;
                   }`}
                 >
                   <FileSpreadsheet size={12} />
-                  <span>Demo Database</span>
+                  <span>ERP Database</span>
                 </button>
 
                 <button 
@@ -885,7 +885,6 @@ procurement@petabytz.com | +966 11 555 0100`;
                                         <div className="text-[9px] text-slate-400 font-semibold flex items-center gap-1 mt-0.5">
                                           <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold border ${
                                             s.source?.includes("ERP") ? "bg-blue-500/10 text-blue-700 border-blue-500/15" :
-                                            s.source?.includes("Demo") ? "bg-amber-500/10 text-amber-700 border-amber-500/15" :
                                             s.source?.includes("Google") ? "bg-rose-500/10 text-rose-700 border-rose-500/15" :
                                             "bg-emerald-500/10 text-emerald-700 border-emerald-500/15"
                                           }`}>
@@ -1188,7 +1187,7 @@ procurement@petabytz.com | +966 11 555 0100`;
                 <h3 className="text-base font-extrabold text-slate-800">RFQ Emails Dispatched!</h3>
                 <p className="text-sm text-slate-500 max-w-xs">
                   {sendProgress.filter(p => p.status === 'sent').length} of {sendProgress.length} emails sent successfully.
-                  Monitor responses in the <strong>Email Bot Console</strong>.
+                  Monitor responses in the <strong>Email Console</strong>.
                 </p>
                 <div className="flex gap-3 mt-2">
                   <button
@@ -1201,7 +1200,7 @@ procurement@petabytz.com | +966 11 555 0100`;
                     onClick={() => { setShowRfqReviewModal(false); setSelectedSuppliers([]); onSendRfqRedirect && onSendRfqRedirect(null); }}
                     className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-extrabold rounded-xl shadow-md transition-all hover:scale-[1.02] cursor-pointer"
                   >
-                    <Mail size={13} /> View Email Bot Console
+                    <Mail size={13} /> View Email Console
                   </button>
                 </div>
               </div>

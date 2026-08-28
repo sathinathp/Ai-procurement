@@ -123,7 +123,7 @@ export default function App() {
       dashboard: 'Operations Dashboard',
       rfqs: 'RFQs & Assistant',
       ai_agent: 'Autonomous ProcureX',
-      email_bot: 'Email Bot Console',
+      email_bot: 'Email Console',
       rfp_campaign: 'RFP Campaign Simulator',
       suppliers: 'Supplier Search',
       email: 'Email Automation',

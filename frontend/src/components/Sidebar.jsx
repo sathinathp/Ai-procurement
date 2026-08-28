@@ -12,7 +12,7 @@ export default function Sidebar({ activeTab, onSelectTab, onLogout, user }) {
   const menuItems = [
     { id: 'dashboard', label: 'Operations Dashboard', icon: <BarChart2 size={16} /> },
     { id: 'rfqs', label: 'RFQs & Assistant', icon: <FileText size={16} /> },
-    { id: 'email_bot', label: 'Email Bot Console', icon: <Bot size={16} className="text-amber-500" /> },
+    { id: 'email_bot', label: 'Email Console', icon: <Bot size={16} className="text-amber-500" /> },
     { id: 'suppliers', label: 'Supplier Search', icon: <Search size={16} /> },
     { id: 'email', label: 'Email Automation', icon: <Mail size={16} /> },
     { id: 'comparison', label: 'Quote Comparison', icon: <Sparkles size={16} /> },

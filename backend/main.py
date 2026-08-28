@@ -946,7 +946,7 @@ def search_suppliers(
             prev_orders_count = len(pos_for_supplier)
             last_purchase_price = pos_for_supplier[0].unit_price if prev_orders_count > 0 else None
             
-            category = classify_supplier_record(db, s.id, s.preferred, s.synced_to_erp, s.erp_vendor_id, "ERP Database" if s.synced_to_erp else "Demo Catalog")
+            category = classify_supplier_record(db, s.id, s.preferred, s.synced_to_erp, s.erp_vendor_id, "ERP Database")
             
             s_resp = getattr(s, "average_response_time_hours", 12.0) or 12.0
             
@@ -959,7 +959,7 @@ def search_suppliers(
                 "rating": s.rating,
                 "lead_time": s.lead_time_days,
                 "preferred": s.preferred,
-                "source": "ERP Database" if s.synced_to_erp else "Demo Catalog",
+                "source": "ERP Database",
                 "quality_score": s.quality_score,
                 "delivery_score": s.delivery_score,
                 "price_competitiveness": s.price_competitiveness,

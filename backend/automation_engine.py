@@ -354,7 +354,7 @@ def run_comparison_and_notify(db: Session, rfq_number: str, winner_supplier_id: 
             q.supplier.preferred,
             q.supplier.synced_to_erp,
             q.supplier.erp_vendor_id,
-            source="ERP Database" if q.supplier.synced_to_erp else "Demo Catalog"
+            source="ERP Database"
         )
         comparison_data.append({
             "supplier_id": q.supplier.id,
