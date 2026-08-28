@@ -4206,6 +4206,7 @@ def sync_all_from_odoo_internal(db: Session):
                     created_at=po_date
                 )
                 db.add(local_po)
+                db.flush()
                 imported_po_count += 1
             else:
                 local_po.status = po_status
