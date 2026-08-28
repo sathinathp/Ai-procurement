@@ -84,15 +84,17 @@ def generate_negotiation_dialogue(rfq_item: str, supplier_name: str, orig_price:
     
     default_agent = (
         f"Dear {supplier_name} Sales Team,\n\n"
-        f"We received your quotation of USD {orig_price:.2f}/unit for {rfq_item}.\n"
-        f"Our target rate is USD {requested_price:.2f}/unit with Net 60 Days payment terms to match our corporate policies.\n"
+        f"Thank you for your response. We received your quotation of USD {orig_price:.2f}/unit for {rfq_item}.\n\n"
+        f"Our target rate is USD {requested_price:.2f}/unit with Net 60 Days payment terms to align with our corporate procurement policies.\n\n"
         f"Please let us know if you can accommodate this so we can submit your bid for management shortlist.\n\n"
-        f"Best regards,\n"
-        f"ProcureX Agent"
+        f"Best regards,\n\n"
+        f"Petabytz Procurement Team\n"
+        f"Procurement Operations Department\n"
+        f"ProcureX Co."
     )
     
     default_supplier = (
-        f"Dear ProcureX Team,\n\n"
+        f"Dear Petabytz Team,\n\n"
         f"Thank you for your follow-up. We appreciate your partnership.\n"
         f"While we cannot meet your target of USD {requested_price:.2f}, we are pleased to offer a revised rate of USD {counter_price:.2f}/unit.\n"
         f"We can also adjust payment terms to Net 45 Days for this order. We hope this works for you.\n\n"
@@ -106,12 +108,12 @@ def generate_negotiation_dialogue(rfq_item: str, supplier_name: str, orig_price:
     try:
         client = OpenAI(api_key=openai_key.strip())
         system_prompt = (
-            "You are an expert ProcureX Negotiator. Generate a realistic email negotiation exchange between:\n"
-            "1. ProcureX Agent (Assistant)\n"
+            "You are an expert Procurement Negotiator at ProcureX Co. Generate a realistic email negotiation exchange between:\n"
+            "1. Petabytz Procurement Team (Procurement Operations Officer at ProcureX)\n"
             "2. The Supplier's Sales Manager (User)\n\n"
             "Ensure the emails sound authentic, formal, and specific to the procurement domain. Do not use generic placeholders.\n\n"
             "Generate a JSON object with two keys:\n"
-            "- agent_email: A professional email from ProcureX Agent asking for the requested price and Net 60 Days terms.\n"
+            "- agent_email: A professional email from Petabytz Procurement Team asking for the requested price and Net 60 Days terms.\n"
             "- supplier_email: A realistic response email from the supplier. They should decline the target, offer the counter-price, and propose Net 45 Days payment terms.\n\n"
             "Output ONLY a raw JSON string."
         )
@@ -260,19 +262,32 @@ def sync_incoming_emails(db: Session):
     try:
         mail = imaplib.IMAP4_SSL(imap_server, imap_port)
         mail.login(imap_username, imap_password)
-        mail.select("inbox")
 
-        # Search for all unread messages
-        status, messages = mail.search(None, 'UNSEEN')
-        if status != "OK" or not messages[0]:
+        message_ids = []
+        folders = ["inbox", "Junk", "Spam", "[Gmail]/Spam", "[Gmail]/Junk", "Junk Email"]
+        for folder in folders:
+            try:
+                status, _ = mail.select(folder)
+                if status != "OK":
+                    continue
+                status_unseen, messages = mail.search(None, 'UNSEEN')
+                if status_unseen == "OK" and messages[0]:
+                    for m_id in messages[0].split():
+                        item = (folder, m_id)
+                        if item not in message_ids:
+                            message_ids.append(item)
+            except Exception as folder_err:
+                logger.error(f"Sync: Error searching folder '{folder}': {folder_err}")
+
+        if not message_ids:
             mail.logout()
             return
 
-        message_ids = messages[0].split()
-        logger.info(f"Sync: found {len(message_ids)} unread emails in inbox. Processing...")
+        logger.info(f"Sync: found {len(message_ids)} unread emails across monitored folders. Processing...")
 
-        for msg_id in message_ids:
+        for folder, msg_id in message_ids:
             try:
+                mail.select(folder)
                 res, msg_data = mail.fetch(msg_id, "(RFC822)")
                 for response_part in msg_data:
                     if isinstance(response_part, tuple):
@@ -317,6 +332,14 @@ def sync_incoming_emails(db: Session):
                         rfq_match = re.search(r'RFQ-[\w-]+', subject, re.IGNORECASE)
                         if not rfq_match:
                             rfq_match = re.search(r'RFQ-[\w-]+', body, re.IGNORECASE)
+
+                        # If the email contains an RFQ reference, it MUST be a reply/forward thread to be processed.
+                        # This prevents invitation emails sent to the suppliers from being misidentified as supplier replies.
+                        if rfq_match:
+                            subject_lower = subject.lower().strip()
+                            if not (subject_lower.startswith("re:") or subject_lower.startswith("fwd:")):
+                                logger.info(f"Sync: Skipping invitation/outgoing email containing RFQ reference: {subject}")
+                                continue
 
                         if not rfq_match:
                             # No RFQ reference, mark seen and skip
@@ -676,6 +699,8 @@ def create_rfq(rfq_data: dict, db: Session = Depends(get_db)):
             existing.delivery_location    = rfq_data.get("delivery_location",   existing.delivery_location)
             existing.expected_delivery_date = expected_del_date or existing.expected_delivery_date
             existing.remarks              = rfq_data.get("remarks",             existing.remarks)
+            existing.warranty_requirement = rfq_data.get("warranty_requirement", existing.warranty_requirement)
+            existing.delivery_tolerance   = rfq_data.get("delivery_tolerance",   existing.delivery_tolerance)
             new_rfq = existing
         else:
             # Create
@@ -695,6 +720,8 @@ def create_rfq(rfq_data: dict, db: Session = Depends(get_db)):
                 delivery_location   = rfq_data.get("delivery_location", "Riyadh Warehouse"),
                 expected_delivery_date = expected_del_date,
                 remarks             = rfq_data.get("remarks"),
+                warranty_requirement = rfq_data.get("warranty_requirement"),
+                delivery_tolerance   = rfq_data.get("delivery_tolerance"),
                 status              = "Created"
             )
             db.add(new_rfq)
@@ -813,6 +840,8 @@ def get_rfq_details(rfq_number: str, db: Session = Depends(get_db)):
         "delivery_location": rfq.delivery_location,
         "expected_delivery_date": rfq.expected_delivery_date.strftime("%Y-%m-%d") if rfq.expected_delivery_date else None,
         "remarks": rfq.remarks,
+        "warranty_requirement": rfq.warranty_requirement,
+        "delivery_tolerance": rfq.delivery_tolerance,
         "status": rfq.status,
         "created_at": rfq.created_at.strftime("%Y-%m-%d"),
         "quotes": quotes_list
@@ -821,6 +850,31 @@ def get_rfq_details(rfq_number: str, db: Session = Depends(get_db)):
 # =====================================================================
 # MODULE 3: Supplier Search
 # =====================================================================
+def classify_supplier_record(db, supplier_id, preferred, synced_to_erp, erp_vendor_id, source=None):
+    if preferred:
+        return "Preferred Suppliers"
+    if supplier_id is not None:
+        po_count = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.supplier_id == supplier_id).count()
+        if po_count > 0:
+            return "Previously Used Suppliers"
+    is_approved = synced_to_erp or (erp_vendor_id is not None) or (source and ("ERP" in source or "Demo" in source))
+    if is_approved:
+        return "Other Approved Suppliers"
+    return "New Supplier Candidates"
+
+def generate_supplier_explanation(s_name, s_country, s_rating, s_quality, s_delivery, s_risk, s_resp, category, prev_orders, last_price, query):
+    q_str = f"'{query}'" if query else "required specifications"
+    
+    if category == "Preferred Suppliers":
+        return f"Pre-vetted preferred partner for {q_str}. Excellent performance history: {s_quality}% quality, {s_delivery}% delivery, and minimal {s_risk.lower()} risk."
+    elif category == "Previously Used Suppliers":
+        price_clause = f" at ${last_price}/MT" if last_price else ""
+        return f"Successfully completed {prev_orders} past orders for {q_str}{price_clause}. Highly reliable with a {s_delivery}% delivery rating."
+    elif category == "Other Approved Suppliers":
+        return f"Approved ERP vendor. Meets all standard specifications with {s_quality}% quality compliance and a prompt {s_resp:.1f}h average response time."
+    else: # New Supplier Candidates
+        return f"Identified via web catalogs as a viable match for {q_str}. Strong rating ({s_rating}/5.0) and {s_risk.lower()} delivery risk profile."
+
 @app.get("/api/suppliers/search")
 def search_suppliers(
     query: str = Query(""),
@@ -870,6 +924,10 @@ def search_suppliers(
             prev_orders_count = len(pos_for_supplier)
             last_purchase_price = pos_for_supplier[0].unit_price if prev_orders_count > 0 else None
             
+            category = classify_supplier_record(db, s.id, s.preferred, s.synced_to_erp, s.erp_vendor_id, "ERP Database" if s.synced_to_erp else "Demo Catalog")
+            
+            s_resp = getattr(s, "average_response_time_hours", 12.0) or 12.0
+            
             results.append({
                 "id": s.id,
                 "name": s.name,
@@ -887,11 +945,17 @@ def search_suppliers(
                 "erp_vendor_id": s.erp_vendor_id,
                 "synced_to_erp": s.synced_to_erp,
                 "previous_orders": prev_orders_count,
-                "last_purchase_price": last_purchase_price
+                "last_purchase_price": last_purchase_price,
+                "average_response_time_hours": s_resp,
+                "supplier_category": category,
+                "category": category,
+                "ai_explanation": generate_supplier_explanation(s.name, s.country, s.rating, s.quality_score, s.delivery_score, s.risk_level, s_resp, category, prev_orders_count, last_purchase_price, query)
             })
             
         # Add external sources if requested in options
         if "google" in parsed_sources:
+            category = "New Supplier Candidates"
+            ai_exp = generate_supplier_explanation("EuroChemicals GmbH", "Germany", 4.6, 94.0, 93.0, "Low", 16.0, category, 0, None, query)
             results.append({
                 "id": 2000 + hash(query) % 100,
                 "name": "EuroChemicals GmbH",
@@ -909,10 +973,16 @@ def search_suppliers(
                 "previous_orders": 0,
                 "last_purchase_price": None,
                 "synced_to_erp": False,
-                "erp_vendor_id": None
+                "erp_vendor_id": None,
+                "average_response_time_hours": 16.0,
+                "supplier_category": category,
+                "category": category,
+                "ai_explanation": ai_exp
             })
             
         if "alibaba" in parsed_sources:
+            category = "New Supplier Candidates"
+            ai_exp = generate_supplier_explanation("Global Polymer Trading Ltd.", "China", 4.1, 85.0, 82.0, "Medium", 32.0, category, 0, None, query)
             results.append({
                 "id": 1000 + hash(query) % 100,
                 "name": "Global Polymer Trading Ltd.",
@@ -930,7 +1000,11 @@ def search_suppliers(
                 "previous_orders": 0,
                 "last_purchase_price": None,
                 "synced_to_erp": False,
-                "erp_vendor_id": None
+                "erp_vendor_id": None,
+                "average_response_time_hours": 32.0,
+                "supplier_category": category,
+                "category": category,
+                "ai_explanation": ai_exp
             })
             
         # 3. AI-Driven OpenAI Web Search / Supplier generation
@@ -995,6 +1069,9 @@ def search_suppliers(
                         db.commit()
                         db.refresh(new_sup)
                         
+                        category = "New Supplier Candidates"
+                        ai_exp = generate_supplier_explanation(new_sup.name, new_sup.country, new_sup.rating, new_sup.quality_score, new_sup.delivery_score, new_sup.risk_level, new_sup.average_response_time_hours, category, 0, None, query)
+                        
                         results.append({
                             "id": new_sup.id,
                             "name": new_sup.name,
@@ -1012,12 +1089,21 @@ def search_suppliers(
                             "previous_orders": 0,
                             "last_purchase_price": None,
                             "synced_to_erp": False,
-                            "erp_vendor_id": None
+                            "erp_vendor_id": None,
+                            "average_response_time_hours": new_sup.average_response_time_hours,
+                            "supplier_category": category,
+                            "category": category,
+                            "ai_explanation": ai_exp
                         })
                     else:
                         pos_for_supplier = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.supplier_id == exists.id).order_by(models.PurchaseOrder.created_at.desc()).all()
                         prev_orders_count = len(pos_for_supplier)
                         last_purchase_price = pos_for_supplier[0].unit_price if prev_orders_count > 0 else None
+                        
+                        category = classify_supplier_record(db, exists.id, exists.preferred, exists.synced_to_erp, exists.erp_vendor_id, "OpenAI AI Search")
+                        
+                        s_resp = getattr(exists, "average_response_time_hours", 12.0) or 12.0
+                        ai_exp = generate_supplier_explanation(exists.name, exists.country, exists.rating, exists.quality_score, exists.delivery_score, exists.risk_level, s_resp, category, prev_orders_count, last_purchase_price, query)
                         
                         results.append({
                             "id": exists.id,
@@ -1036,7 +1122,11 @@ def search_suppliers(
                             "previous_orders": prev_orders_count,
                             "last_purchase_price": last_purchase_price,
                             "synced_to_erp": exists.synced_to_erp,
-                            "erp_vendor_id": exists.erp_vendor_id
+                            "erp_vendor_id": exists.erp_vendor_id,
+                            "average_response_time_hours": s_resp,
+                            "supplier_category": category,
+                            "category": category,
+                            "ai_explanation": ai_exp
                         })
             except Exception as e:
                 logger.error(f"Error generating AI suppliers: {e}")
@@ -1969,12 +2059,14 @@ def view_rfq_comparison(rfq_number: str, db: Session = Depends(get_db)):
     
     quotes_data = []
     for q in quotes:
+        category = classify_supplier_record(db, q.supplier_id, q.supplier.preferred, q.supplier.synced_to_erp, q.supplier.erp_vendor_id)
         quotes_data.append({
             "supplier_id": q.supplier_id,
             "supplier_name": q.supplier.name,
             "supplier_rating": q.supplier.rating,
             "supplier_delivery_score": q.supplier.delivery_score,
             "supplier_risk_level": q.supplier.risk_level,
+            "supplier_category": category,
             "price": q.price,
             "currency": q.currency,
             "moq": q.moq,
@@ -2560,6 +2652,93 @@ def generate_sample_rfq_pdf():
         filename="sample_rfq_document.pdf"
     )
 
+@app.get("/api/campaign/download-mock-quote")
+def download_mock_quote(supplier: str, category: str):
+    from fastapi.responses import FileResponse
+    from generate_mock_quotes import generate_supplier_quote_pdf, generate_supplier_quote_xlsx
+    import tempfile
+    
+    category_lower = category.lower()
+    supplier_lower = supplier.lower()
+    
+    supplier_data = None
+    
+    dosing_pumps = {
+        "budget pumps": {"price": 850.0, "currency": "USD", "lead_time": 25, "payment_terms": "100% Advance", "incoterms": "EXW Houston", "format": "pdf", "supplier_name": "Budget Pumps Inc", "item_name": "Industrial Dosing Pump Model DP-100"},
+        "munich dosing": {"price": 1150.0, "currency": "USD", "lead_time": 3, "payment_terms": "Net 30 Days", "incoterms": "DDP Jeddah", "format": "xlsx", "supplier_name": "Munich Dosing Systems", "item_name": "High-Speed Dosing Pump Model DP-200"},
+        "houston pump": {"price": 980.0, "currency": "USD", "lead_time": 12, "payment_terms": "Net 45 Days", "incoterms": "CIF Dammam", "format": "pdf", "supplier_name": "Houston Pump Solutions", "item_name": "Standard Dosing Pump Model DP-150"},
+        "tokyo precision": {"price": 920.0, "currency": "EUR", "lead_time": 14, "payment_terms": "Letter of Credit (L/C)", "incoterms": "FOB Tokyo", "format": "pdf", "supplier_name": "Tokyo Precision Flow", "item_name": "Precision Dosing Pump Model DP-300"}
+    }
+    
+    polymers = {
+        "al-khobar plastics": {"price": 950.0, "currency": "USD", "lead_time": 28, "payment_terms": "100% Advance", "incoterms": "EXW Al-Khobar", "format": "pdf", "supplier_name": "Al-Khobar Plastics", "item_name": "Polymer Raw Material - Grade A"},
+        "basf middle east": {"price": 1250.0, "currency": "USD", "lead_time": 4, "payment_terms": "Net 30 Days", "incoterms": "DDP Dammam", "format": "xlsx", "supplier_name": "BASF Middle East", "item_name": "High-Quality Polymer Compound"},
+        "sabic polymers": {"price": 1050.0, "currency": "USD", "lead_time": 7, "payment_terms": "Net 60 Days", "incoterms": "DDP Dammam", "format": "pdf", "supplier_name": "SABIC Polymers Co.", "item_name": "Industrial Polymer Resin K-67"},
+        "borouge": {"price": 1100.0, "currency": "EUR", "lead_time": 10, "payment_terms": "10% Advance, 90% LC", "incoterms": "FOB Shanghai", "format": "pdf", "supplier_name": "Borouge", "item_name": "Specialty Polymer Compound"}
+    }
+    
+    matched_set = dosing_pumps if "pump" in category_lower or "dosing" in category_lower else polymers
+    
+    for key, data in matched_set.items():
+        if key in supplier_lower:
+            supplier_data = data
+            break
+            
+    if not supplier_data:
+        other_set = polymers if matched_set == dosing_pumps else dosing_pumps
+        for key, data in other_set.items():
+            if key in supplier_lower:
+                supplier_data = data
+                break
+                
+    if not supplier_data:
+        supplier_data = {
+            "price": 1000.0,
+            "currency": "USD",
+            "lead_time": 14,
+            "payment_terms": "Net 30 Days",
+            "incoterms": "FOB Origin",
+            "format": "pdf",
+            "supplier_name": supplier,
+            "item_name": f"{category.capitalize()} Supplies"
+        }
+        
+    temp_dir = tempfile.gettempdir()
+    file_ext = supplier_data["format"]
+    filename = f"Quotation_{supplier_data['supplier_name'].replace(' ', '_')}.{file_ext}"
+    file_path = os.path.join(temp_dir, filename)
+    
+    if file_ext == "pdf":
+        generate_supplier_quote_pdf(
+            supplier_name=supplier_data["supplier_name"],
+            price=supplier_data["price"],
+            currency=supplier_data["currency"],
+            lead_time=supplier_data["lead_time"],
+            payment_terms=supplier_data["payment_terms"],
+            incoterms=supplier_data["incoterms"],
+            item_name=supplier_data["item_name"],
+            file_path=file_path
+        )
+        media_type = "application/pdf"
+    else:
+        generate_supplier_quote_xlsx(
+            supplier_name=supplier_data["supplier_name"],
+            price=supplier_data["price"],
+            currency=supplier_data["currency"],
+            lead_time=supplier_data["lead_time"],
+            payment_terms=supplier_data["payment_terms"],
+            incoterms=supplier_data["incoterms"],
+            item_name=supplier_data["item_name"],
+            file_path=file_path
+        )
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        
+    return FileResponse(
+        path=file_path,
+        media_type=media_type,
+        filename=filename
+    )
+
 @app.post("/api/purchase-orders/{po_number}/send-email")
 def send_po_email(po_number: str, db: Session = Depends(get_db)):
     try:
@@ -2751,11 +2930,7 @@ def simulate_rfp_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
         if len(suppliers) < 5:
             raise HTTPException(status_code=400, detail="Not enough suppliers in DB. Please seed database first.")
 
-        # Clear existing quotes for this RFQ to make it fresh
-        db.query(models.QuoteResponse).filter(models.QuoteResponse.rfq_number == rfq_number).delete()
-        db.commit()
-
-        # Select 30 suppliers
+           # Select 30 suppliers
         item_lower = rfq.item_name.lower()
         if "pump" in item_lower or "dosing" in item_lower:
             # Custom Veolia Dosing Pump Simulation!
@@ -2765,7 +2940,7 @@ def simulate_rfp_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
                 (models.Supplier.name.like("%Fluid%")) |
                 (models.Supplier.name.like("%Dosing%"))
             ).all()
-            if not pump_suppliers:
+            if not pump_suppliers or len(pump_suppliers) < 4:
                 pump_suppliers = db.query(models.Supplier).limit(12).all()
                 
             # Clear existing quotes for this RFQ to make it fresh
@@ -2775,32 +2950,32 @@ def simulate_rfp_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
             # Map specific quote prices and lead times
             quotes = []
             quote_metrics = {
-                "Houston Pump Solutions": {"price": 2500.0, "final_price": 2350.0, "lead_time": 15, "final_lead_time": 14, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"},
-                "Gulf Flow Control": {"price": 2650.0, "final_price": 2650.0, "lead_time": 14, "final_lead_time": 14, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 30 Days"},
-                "Apex Fluids Corp": {"price": 2600.0, "final_price": 2500.0, "lead_time": 15, "final_lead_time": 15, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"},
-                "Standard Dosing Systems": {"price": 2400.0, "final_price": 2300.0, "lead_time": 18, "final_lead_time": 18, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 30 Days"},
-                "Texas Pump Depot": {"price": 2450.0, "final_price": 2380.0, "lead_time": 16, "final_lead_time": 16, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"},
-                "Vector Fluidics": {"price": 2550.0, "final_price": 2480.0, "lead_time": 17, "final_lead_time": 17, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 30 Days"},
-                "Innovate Flow Tech": {"price": 2300.0, "final_price": 2250.0, "lead_time": 20, "final_lead_time": 20, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"},
-                "Precision Metering Co": {"price": 2350.0, "final_price": 2280.0, "lead_time": 18, "final_lead_time": 18, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"},
-                "Alpha Pumps & Valves": {"price": 2400.0, "final_price": 2320.0, "lead_time": 19, "final_lead_time": 19, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"},
-                "Budget Pumps Inc": {"price": 1900.0, "final_price": 1900.0, "lead_time": 30, "final_lead_time": 30, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 30 Days"},
-                "Munich Dosing Systems": {"price": 2300.0, "final_price": 2150.0, "lead_time": 12, "final_lead_time": 12, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"},
-                "Tokyo Precision Flow": {"price": 2380.0, "final_price": 2220.0, "lead_time": 13, "final_lead_time": 13, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"},
+                "Houston Pump Solutions": {"price": 2500.0, "final_price": 2350.0, "lead_time": 15, "final_lead_time": 14, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days", "currency": "USD", "incoterms": "DDP Houston"},
+                "Gulf Flow Control": {"price": 2650.0, "final_price": 2650.0, "lead_time": 14, "final_lead_time": 14, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 30 Days", "currency": "USD", "incoterms": "CIF"},
+                "Apex Fluids Corp": {"price": 2600.0, "final_price": 2500.0, "lead_time": 15, "final_lead_time": 15, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days", "currency": "USD", "incoterms": "CIF"},
+                "Standard Dosing Systems": {"price": 2400.0, "final_price": 2300.0, "lead_time": 18, "final_lead_time": 18, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 30 Days", "currency": "USD", "incoterms": "CIF"},
+                "Texas Pump Depot": {"price": 2450.0, "final_price": 2380.0, "lead_time": 16, "final_lead_time": 16, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days", "currency": "USD", "incoterms": "CIF"},
+                "Vector Fluidics": {"price": 2550.0, "final_price": 2480.0, "lead_time": 17, "final_lead_time": 17, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 30 Days", "currency": "USD", "incoterms": "CIF"},
+                "Innovate Flow Tech": {"price": 2300.0, "final_price": 2250.0, "lead_time": 20, "final_lead_time": 20, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days", "currency": "USD", "incoterms": "CIF"},
+                "Precision Metering Co": {"price": 2350.0, "final_price": 2280.0, "lead_time": 18, "final_lead_time": 18, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days", "currency": "USD", "incoterms": "CIF"},
+                "Alpha Pumps & Valves": {"price": 2400.0, "final_price": 2320.0, "lead_time": 19, "final_lead_time": 19, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days", "currency": "USD", "incoterms": "CIF"},
+                "Budget Pumps Inc": {"price": 1900.0, "final_price": 1900.0, "lead_time": 30, "final_lead_time": 30, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 30 Days", "currency": "USD", "incoterms": "EXW Shanghai"},
+                "Munich Dosing Systems": {"price": 2300.0, "final_price": 2150.0, "lead_time": 12, "final_lead_time": 12, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days", "currency": "USD", "incoterms": "CIF Dammam"},
+                "Tokyo Precision Flow": {"price": 2380.0, "final_price": 2200.0, "lead_time": 13, "final_lead_time": 13, "payment_terms": "10% Advance, 90% LC", "final_payment_terms": "10% Advance, 90% LC", "currency": "EUR", "incoterms": "FOB Tokyo"},
             }
             
             negotiation_logs = []
             for s in pump_suppliers:
-                metrics = quote_metrics.get(s.name, {"price": 2400.0, "final_price": 2300.0, "lead_time": 15, "final_lead_time": 15, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days"})
+                metrics = quote_metrics.get(s.name, {"price": 2400.0, "final_price": 2300.0, "lead_time": 15, "final_lead_time": 15, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days", "currency": "USD", "incoterms": "CIF"})
                 q = models.QuoteResponse(
                     rfq_number=rfq_number,
                     supplier_id=s.id,
                     price=metrics["final_price"],
-                    currency="USD",
+                    currency=metrics.get("currency", "USD"),
                     moq=1.0,
                     lead_time_days=metrics["final_lead_time"],
                     payment_terms=metrics["final_payment_terms"],
-                    incoterms="CIF",
+                    incoterms=metrics.get("incoterms", "CIF"),
                     warranty="12 Months",
                     validity="60 Days",
                     delivery_details="FOB/CIF standard delivery.",
@@ -2810,42 +2985,47 @@ def simulate_rfp_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
                 db.flush()
                 quotes.append(q)
                 
-                # Populate NegotiationLog for Munich Dosing Systems, Houston Pump Solutions, and Budget Pumps Inc
-                if s.name in ["Munich Dosing Systems", "Houston Pump Solutions", "Budget Pumps Inc"]:
+                # Populate NegotiationLog for Munich Dosing Systems, Houston Pump Solutions, Budget Pumps Inc, and Tokyo Precision Flow
+                if s.name in ["Munich Dosing Systems", "Houston Pump Solutions", "Budget Pumps Inc", "Tokyo Precision Flow"]:
                     now = datetime.utcnow()
                     orig = metrics["price"]
                     final = metrics["final_price"]
                     lt = metrics["lead_time"]
+                    curr = metrics.get("currency", "USD")
+                    curr_symbol = "€" if curr == "EUR" else ("$" if curr == "USD" else curr)
                     target = round(orig * 0.9, 2)
                     
                     # Round 1 Inbound
                     db.add(models.NegotiationLog(
                         rfq_number=rfq_number, supplier_id=s.id, supplier_email=s.email, round_number=1, direction="inbound",
-                        subject=f"Quote for RFQ {rfq_number}", body=f"Dear ProcureX Team, We submit our quotation of ${orig}/unit. Lead time is {lt} days.",
-                        extracted_price=orig, extracted_currency="USD", extracted_lead_time=lt, sent_at=now - timedelta(minutes=5), reply_received=True
+                        subject=f"Quote for RFQ {rfq_number}", body=f"Dear ProcureX Team, We submit our quotation of {curr_symbol}{orig}/unit. Lead time is {lt} days.",
+                        extracted_price=orig, extracted_currency=curr, extracted_lead_time=lt, sent_at=now - timedelta(minutes=5), reply_received=True
                     ))
                     # Round 1 Outbound (Counter-offer)
                     db.add(models.NegotiationLog(
                         rfq_number=rfq_number, supplier_id=s.id, supplier_email=s.email, round_number=1, direction="outbound",
-                        subject=f"RE: Quote for RFQ {rfq_number}", body=f"Dear {s.name} team, thank you for your offer. Our target price is ${target}/unit. Can you adjust terms?",
-                        extracted_price=target, extracted_currency="USD", sent_at=now - timedelta(minutes=4)
+                        subject=f"RE: Quote for RFQ {rfq_number}", body=f"Dear {s.name} team, thank you for your offer. Our target price is {curr_symbol}{target}/unit. Can you adjust terms?",
+                        extracted_price=target, extracted_currency=curr, sent_at=now - timedelta(minutes=4)
                     ))
                     
                     # Round 2 Inbound (Final offer)
                     if s.name == "Budget Pumps Inc":
-                        body_r2 = f"We cannot offer any further discount. Our price of ${orig}/unit is firm. Lead time is 30 days."
+                        body_r2 = f"We cannot offer any further discount. Our price of {curr_symbol}{orig}/unit is firm. Lead time is 30 days."
                         is_final = True
                     elif s.name == "Munich Dosing Systems":
-                        body_r2 = f"Thank you for the counter-offer. We accept a revised price of ${final}/unit as our best and final offer with a lead time of 12 days."
+                        body_r2 = f"Thank you for the counter-offer. We accept a revised price of {curr_symbol}{final}/unit as our best and final offer with a lead time of 12 days."
                         is_final = True
-                    else:
-                        body_r2 = f"We can offer a revised price of ${final}/unit with 14 days lead time."
-                        is_final = False
+                    elif s.name == "Tokyo Precision Flow":
+                        body_r2 = f"We can offer a revised price of {curr_symbol}{final}/unit with a 13-day lead time, under payment terms of 10% Advance, 90% LC."
+                        is_final = True
+                    else: # Houston Pump Solutions
+                        body_r2 = f"We can offer a revised price of {curr_symbol}{final}/unit with 14 days lead time and payment terms Net 45 Days."
+                        is_final = True
                         
                     db.add(models.NegotiationLog(
                         rfq_number=rfq_number, supplier_id=s.id, supplier_email=s.email, round_number=2, direction="inbound",
                         subject=f"RE: Target Price for RFQ {rfq_number}", body=body_r2,
-                        extracted_price=final, extracted_currency="USD", extracted_lead_time=metrics["final_lead_time"], sent_at=now - timedelta(minutes=3), reply_received=True, is_final=is_final
+                        extracted_price=final, extracted_currency=curr, extracted_lead_time=metrics["final_lead_time"], sent_at=now - timedelta(minutes=3), reply_received=True, is_final=is_final
                     ))
                     
                     # Add EmailHistory entries for them
@@ -2865,8 +3045,8 @@ def simulate_rfp_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
                         "original_terms": "Net 30 Days",
                         "negotiated_terms": metrics["final_payment_terms"],
                         "chat_history": [
-                            {"role": "user", "content": f"Dear ProcureX Team, We submit our quotation of ${orig}/unit. Lead time is {lt} days."},
-                            {"role": "assistant", "content": f"Dear {s.name} team, thank you for your offer. Our target price is ${target}/unit. Can you adjust terms?"},
+                            {"role": "user", "content": f"Dear ProcureX Team, We submit our quotation of {curr_symbol}{orig}/unit. Lead time is {lt} days."},
+                            {"role": "assistant", "content": f"Dear {s.name} team, thank you for your offer. Our target price is {curr_symbol}{target}/unit. Can you adjust terms?"},
                             {"role": "user", "content": body_r2}
                         ]
                     })
@@ -2923,13 +3103,28 @@ def simulate_rfp_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
                 "Munich Dosing Systems (Oppora-discovered) is recommended for award, offering the lowest conforming negotiated price of $2,150/unit "
                 "(6.5% savings from original $2,300 quote). Houston Pump Solutions is the premium alternative ($2,350/unit). "
                 "Budget Pumps Inc offered $1,900/unit but was REJECTED because their 30-day lead time violates the 21-day Houston site deadline and carries high delivery risk (62% compliance score). "
+                "Tokyo Precision Flow offered a varied terms quote of €2,200/unit under LC terms. "
                 "Action Required: Approve this proposal to generate the Purchase Order and sync to Odoo ERP."
             )
             
-            comparison_data = [
-                {"supplier_id": q.supplier_id, "supplier_name": q.supplier.name, "price": q.price, "currency": q.currency, "lead_time_days": q.lead_time_days, "payment_terms": q.payment_terms, "rating": q.supplier.rating, "delivery_score": q.supplier.delivery_score, "risk_level": q.supplier.risk_level, "status": "Best Offer" if q.supplier.name == "Munich Dosing Systems" else ("Matched" if q.supplier.name == "Houston Pump Solutions" else ("High Delivery Risk" if q.supplier.name == "Budget Pumps Inc" else "Conforming"))}
-                for q in quotes if q.supplier.name in ["Munich Dosing Systems", "Houston Pump Solutions", "Budget Pumps Inc"]
-            ]
+            comparison_data = []
+            for q in quotes:
+                if q.supplier.name in ["Munich Dosing Systems", "Houston Pump Solutions", "Budget Pumps Inc", "Tokyo Precision Flow"]:
+                    category = classify_supplier_record(db, q.supplier_id, q.supplier.preferred, q.supplier.synced_to_erp, q.supplier.erp_vendor_id)
+                    comparison_data.append({
+                        "supplier_id": q.supplier_id,
+                        "supplier_name": q.supplier.name,
+                        "price": q.price,
+                        "currency": q.currency,
+                        "lead_time_days": q.lead_time_days,
+                        "payment_terms": q.payment_terms,
+                        "rating": q.supplier.rating,
+                        "delivery_score": q.supplier.delivery_score,
+                        "risk_level": q.supplier.risk_level,
+                        "status": "Best Offer" if q.supplier.name == "Munich Dosing Systems" else ("Matched" if q.supplier.name == "Houston Pump Solutions" else ("High Delivery Risk" if q.supplier.name == "Budget Pumps Inc" else ("Varied Terms" if q.supplier.name == "Tokyo Precision Flow" else "Conforming"))),
+                        "supplier_category": category,
+                        "category": category
+                    })
             
             notification = models.WorkflowNotification(
                 rfq_number=rfq_number,
@@ -2977,208 +3172,237 @@ def simulate_rfp_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
                 "shortlist": top_3
             }
             
-        # Select 30 suppliers (normal fallback)
-        import random
-        selected_suppliers = random.sample(pool, min(30, len(pool)))
-
-        # Base price calculation
-        base_price = 12.0
-        if rfq.item_name == "PVC Resin":
-            base_price = 1000.0
-        elif rfq.item_name == "HDPE Granules":
-            base_price = 1150.0
-        elif rfq.item_name == "LDPE Film":
-            base_price = 1300.0
-        elif rfq.item_name == "Calcium Carbonate":
-            base_price = 150.0
-        elif rfq.item_name == "Titanium Dioxide":
-            base_price = 2800.0
-        elif "Plasticizer" in rfq.item_name:
-            base_price = 1400.0
         else:
-            base_price = random.uniform(50, 500)
-
-        # Generate quotes from these 30 suppliers
-        quotes = []
-        for s in selected_suppliers:
-            price_factor = 1.0 - (s.price_competitiveness - 80) / 400.0
-            price = round(base_price * price_factor * random.uniform(0.95, 1.08), 2)
-            lead_time = max(3, int(s.lead_time_days * random.uniform(0.85, 1.15)))
-            moq = max(1.0, round(rfq.quantity * random.uniform(0.1, 0.6), 1))
-
-            new_quote = models.QuoteResponse(
-                rfq_number=rfq_number,
-                supplier_id=s.id,
-                price=price,
-                currency="USD",
-                moq=moq,
-                lead_time_days=lead_time,
-                payment_terms=random.choice(["Net 30 Days", "Net 45 Days", "CAD"]),
-                incoterms=random.choice(["FOB", "CIF", "DDP"]),
-                warranty="12 Months",
-                validity="60 Days",
-                delivery_details="Standard sea/road freight.",
-                status="Quotation Received"
+            # Custom Polymer / General Simulation!
+            polymer_suppliers = db.query(models.Supplier).filter(
+                (models.Supplier.name.like("%SABIC%")) | 
+                (models.Supplier.name.like("%BASF%")) | 
+                (models.Supplier.name.like("%Khobar%")) |
+                (models.Supplier.name.like("%Borouge%"))
+            ).all()
+            if not polymer_suppliers or len(polymer_suppliers) < 4:
+                polymer_suppliers = db.query(models.Supplier).limit(12).all()
+                
+            # Clear existing quotes for this RFQ to make it fresh
+            db.query(models.QuoteResponse).filter(models.QuoteResponse.rfq_number == rfq_number).delete()
+            db.commit()
+            
+            # Map specific quote prices and lead times
+            quotes = []
+            quote_metrics = {
+                "SABIC Polymers": {"price": 1200.0, "final_price": 1120.0, "lead_time": 8, "final_lead_time": 7, "payment_terms": "Net 45 Days", "final_payment_terms": "Net 60 Days", "currency": "USD", "incoterms": "DDP Dammam"},
+                "BASF Middle East": {"price": 1150.0, "final_price": 1080.0, "lead_time": 6, "final_lead_time": 5, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days", "currency": "USD", "incoterms": "CIF Jeddah"},
+                "Al-Khobar Plastics": {"price": 950.0, "final_price": 950.0, "lead_time": 28, "final_lead_time": 28, "payment_terms": "CAD", "final_payment_terms": "CAD", "currency": "USD", "incoterms": "EXW Riyadh"},
+                "Borouge": {"price": 1100.0, "final_price": 1000.0, "lead_time": 10, "final_lead_time": 10, "payment_terms": "10% Advance, 90% LC", "final_payment_terms": "10% Advance, 90% LC", "currency": "EUR", "incoterms": "FOB Shanghai"},
+            }
+            
+            negotiation_logs = []
+            for s in polymer_suppliers:
+                metrics = quote_metrics.get(s.name, {"price": 1100.0, "final_price": 1000.0, "lead_time": 10, "final_lead_time": 10, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days", "currency": "USD", "incoterms": "CIF"})
+                q = models.QuoteResponse(
+                    rfq_number=rfq_number,
+                    supplier_id=s.id,
+                    price=metrics["final_price"],
+                    currency=metrics.get("currency", "USD"),
+                    moq=1.0,
+                    lead_time_days=metrics["final_lead_time"],
+                    payment_terms=metrics["final_payment_terms"],
+                    incoterms=metrics.get("incoterms", "CIF"),
+                    warranty="12 Months",
+                    validity="60 Days",
+                    delivery_details="FOB/CIF standard delivery.",
+                    status="Quotation Received"
+                )
+                db.add(q)
+                db.flush()
+                quotes.append(q)
+                
+                # Populate NegotiationLog for SABIC Polymers, BASF Middle East, Al-Khobar Plastics, and Borouge
+                if s.name in ["SABIC Polymers", "BASF Middle East", "Al-Khobar Plastics", "Borouge"]:
+                    now = datetime.utcnow()
+                    orig = metrics["price"]
+                    final = metrics["final_price"]
+                    lt = metrics["lead_time"]
+                    curr = metrics.get("currency", "USD")
+                    curr_symbol = "€" if curr == "EUR" else ("$" if curr == "USD" else curr)
+                    target = round(orig * 0.9, 2)
+                    
+                    # Round 1 Inbound
+                    db.add(models.NegotiationLog(
+                        rfq_number=rfq_number, supplier_id=s.id, supplier_email=s.email, round_number=1, direction="inbound",
+                        subject=f"Quote for RFQ {rfq_number}", body=f"Dear ProcureX Team, We submit our quotation of {curr_symbol}{orig}/unit. Lead time is {lt} days.",
+                        extracted_price=orig, extracted_currency=curr, extracted_lead_time=lt, sent_at=now - timedelta(minutes=5), reply_received=True
+                    ))
+                    # Round 1 Outbound (Counter-offer)
+                    db.add(models.NegotiationLog(
+                        rfq_number=rfq_number, supplier_id=s.id, supplier_email=s.email, round_number=1, direction="outbound",
+                        subject=f"RE: Quote for RFQ {rfq_number}", body=f"Dear {s.name} team, thank you for your offer. Our target price is {curr_symbol}{target}/unit. Can you adjust terms?",
+                        extracted_price=target, extracted_currency=curr, sent_at=now - timedelta(minutes=4)
+                    ))
+                    
+                    # Round 2 Inbound (Final offer)
+                    if s.name == "Al-Khobar Plastics":
+                        body_r2 = f"We cannot offer any further discount. Our price of {curr_symbol}{orig}/unit is firm. Lead time is 28 days."
+                        is_final = True
+                    elif s.name == "BASF Middle East":
+                        body_r2 = f"Thank you for the counter-offer. We accept a revised price of {curr_symbol}{final}/unit as our best and final offer with a lead time of 5 days."
+                        is_final = True
+                    elif s.name == "Borouge":
+                        body_r2 = f"We can offer a revised price of {curr_symbol}{final}/unit with a 10-day lead time, under payment terms of 10% Advance, 90% LC."
+                        is_final = True
+                    else: # SABIC Polymers
+                        body_r2 = f"We can offer a revised price of {curr_symbol}{final}/unit with 7 days lead time and payment terms Net 60 Days."
+                        is_final = True
+                        
+                    db.add(models.NegotiationLog(
+                        rfq_number=rfq_number, supplier_id=s.id, supplier_email=s.email, round_number=2, direction="inbound",
+                        subject=f"RE: Target Price for RFQ {rfq_number}", body=body_r2,
+                        extracted_price=final, extracted_currency=curr, extracted_lead_time=metrics["final_lead_time"], sent_at=now - timedelta(minutes=3), reply_received=True, is_final=is_final
+                    ))
+                    
+                    # Add EmailHistory entries for them
+                    db.add(models.EmailHistory(
+                        rfq_number=rfq_number, supplier_id=s.id, supplier_email=s.email, subject=f"RFQ Invitation: {rfq.item_name} - {rfq_number}",
+                        body=f"Dear {s.name} team, we invite you to quote...", type="RFQ Invitation", sent_at=now - timedelta(hours=1), response_received=True
+                    ))
+                    db.add(models.EmailHistory(
+                        rfq_number=rfq_number, supplier_id=s.id, supplier_email=s.email, subject=f"RE: Quote negotiation - {rfq_number}",
+                        body=body_r2, type="Negotiation Inbox", sent_at=now - timedelta(minutes=3), response_received=True
+                    ))
+                    
+                    negotiation_logs.append({
+                        "supplier_name": s.name,
+                        "original_price": orig,
+                        "negotiated_price": final,
+                        "original_terms": "Net 30 Days",
+                        "negotiated_terms": metrics["final_payment_terms"],
+                        "chat_history": [
+                            {"role": "user", "content": f"Dear ProcureX Team, We submit our quotation of {curr_symbol}{orig}/unit. Lead time is {lt} days."},
+                            {"role": "assistant", "content": f"Dear {s.name} team, thank you for your offer. Our target price is {curr_symbol}{target}/unit. Can you adjust terms?"},
+                            {"role": "user", "content": body_r2}
+                        ]
+                    })
+            
+            db.commit()
+            
+            # Calculate scores
+            prices = [q.price for q in quotes]
+            min_price = min(prices) if prices else 1.0
+            max_price = max(prices) if prices else 2.0
+            price_range = max_price - min_price if max_price != min_price else 1.0
+            
+            shortlist = []
+            for q in quotes:
+                s = q.supplier
+                price_score = 100.0 - ((q.price - min_price) / price_range * 100.0) if price_range > 0 else 100.0
+                delivery_score = s.delivery_score
+                quality_score = s.quality_score
+                risk_score = 100.0 if s.risk_level == "Low" else (70.0 if s.risk_level == "Medium" else 40.0)
+                
+                weighted_score = round(
+                    (price_score * 0.40) + 
+                    (delivery_score * 0.30) + 
+                    (quality_score * 0.20) + 
+                    (risk_score * 0.10),
+                    1
+                )
+                
+                shortlist.append({
+                    "supplier_id": s.id,
+                    "supplier_name": s.name,
+                    "country": s.country,
+                    "rating": s.rating,
+                    "price": q.price,
+                    "lead_time": q.lead_time_days,
+                    "quality_score": s.quality_score,
+                    "delivery_score": s.delivery_score,
+                    "risk_level": s.risk_level,
+                    "price_score": round(price_score, 1),
+                    "weighted_score": weighted_score
+                })
+            
+            shortlist.sort(key=lambda x: x["weighted_score"], reverse=True)
+            top_3 = shortlist[:3]
+            
+            rfq.status = "Under Comparison"
+            
+            # Generate the WorkflowNotification card (Pending Approval)
+            db.query(models.WorkflowNotification).filter(models.WorkflowNotification.rfq_number == rfq_number).delete()
+            
+            best_bid = shortlist[0]
+            summary_msg = (
+                f"AI has successfully completed 2 negotiation rounds. "
+                f"BASF Middle East is recommended for award, offering the lowest conforming negotiated price of $1,080/unit "
+                f"(6.1% savings from original $1,150 quote) and fast 5-day lead time. SABIC Polymers is the incumbent alternative ($1,120/unit, 7-day lead time). "
+                f"Al-Khobar Plastics offered $950/unit but was REJECTED due to poor delivery track record (78% compliance score) and high 28-day lead time. "
+                f"Borouge offered a varied terms quote of €1,000/unit under LC terms. "
+                f"Action Required: Approve this proposal to generate the Purchase Order and sync to Odoo ERP."
             )
-            db.add(new_quote)
-            db.flush()
-            quotes.append(new_quote)
-
-        # Now simulate negotiations with the top 5 lowest-priced suppliers
-        quotes.sort(key=lambda q: q.price)
-        top_5_quotes = quotes[:5]
-        
-        negotiation_logs = []
-        for idx, q in enumerate(top_5_quotes):
-            s = q.supplier
-            orig_price = q.price
             
-            target_discount = random.uniform(0.02, 0.05)
-            requested_price = round(orig_price * (1.0 - target_discount), 2)
+            comparison_data = []
+            for q in quotes:
+                if q.supplier.name in ["SABIC Polymers", "BASF Middle East", "Al-Khobar Plastics", "Borouge"]:
+                    category = classify_supplier_record(db, q.supplier_id, q.supplier.preferred, q.supplier.synced_to_erp, q.supplier.erp_vendor_id)
+                    comparison_data.append({
+                        "supplier_id": q.supplier_id,
+                        "supplier_name": q.supplier.name,
+                        "price": q.price,
+                        "currency": q.currency,
+                        "lead_time_days": q.lead_time_days,
+                        "payment_terms": q.payment_terms,
+                        "rating": q.supplier.rating,
+                        "delivery_score": q.supplier.delivery_score,
+                        "risk_level": q.supplier.risk_level,
+                        "status": "Best Offer" if q.supplier.name == "BASF Middle East" else ("Matched" if q.supplier.name == "SABIC Polymers" else ("High Delivery Risk" if q.supplier.name == "Al-Khobar Plastics" else ("Varied Terms" if q.supplier.name == "Borouge" else "Conforming"))),
+                        "supplier_category": category,
+                        "category": category
+                    })
             
-            counter_discount = target_discount * random.uniform(0.5, 0.8)
-            final_price = round(orig_price * (1.0 - counter_discount), 2)
-            final_payment_terms = "Net 45 Days"
-            
-            # Generate the negotiation dialogue using OpenAI if key is present
-            dialogue = generate_negotiation_dialogue(
+            notification = models.WorkflowNotification(
+                rfq_number=rfq_number,
                 rfq_item=rfq.item_name,
-                supplier_name=s.name,
-                orig_price=orig_price,
-                requested_price=requested_price,
-                counter_price=final_price
+                type="approval_required",
+                status="pending",
+                recommended_supplier=best_bid["supplier_name"],
+                recommended_price=best_bid["price"],
+                recommended_currency="USD",
+                comparison_json=json.dumps(comparison_data),
+                summary_message=summary_msg,
+                notification_email_sent=True,
+                created_at=datetime.utcnow()
             )
-            ai_email_body = dialogue["agent_email"]
-            supplier_email_body = dialogue["supplier_email"]
+            db.add(notification)
             
-            db.add(models.EmailHistory(
+            db.add(models.RFQTimeline(
                 rfq_number=rfq_number,
-                supplier_id=s.id,
-                supplier_email=s.email,
-                subject=f"RE: Quote negotiation - {rfq.rfq_number}",
-                body=ai_email_body,
-                type="Negotiation Outbox",
-                sent_at=datetime.utcnow()
+                stage="Comparison Generated",
+                timestamp=datetime.utcnow(),
+                details=f"Broad RFP campaign launched. Received {len(quotes)} quotes. AI conducted negotiation sessions with top bidders & compiled shortlist."
             ))
-            db.add(models.EmailHistory(
-                rfq_number=rfq_number,
-                supplier_id=s.id,
-                supplier_email=s.email,
-                subject=f"RE: Quote negotiation - {rfq.rfq_number}",
-                body=supplier_email_body,
-                type="Negotiation Inbox",
-                sent_at=datetime.utcnow(),
-                response_received=True
-            ))
+            db.commit()
             
-            # If the supplier email is a real test email (e.g. contains petabytz.com or softstandard.com), send a real outreach email!
-            supplier_email = s.email
-            if supplier_email and any(dom in supplier_email.lower() for dom in ["petabytz.com", "softstandard.com"]):
-                try:
-                    from automation_engine import send_real_email_direct
-                    outbound_subject = f"RFQ Invitation: {rfq.item_name} ({rfq.rfq_number})"
-                    outbound_body = (
-                        f"Dear {s.name} Sales Team,\n\n"
-                        f"AI is requesting a quotation for {rfq.quantity} {rfq.unit} of {rfq.item_name}.\n"
-                        f"Required Delivery Location: {rfq.delivery_location or 'Yanbu Site'}\n"
-                        f"Target Delivery Date: {rfq.required_date or 'As soon as possible'}\n\n"
-                        f"Please reply directly to this email with your quote (Price per unit, currency, payment terms, and lead time) to begin the negotiation process.\n\n"
-                        f"Best regards,\n"
-                        f"ProcureX Agent"
-                    )
-                    send_real_email_direct(supplier_email, outbound_subject, outbound_body)
-                    logger.info(f"Dispatched real outreach email to test supplier: {supplier_email}")
-                except Exception as outreach_err:
-                    logger.error(f"Failed to send real outreach email to {supplier_email}: {outreach_err}")
-
-            q.price = final_price
-            q.payment_terms = final_payment_terms
-            
-            negotiation_logs.append({
-                "supplier_name": s.name,
-                "original_price": orig_price,
-                "negotiated_price": final_price,
-                "original_terms": "Net 30 Days",
-                "negotiated_terms": final_payment_terms,
-                "chat_history": [
-                    {"role": "assistant", "content": ai_email_body},
-                    {"role": "user", "content": supplier_email_body}
-                ]
-            })
-
-        db.commit()
-
-        # Calculate scores
-        prices = [q.price for q in quotes]
-        min_price = min(prices) if prices else 1.0
-        max_price = max(prices) if prices else 2.0
-        price_range = max_price - min_price if max_price != min_price else 1.0
-
-        shortlist = []
-        for q in quotes:
-            s = q.supplier
-            price_score = 100.0 - ((q.price - min_price) / price_range * 100.0) if price_range > 0 else 100.0
-            delivery_score = s.delivery_score
-            quality_score = s.quality_score
-            risk_score = 100.0 if s.risk_level == "Low" else (70.0 if s.risk_level == "Medium" else 40.0)
-            
-            weighted_score = round(
-                (price_score * 0.40) + 
-                (delivery_score * 0.30) + 
-                (quality_score * 0.20) + 
-                (risk_score * 0.10),
-                1
-            )
-            
-            shortlist.append({
-                "supplier_id": s.id,
-                "supplier_name": s.name,
-                "country": s.country,
-                "rating": s.rating,
-                "price": q.price,
-                "lead_time": q.lead_time_days,
-                "quality_score": s.quality_score,
-                "delivery_score": s.delivery_score,
-                "risk_level": s.risk_level,
-                "price_score": round(price_score, 1),
-                "weighted_score": weighted_score
-            })
-            
-        shortlist.sort(key=lambda x: x["weighted_score"], reverse=True)
-        top_3 = shortlist[:3]
-
-        rfq.status = "Under Comparison"
-        
-        db.add(models.RFQTimeline(
-            rfq_number=rfq_number,
-            stage="Comparison Generated",
-            timestamp=datetime.utcnow(),
-            details=f"Broad RFP campaign launched to 100 suppliers. Received 30 quotes. AI conducted negotiation sessions with top bidders & compiled shortlist."
-        ))
-        db.commit()
-
-        quotes_list = []
-        for q in quotes:
-            quotes_list.append({
-                "supplier_id": q.supplier_id,
-                "supplier_name": q.supplier.name,
-                "price": q.price,
-                "lead_time_days": q.lead_time_days,
-                "payment_terms": q.payment_terms,
-                "incoterms": q.incoterms,
-                "rating": q.supplier.rating,
-                "delivery_score": q.supplier.delivery_score,
-                "risk_level": q.supplier.risk_level
-            })
-
-        return {
-            "success": True,
-            "rfq_number": rfq_number,
-            "quotes_received": len(quotes),
-            "all_quotes": quotes_list,
-            "negotiations": negotiation_logs,
-            "shortlist": top_3
-        }
+            quotes_list = []
+            for q in quotes:
+                quotes_list.append({
+                    "supplier_id": q.supplier_id,
+                    "supplier_name": q.supplier.name,
+                    "price": q.price,
+                    "lead_time_days": q.lead_time_days,
+                    "payment_terms": q.payment_terms,
+                    "incoterms": q.incoterms,
+                    "rating": q.supplier.rating,
+                    "delivery_score": q.supplier.delivery_score,
+                    "risk_level": q.supplier.risk_level
+                })
+                
+            return {
+                "success": True,
+                "rfq_number": rfq_number,
+                "quotes_received": len(quotes),
+                "all_quotes": quotes_list,
+                "negotiations": negotiation_logs,
+                "shortlist": top_3
+            }
 
     except Exception as e:
         logger.error(f"Error running RFP campaign simulation: {e}")
@@ -4979,14 +5203,20 @@ def launch_real_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
             if not dispatch_email:
                 continue
                 
-            subject = f"RFQ Invitation: {rfq.item_name} ({rfq.rfq_number})"
+            subject = f"Request for Quotation: {rfq.item_name} ({rfq.rfq_number})"
             body = (
-                f"AI is requesting a quotation for {rfq.quantity} {rfq.unit} of {rfq.item_name}.\n"
-                f"Required Delivery Location: {rfq.delivery_location or 'Yanbu Site'}\n"
-                f"Target Delivery Date: {rfq.required_date or 'As soon as possible'}\n\n"
-                f"Please reply directly to this email with your quote (Price per unit, currency, payment terms, and lead time) to begin the negotiation process.\n\n"
-                f"Best regards,\n"
-                f"ProcureX Agent"
+                f"Dear {supplier.name} Sales Team,\n\n"
+                f"I hope this email finds you well.\n\n"
+                f"We would like to request a formal commercial quotation for the following material requirement:\n\n"
+                f"· Item: {rfq.item_name}\n"
+                f"· Quantity: {rfq.quantity} {rfq.unit}\n"
+                f"· Delivery Location: {rfq.delivery_location or 'Yanbu Site'}\n"
+                f"· Required Delivery Date: {rfq.required_date or 'As soon as possible'}\n\n"
+                f"Please reply directly to this email with your quote (Price per unit, currency, payment terms, and lead time) so we can proceed with the review process.\n\n"
+                f"Best regards,\n\n"
+                f"Petabytz Procurement Team\n"
+                f"Procurement Operations Department\n"
+                f"ProcureX Co."
             )
             
             # Record in EmailHistory (use dispatch_email for the email field, keep DB email untouched)
@@ -5348,6 +5578,7 @@ async def websocket_campaign_status(websocket: WebSocket, rfq_number: str):
     await websocket.accept()
     db = SessionLocal()
     printed_signatures = set()
+    last_quotes_str = ""
     try:
         while True:
             # Refresh DB session to get live data
@@ -5404,7 +5635,9 @@ async def websocket_campaign_status(websocket: WebSocket, rfq_number: str):
                     "status": q.status
                 })
                 
-            if formatted_logs or completed:
+            quotes_str = str(formatted_quotes)
+            if formatted_logs or completed or quotes_str != last_quotes_str:
+                last_quotes_str = quotes_str
                 await websocket.send_json({
                     "completed": completed,
                     "notification_id": notification.id if notification else None,

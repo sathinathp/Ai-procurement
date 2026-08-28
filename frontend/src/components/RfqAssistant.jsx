@@ -46,12 +46,15 @@ export default function RfqAssistant({ initialOpenCreate = false, initialSelecte
     delivery_location: 'Riyadh Warehouse',
     expected_delivery_date: '',
     remarks: '',
-    drawing_attachment: ''
+    drawing_attachment: '',
+    warranty_requirement: '',
+    delivery_tolerance: ''
   });
   
   const [uploading, setUploading] = useState(false);
   const [missingFields, setMissingFields] = useState([]);
   const [isAiExtracted, setIsAiExtracted] = useState(false);
+  const [showAiRecommendation, setShowAiRecommendation] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -258,6 +261,7 @@ export default function RfqAssistant({ initialOpenCreate = false, initialSelecte
 
     setUploading(true);
     setIsAiExtracted(false);
+    setShowAiRecommendation(false);
     setMissingFields([]);
     setErrorMsg('');
 
@@ -281,12 +285,17 @@ export default function RfqAssistant({ initialOpenCreate = false, initialSelecte
           delivery_location: data.delivery_location || 'Riyadh Warehouse',
           expected_delivery_date: data.expected_delivery_date || '',
           remarks: data.remarks || '',
-          drawing_attachment: data.drawing_attachment || filename
+          drawing_attachment: data.drawing_attachment || filename,
+          warranty_requirement: data.warranty_requirement || '',
+          delivery_tolerance: data.delivery_tolerance || ''
         });
         
         setMissingFields(data.missing_fields || []);
         setIsAiExtracted(true);
         setUploading(false);
+        if (!data.warranty_requirement || !data.delivery_tolerance) {
+          setShowAiRecommendation(true);
+        }
       })
       .catch((err) => {
         console.error(err);
@@ -1136,6 +1145,42 @@ export default function RfqAssistant({ initialOpenCreate = false, initialSelecte
                   </div>
                 )}
 
+                {showAiRecommendation && (
+                  <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="flex items-center gap-1.5 text-amber-800 font-semibold text-xs">
+                      <Sparkles size={14} className="text-amber-600 animate-pulse" />
+                      <span>AI Sourcing Recommendation</span>
+                    </div>
+                    <p className="text-[11px] text-amber-700 leading-normal font-medium">
+                      “Based on similar historical purchases, 12-month warranty and ±3-day delivery tolerance were previously used. Apply these?”
+                    </p>
+                    <div className="flex gap-2 justify-end pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData(prev => ({
+                            ...prev,
+                            warranty_requirement: '12 Months',
+                            delivery_tolerance: '±3 days'
+                          }));
+                          setMissingFields(prev => prev.filter(f => f !== 'Warranty requirement' && f !== 'Acceptable delivery tolerance'));
+                          setShowAiRecommendation(false);
+                        }}
+                        className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded text-[10px] transition-colors shadow-sm"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowAiRecommendation(false)}
+                        className="px-3 py-1 border border-amber-300 text-amber-700 hover:bg-amber-100 font-bold rounded text-[10px] transition-colors"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {errorMsg && (
                   <div className="bg-rose-50 border border-rose-200 p-3 rounded-lg text-xs text-rose-700 flex items-center gap-2">
                     <AlertTriangle size={14} />
@@ -1173,7 +1218,14 @@ export default function RfqAssistant({ initialOpenCreate = false, initialSelecte
                     />
                   </div>
                   <div className="flex flex-col">
-                    <label className="text-xs font-semibold text-slate-600 mb-1">Project Name *</label>
+                    <label className="text-xs font-semibold text-slate-600 mb-1">
+                      Project Name *
+                      {isAiExtracted && formData.project_name && (
+                        <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-indigo-100 text-indigo-700">
+                          Copilot Filled
+                        </span>
+                      )}
+                    </label>
                     <input 
                       type="text" 
                       name="project_name"
@@ -1203,7 +1255,14 @@ export default function RfqAssistant({ initialOpenCreate = false, initialSelecte
                     </select>
                   </div>
                   <div className="flex flex-col">
-                    <label className="text-xs font-semibold text-slate-600 mb-1">Required Date *</label>
+                    <label className="text-xs font-semibold text-slate-600 mb-1">
+                      Required Date *
+                      {isAiExtracted && formData.required_date && (
+                        <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-indigo-100 text-indigo-700">
+                          Copilot Filled
+                        </span>
+                      )}
+                    </label>
                     <input 
                       type="date" 
                       name="required_date"
@@ -1218,7 +1277,14 @@ export default function RfqAssistant({ initialOpenCreate = false, initialSelecte
                 {/* Row 3: Item Name & Item Code */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="flex flex-col">
-                    <label className="text-xs font-semibold text-slate-600 mb-1">Item / Material Name *</label>
+                    <label className="text-xs font-semibold text-slate-600 mb-1">
+                      Item / Material Name *
+                      {isAiExtracted && formData.item_name && (
+                        <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-indigo-100 text-indigo-700">
+                          Copilot Filled
+                        </span>
+                      )}
+                    </label>
                     <input 
                       type="text" 
                       name="item_name"
@@ -1245,7 +1311,14 @@ export default function RfqAssistant({ initialOpenCreate = false, initialSelecte
                 {/* Row 4: Quantity & Unit & Priority */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="flex flex-col">
-                    <label className="text-xs font-semibold text-slate-600 mb-1">Quantity *</label>
+                    <label className="text-xs font-semibold text-slate-600 mb-1">
+                      Quantity *
+                      {isAiExtracted && formData.quantity && (
+                        <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-indigo-100 text-indigo-700">
+                          Copilot Filled
+                        </span>
+                      )}
+                    </label>
                     <input 
                       type="number" 
                       step="any"
@@ -1302,7 +1375,14 @@ export default function RfqAssistant({ initialOpenCreate = false, initialSelecte
 
                 {/* Row 6: Specifications */}
                 <div className="flex flex-col">
-                  <label className="text-xs font-semibold text-slate-600 mb-1">Technical Specifications</label>
+                  <label className="text-xs font-semibold text-slate-600 mb-1">
+                    Technical Specifications
+                    {isAiExtracted && formData.specifications && (
+                      <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-indigo-100 text-indigo-700">
+                        Copilot Filled
+                      </span>
+                    )}
+                  </label>
                   <textarea 
                     name="specifications"
                     value={formData.specifications}
@@ -1316,7 +1396,14 @@ export default function RfqAssistant({ initialOpenCreate = false, initialSelecte
                 {/* Row 7: Delivery Location & Expected Delivery Date */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="flex flex-col">
-                    <label className="text-xs font-semibold text-slate-600 mb-1">Delivery Location</label>
+                    <label className="text-xs font-semibold text-slate-600 mb-1">
+                      Delivery Location
+                      {isAiExtracted && formData.delivery_location && (
+                        <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-indigo-100 text-indigo-700">
+                          Copilot Filled
+                        </span>
+                      )}
+                    </label>
                     <input 
                       type="text" 
                       name="delivery_location"
@@ -1333,6 +1420,46 @@ export default function RfqAssistant({ initialOpenCreate = false, initialSelecte
                       name="expected_delivery_date"
                       value={formData.expected_delivery_date}
                       onChange={handleFormChange}
+                      className="copilot-input"
+                    />
+                  </div>
+                </div>
+
+                {/* Warranty Requirement & Acceptable Delivery Tolerance */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex flex-col">
+                    <label className="text-xs font-semibold text-slate-600 mb-1">
+                      Warranty Requirement
+                      {isAiExtracted && formData.warranty_requirement && (
+                        <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-indigo-100 text-indigo-700">
+                          Copilot Filled
+                        </span>
+                      )}
+                    </label>
+                    <input 
+                      type="text" 
+                      name="warranty_requirement"
+                      value={formData.warranty_requirement}
+                      onChange={handleFormChange}
+                      placeholder="e.g. 12 Months"
+                      className="copilot-input"
+                    />
+                  </div>
+                  <div className="flex flex-col">
+                    <label className="text-xs font-semibold text-slate-600 mb-1">
+                      Acceptable Delivery Tolerance
+                      {isAiExtracted && formData.delivery_tolerance && (
+                        <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-indigo-100 text-indigo-700">
+                          Copilot Filled
+                        </span>
+                      )}
+                    </label>
+                    <input 
+                      type="text" 
+                      name="delivery_tolerance"
+                      value={formData.delivery_tolerance}
+                      onChange={handleFormChange}
+                      placeholder="e.g. ±3 days"
                       className="copilot-input"
                     />
                   </div>

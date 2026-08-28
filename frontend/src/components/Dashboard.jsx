@@ -498,48 +498,94 @@ export default function Dashboard({ onNavigate, onOpenCopilot, onImportTrigger }
                         </tr>
                       </thead>
                       <tbody>
-                        {notif.comparison_json.map((comp, idx) => {
-                          const isWinner = comp.supplier_name === notif.recommended_supplier;
-                          return (
-                            <tr key={idx} className={`border-b border-slate-100 last:border-0 ${isWinner ? 'bg-emerald-500/10 font-semibold' : ''}`}>
-                              <td className="p-3 flex items-center gap-1.5">
-                                {isWinner && <Sparkles size={12} className="text-emerald-500 fill-emerald-400 stroke-[1.5px]" />}
-                                <span className={isWinner ? 'text-emerald-700 font-bold' : 'text-slate-700 font-medium'}>{comp.supplier_name}</span>
-                              </td>
-                              <td className="p-3 text-slate-600 font-bold">⭐ {comp.rating}</td>
-                              <td className="p-3 text-slate-800 font-bold">{comp.currency} {comp.price}</td>
-                              <td className="p-3 text-slate-650 font-bold">{comp.lead_time_days} days</td>
-                              <td className="p-3">
-                                <span className={`px-2 py-0.5 rounded-lg text-[9px] font-extrabold border ${
-                                  comp.risk_level === 'Low' 
-                                    ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20' 
-                                    : comp.risk_level === 'Medium' 
-                                      ? 'bg-amber-500/10 text-amber-700 border-amber-500/20' 
-                                      : 'bg-rose-500/10 text-rose-700 border-rose-500/20'
-                                }`}>
-                                  {comp.risk_level === 'High' ? 'Critical Delivery Risk' : comp.risk_level === 'Medium' ? 'Moderate Risk' : 'Minimal Risk'}
-                                </span>
-                              </td>
-                              <td className="p-3">
-                                {isWinner ? (
-                                  <span className="text-emerald-600 flex items-center gap-1 font-bold">
-                                    <CheckCircle2 size={12} className="stroke-[2.5px]" /> Recommended Winner
-                                  </span>
-                                ) : (
-                                  <span className={`px-2 py-0.5 rounded-lg text-[9px] font-extrabold border ${
-                                    comp.status === 'Cancelled' 
-                                      ? 'bg-rose-500/10 text-rose-700 border-rose-500/20' 
-                                      : comp.status === 'Quotation Received' 
-                                        ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20' 
-                                        : 'bg-slate-100 text-slate-600 border-slate-200'
-                                  }`}>
-                                    {comp.status || 'Negotiated'}
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
+                        {(() => {
+                          const categories = [
+                            "Preferred Suppliers",
+                            "Previously Used Suppliers",
+                            "Other Approved Suppliers",
+                            "New Supplier Candidates"
+                          ];
+                          
+                          // Helper to get category of an item, defaulting to "New Supplier Candidates"
+                          const getCategory = (comp) => comp.supplier_category || comp.category || "New Supplier Candidates";
+                          
+                          return categories.map((catName) => {
+                            const items = notif.comparison_json.filter(comp => getCategory(comp) === catName);
+                            if (items.length === 0) return null;
+                            
+                            // Determine badge styles
+                            let badgeStyle = "bg-orange-500/10 text-orange-700 border-orange-500/20";
+                            if (catName === "Preferred Suppliers") {
+                              badgeStyle = "bg-amber-500/10 text-amber-700 border-amber-500/20";
+                            } else if (catName === "Previously Used Suppliers") {
+                              badgeStyle = "bg-blue-500/10 text-blue-700 border-blue-500/20";
+                            } else if (catName === "Other Approved Suppliers") {
+                              badgeStyle = "bg-slate-500/10 text-slate-700 border-slate-500/20";
+                            } else {
+                              badgeStyle = "bg-emerald-500/10 text-emerald-700 border-emerald-500/20";
+                            }
+                            
+                            return (
+                              <React.Fragment key={catName}>
+                                {/* Category Sub-header Row */}
+                                <tr className="bg-slate-100/50 border-y border-slate-200/40">
+                                  <td colSpan="6" className="p-2.5 pl-3 font-extrabold text-[10px] uppercase tracking-wider text-slate-700">
+                                    <span className={`px-2 py-0.5 rounded-md border ${badgeStyle}`}>
+                                      {catName}
+                                    </span>
+                                    <span className="ml-2 text-slate-400 font-semibold lowercase">
+                                      ({items.length} {items.length === 1 ? 'supplier' : 'suppliers'})
+                                    </span>
+                                  </td>
+                                </tr>
+                                
+                                {/* Items for this category */}
+                                {items.map((comp, idx) => {
+                                  const isWinner = comp.supplier_name === notif.recommended_supplier;
+                                  return (
+                                    <tr key={`${catName}-${idx}`} className={`border-b border-slate-100 last:border-0 ${isWinner ? 'bg-emerald-500/10 font-semibold' : ''}`}>
+                                      <td className="p-3 flex items-center gap-1.5">
+                                        {isWinner && <Sparkles size={12} className="text-emerald-500 fill-emerald-400 stroke-[1.5px]" />}
+                                        <span className={isWinner ? 'text-emerald-700 font-bold' : 'text-slate-700 font-medium'}>{comp.supplier_name}</span>
+                                      </td>
+                                      <td className="p-3 text-slate-600 font-bold">⭐ {comp.rating}</td>
+                                      <td className="p-3 text-slate-800 font-bold">{comp.currency} {comp.price}</td>
+                                      <td className="p-3 text-slate-650 font-bold">{comp.lead_time_days} days</td>
+                                      <td className="p-3">
+                                        <span className={`px-2 py-0.5 rounded-lg text-[9px] font-extrabold border ${
+                                          comp.risk_level === 'Low' 
+                                            ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20' 
+                                            : comp.risk_level === 'Medium' 
+                                              ? 'bg-amber-500/10 text-amber-700 border-amber-500/20' 
+                                              : 'bg-rose-500/10 text-rose-700 border-rose-500/20'
+                                        }`}>
+                                          {comp.risk_level === 'High' ? 'Critical Delivery Risk' : comp.risk_level === 'Medium' ? 'Moderate Risk' : 'Minimal Risk'}
+                                        </span>
+                                      </td>
+                                      <td className="p-3">
+                                        {isWinner ? (
+                                          <span className="text-emerald-600 flex items-center gap-1 font-bold">
+                                            <CheckCircle2 size={12} className="stroke-[2.5px]" /> Recommended Winner
+                                          </span>
+                                        ) : (
+                                          <span className={`px-2 py-0.5 rounded-lg text-[9px] font-extrabold border ${
+                                            comp.status === 'Cancelled' 
+                                              ? 'bg-rose-500/10 text-rose-700 border-rose-500/20' 
+                                              : comp.status === 'Quotation Received' 
+                                                ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20' 
+                                                : 'bg-slate-100 text-slate-600 border-slate-200'
+                                          }`}>
+                                            {comp.status || 'Negotiated'}
+                                          </span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </React.Fragment>
+                            );
+                          });
+                        })()}
                       </tbody>
                     </table>
                   </div>

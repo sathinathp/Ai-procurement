@@ -569,6 +569,33 @@ def get_mock_copilot_response(query: str, db: Session) -> str:
     lowered = query.lower().strip()
     words = clean_words(query)
     
+    # 0. Answer regarding 5 suppliers to invite for RFQ
+    if any(k in lowered for k in ["five suppliers", "5 suppliers", "shortlist suppliers", "suppliers to invite"]):
+        return (
+            "### 📋 Recommended Supplier Shortlist & Rationale\n\n"
+            "Based on supplier scorecard evaluations, historical delivery compliance, and external B2B market search results, "
+            "here are the **five recommended suppliers** to invite for this RFQ:\n\n"
+            "1. **Borouge** (Rank 1 — Existing / Approved: Preferred Supplier)\n"
+            "   - **Rationale:** Holds a premium **4.8/5.0 rating** and an exceptional **96.5% delivery score** with stable historical contract execution.\n"
+            "   - **Risk Profile:** Minimal risk; highly reliable with Net 60 days terms.\n\n"
+            "2. **Houston Pump Solutions** (Rank 2 — Existing / Approved: Preferred Supplier)\n"
+            "   - **Rationale:** A preferred supplier with a **98.0% quality score** and a **96.5% delivery score**, ensuring technical compliance for high-spec items.\n"
+            "   - **Risk Profile:** Low risk; minor price premium but offset by outstanding performance.\n\n"
+            "3. **Munich Dosing Systems** (Rank 3 — Externally Discovered: Oppora / New Supplier)\n"
+            "   - **Rationale:** Discovered externally via Oppora, offering an excellent **4.7/5.0 rating**, short lead times (12 days), and a highly competitive rate.\n"
+            "   - **Risk Profile:** No prior purchase order history in our local ERP; requires initial vendor registration validation.\n\n"
+            "4. **SABIC Polymers** (Rank 4 — Existing / Approved: Previously Used Supplier)\n"
+            "   - **Rationale:** Highly familiar incumbent with a **92.5% quality compliance record** and a steady PO fulfillment history for raw polymer items.\n"
+            "   - **Risk Profile:** Low risk, but response time is slightly higher (averaging 14 hours).\n\n"
+            "5. **BASF Middle East** (Rank 5 — Existing / Approved: Other Approved Supplier)\n"
+            "   - **Rationale:** Fully verified supplier with a strong **95.0% quality score**, making them ideal for specialized chemical and stabilizer requests.\n"
+            "   - **Risk Profile:** Moderate risk due to longer response times (averaging 18 hours).\n\n"
+            "---\n\n"
+            "### ⚠️ Risk Alert & Excluded Candidates:\n"
+            "- **Budget Pumps Inc** (Rejected): Not recommended despite their low price of $1,900. They present a **High Risk** due to a **62.0% delivery score** and an excessive 30-day lead time that violates project requirements.\n"
+            "- **Al-Khobar Plastics** (Rejected): Excluded due to a poor delivery compliance record (65.0% on-time rate)."
+        )
+
     # Conversational Greetings & General Responses
     if any(g == lowered or lowered.startswith(g + " ") for g in ["hello", "hi", "hey", "greetings", "good morning", "good afternoon"]):
         return "Hello! I am your B2B ProcureX Copilot. How can I assist you with your procurement queries, supplier scores, or purchase orders today?"
@@ -1136,6 +1163,36 @@ _copilot_cache = {
 18. **Payment Authorization Vouchers**: Authorize bank wire transfer.
 19. **AI Copilot Contextual Queries**: Query stock or deal history.
 20. **Procurement PDF Audit Report**: Generate spend compliance summary for executives."""
+,
+    "which five suppliers should we invite for this rfq and why": """### 📋 Recommended Supplier Shortlist & Rationale
+
+Based on supplier scorecard evaluations, historical delivery compliance, and external B2B market search results, here are the **five recommended suppliers** to invite for this RFQ:
+
+1. **Borouge** (Rank 1 — Existing / Approved: Preferred Supplier)
+   - **Rationale:** Holds a premium **4.8/5.0 rating** and an exceptional **96.5% delivery score** with stable historical contract execution.
+   - **Risk Profile:** Minimal risk; highly reliable with Net 60 days terms.
+
+2. **Houston Pump Solutions** (Rank 2 — Existing / Approved: Preferred Supplier)
+   - **Rationale:** A preferred supplier with a **98.0% quality score** and a **96.5% delivery score**, ensuring technical compliance for high-spec items.
+   - **Risk Profile:** Low risk; minor price premium but offset by outstanding performance.
+
+3. **Munich Dosing Systems** (Rank 3 — Externally Discovered: Oppora / New Supplier)
+   - **Rationale:** Discovered externally via Oppora, offering an excellent **4.7/5.0 rating**, short lead times (12 days), and a highly competitive rate.
+   - **Risk Profile:** No prior purchase order history in our local ERP; requires initial vendor registration validation.
+
+4. **SABIC Polymers** (Rank 4 — Existing / Approved: Previously Used Supplier)
+   - **Rationale:** Highly familiar incumbent with a **92.5% quality compliance record** and a steady PO fulfillment history for raw polymer items.
+   - **Risk Profile:** Low risk, but response time is slightly higher (averaging 14 hours).
+
+5. **BASF Middle East** (Rank 5 — Existing / Approved: Other Approved Supplier)
+   - **Rationale:** Fully verified supplier with a strong **95.0% quality score**, making them ideal for specialized chemical and stabilizer requests.
+   - **Risk Profile:** Moderate risk due to longer response times (averaging 18 hours).
+
+---
+
+### ⚠️ Risk Alert & Excluded Candidates:
+- **Budget Pumps Inc** (Rejected): Not recommended despite their low price of $1,900. They present a **High Risk** due to a **62.0% delivery score** and an excessive 30-day lead time that violates project requirements.
+- **Al-Khobar Plastics** (Rejected): Excluded due to a poor delivery compliance record (65.0% on-time rate)."""
 }
 
 def find_cached_response(query: str) -> Optional[str]:

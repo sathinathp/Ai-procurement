@@ -1,6 +1,6 @@
 {
     "max_negotiation_rounds": 1,
     "recipient_email": "sathinath.padhi@petabytz.com",
-    "auto_simulate_suppliers": true,
+    "auto_simulate_suppliers": false,
     "simulation_delay_seconds": 40
 }

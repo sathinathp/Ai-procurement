@@ -57,6 +57,7 @@ export default function CopilotChat({ inlineMode = false, rfqContextNumber = nul
 
   // Quick Chips
   const promptChips = [
+    { label: "Which 5 suppliers to invite?", text: "Which five suppliers should we invite for this RFQ and why?" },
     { label: "PVC Resin last price?", text: "What is the last purchase price of PVC Resin?" },
     { label: "Who supplied HDPE last?", text: "Who supplied HDPE Granules last?" },
     { label: "Which suppliers delayed deliveries?", text: "Which suppliers have delayed deliveries recently?" },

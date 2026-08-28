@@ -50,6 +50,8 @@ class RFQ(Base):
     delivery_location = Column(String(255), nullable=True)
     expected_delivery_date = Column(Date, nullable=True)
     remarks = Column(Text, nullable=True)
+    warranty_requirement = Column(String(255), nullable=True)
+    delivery_tolerance = Column(String(255), nullable=True)
     status = Column(String(100), default="Created") 
     # Statuses: Created, RFQ Sent, Responses Received, Under Comparison, Approved, PO Generated
     created_at = Column(DateTime, default=datetime.utcnow)

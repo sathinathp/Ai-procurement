@@ -4,9 +4,9 @@ import {
   Search, Star, Mail, Phone, MapPin, Clock, Sparkles, Send, Plus, Bot,
   RefreshCw, Zap, Building2, Users, Tag, Globe, ChevronDown, ChevronUp, 
   Pencil, CheckCircle2, Download, Upload, Eye, FileSpreadsheet, X, HelpCircle,
-  AlertCircle
+  AlertCircle, ShieldCheck, ChevronRight, Loader2
 } from 'lucide-react';
-import { supplierService } from '../services/api';
+import { supplierService, emailService, rfqService } from '../services/api';
 import SupplierProfileModal from './SupplierProfileModal';
 
 export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearInitialQuery }) {
@@ -25,6 +25,124 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
   const [loading, setLoading] = useState(false);
   const [selectedSupplierId, setSelectedSupplierId] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+
+  // ── Multi-select & RFQ Review/Approve/Send ──
+  const [selectedSuppliers, setSelectedSuppliers] = useState([]); // list of supplier objects
+  const [showRfqReviewModal, setShowRfqReviewModal] = useState(false);
+  const [rfqReviewStep, setRfqReviewStep] = useState('review'); // 'review' | 'sending' | 'done'
+  const [reviewEmailIdx, setReviewEmailIdx] = useState(0); // which supplier email is being previewed
+  const [generatingDrafts, setGeneratingDrafts] = useState(false);
+  const [emailDrafts, setEmailDrafts] = useState([]); // [{supplier, subject, body}]
+  const [sendProgress, setSendProgress] = useState([]);  // [{name, status}]
+
+  const activeRfqNum = localStorage.getItem('activeRfqNum') || 'RFQ-2026-1003';
+
+  const toggleSupplierSelect = (supplier) => {
+    setSelectedSuppliers(prev => {
+      const exists = prev.find(s => s.id === supplier.id || s.name === supplier.name);
+      if (exists) return prev.filter(s => (s.id || s.name) !== (supplier.id || supplier.name));
+      if (prev.length >= 10) return prev; // cap at 10
+      return [...prev, supplier];
+    });
+  };
+
+  const isSupplierSelected = (supplier) =>
+    selectedSuppliers.some(s => (s.id && s.id === supplier.id) || s.name === supplier.name);
+
+  const openRfqReview = async () => {
+    if (selectedSuppliers.length === 0) return;
+    setShowRfqReviewModal(true);
+    setRfqReviewStep('review');
+    setReviewEmailIdx(0);
+    setGeneratingDrafts(true);
+    setEmailDrafts([]);
+    setSendProgress([]);
+
+    // Generate draft emails for each supplier
+    const drafts = [];
+    for (const sup of selectedSuppliers) {
+      try {
+        if (sup.id) {
+          const res = await emailService.generateDraft(activeRfqNum, sup.id);
+          drafts.push({
+            supplier: sup,
+            subject: res.data.subject || `RFQ ${activeRfqNum} – ${query || 'Material Requirement'}`,
+            body: res.data.body || buildFallbackEmail(sup, activeRfqNum, query)
+          });
+        } else {
+          drafts.push({
+            supplier: sup,
+            subject: `RFQ ${activeRfqNum} – ${query || 'Material Requirement'}`,
+            body: buildFallbackEmail(sup, activeRfqNum, query)
+          });
+        }
+      } catch {
+        drafts.push({
+          supplier: sup,
+          subject: `RFQ ${activeRfqNum} – ${query || 'Material Requirement'}`,
+          body: buildFallbackEmail(sup, activeRfqNum, query)
+        });
+      }
+    }
+    setEmailDrafts(drafts);
+    setGeneratingDrafts(false);
+  };
+
+  const buildFallbackEmail = (sup, rfqNum, item) => {
+    const deadline = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const deliveryDate = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    return `Dear ${sup.name} Procurement Team,
+
+We are pleased to invite you to submit a quotation for the following requirement:
+
+RFQ Reference : ${rfqNum}
+Material / Item: ${item || 'As per attached specification'}
+Required Quantity: As per RFQ document
+Delivery Location: Dammam Industrial Zone, Saudi Arabia
+Required Delivery Date: ${deliveryDate}
+Quote Submission Deadline: ${deadline}
+
+Please ensure your quotation includes:
+  • Unit price and total landed cost (DDP Dammam)
+  • Lead time in calendar days
+  • Minimum Order Quantity (MOQ)
+  • Payment terms
+  • Incoterms
+  • Warranty / quality guarantee
+  • Quote validity period
+  • Any technical deviations or exceptions
+
+The RFQ specification document is attached to this email for your reference.
+
+Kindly acknowledge receipt of this RFQ and confirm your intent to participate by return email.
+
+Warm regards,
+Petabytz Procurement Team
+procurement@petabytz.com | +966 11 555 0100`;
+  };
+
+  const handleApproveSend = async () => {
+    setRfqReviewStep('sending');
+    const progress = emailDrafts.map(d => ({ name: d.supplier.name, status: 'pending' }));
+    setSendProgress([...progress]);
+
+    for (let i = 0; i < emailDrafts.length; i++) {
+      const draft = emailDrafts[i];
+      try {
+        await emailService.sendEmail(
+          activeRfqNum,
+          draft.supplier.id || null,
+          draft.subject,
+          draft.body
+        );
+        setSendProgress(prev => prev.map((p, idx) => idx === i ? { ...p, status: 'sent' } : p));
+      } catch {
+        setSendProgress(prev => prev.map((p, idx) => idx === i ? { ...p, status: 'error' } : p));
+      }
+      await new Promise(r => setTimeout(r, 600));
+    }
+    setRfqReviewStep('done');
+  };
 
   // Oppora ICP Discovery
   const [opporaItem, setOpporaItem] = useState('');
@@ -664,198 +782,218 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
               <p className="text-xs font-semibold text-slate-500">No suppliers found. Try searching for "PVC Resin" or "HDPE Granules".</p>
             </div>
           ) : (
-            <div className="bg-white/90 border border-slate-200/85 rounded-3xl shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50/75 border-b border-slate-200/80 text-slate-700 font-bold uppercase tracking-wider text-[9px] whitespace-nowrap">
-                      <th className="p-4 pl-5">Supplier Name</th>
-                      <th className="p-4">Country</th>
-                      <th className="p-4">Contact Info</th>
-                      <th className="p-4 text-center">Previous Orders</th>
-                      <th className="p-4 text-right">Last Purchase Price</th>
-                      <th className="p-4 text-center">Rating</th>
-                      <th className="p-4 text-center">Risk</th>
-                      <th className="p-4 text-center">Quality / Delivery</th>
-                      <th className="p-4 text-center">Price Comp.</th>
-                      <th className="p-4 text-center">Lead Time</th>
-                      <th className="p-4 text-center">Approved Status</th>
-                      <th className="p-4 pr-5 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-650">
-                    {results.map((s, i) => {
-                      const char = s.name.charAt(0).toUpperCase();
-                      let avatarBg = "bg-indigo-50 text-indigo-650 border-indigo-100/50";
-                      if (['A','B','C'].includes(char)) avatarBg = "bg-blue-50 text-blue-650 border-blue-100/50";
-                      else if (['D','E','F','G'].includes(char)) avatarBg = "bg-emerald-50 text-emerald-650 border-emerald-100/50";
-                      else if (['H','I','J','K'].includes(char)) avatarBg = "bg-violet-50 text-violet-75 border-violet-100/50";
-                      else if (['L','M','N','O'].includes(char)) avatarBg = "bg-amber-50 text-amber-650 border-amber-100/50";
- 
-                      const isExternal = s.source && (s.source.includes("Google") || s.source.includes("Alibaba") || s.source.includes("OpenAI"));
- 
-                      return (
-                        <tr key={i} className="hover:bg-slate-50/40 transition-colors duration-150">
-                          {/* Name and Source */}
-                          <td className="p-4 pl-5">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs border border-slate-200/50 shrink-0 shadow-sm ${avatarBg}`}>
-                                {char}
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span 
-                                    className="font-bold text-slate-800 text-xs hover:text-indigo-600 hover:underline cursor-pointer"
-                                    onClick={() => !isExternal && setSelectedSupplierId(s.id)}
-                                  >
-                                    {s.name}
-                                  </span>
-                                  {s.preferred && (
-                                    <span className="bg-amber-500/10 text-amber-700 border border-amber-500/20 text-[8px] font-extrabold px-2 py-0.5 rounded-lg uppercase tracking-wider shrink-0">
-                                      Approved Supplier
+            (() => {
+              const groups = [
+                { id: 'Preferred Suppliers', title: 'Preferred Suppliers', color: 'border-amber-400 bg-amber-50/10 text-amber-800' },
+                { id: 'Previously Used Suppliers', title: 'Previously Used Suppliers', color: 'border-emerald-500 bg-emerald-50/10 text-emerald-800' },
+                { id: 'Other Approved Suppliers', title: 'Other Approved Suppliers', color: 'border-blue-500 bg-blue-50/10 text-blue-800' },
+                { id: 'New Supplier Candidates', title: 'New Supplier Candidates', color: 'border-slate-300 bg-slate-50/10 text-slate-800' }
+              ];
+
+              // Group results
+              const groupedData = groups.map(g => {
+                const list = results.filter(s => (s.category || s.supplier_category || 'New Supplier Candidates') === g.id);
+                return { ...g, list };
+              }).filter(g => g.list.length > 0);
+
+              return (
+                <div className="space-y-8">
+                  {groupedData.map((group, gIdx) => (
+                    <div key={gIdx} className={`bg-white/90 border-l-4 ${group.color} border-y border-r border-slate-200/85 rounded-2xl shadow-sm overflow-hidden`}>
+                      <div className="p-4 bg-slate-50/50 border-b border-slate-200/60 flex items-center justify-between">
+                        <span className="font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                          {group.id === 'Preferred Suppliers' && <Star size={13} fill="currentColor" className="text-amber-500" />}
+                          {group.id === 'Previously Used Suppliers' && <Users size={13} className="text-emerald-600" />}
+                          {group.id === 'Other Approved Suppliers' && <CheckCircle2 size={13} className="text-blue-600" />}
+                          {group.id === 'New Supplier Candidates' && <HelpCircle size={13} className="text-slate-500" />}
+                          {group.title}
+                        </span>
+                        <span className="text-[10px] bg-slate-200/70 text-slate-700 px-2 py-0.5 rounded-full font-bold">
+                          {group.list.length} suppliers
+                        </span>
+                      </div>
+                      
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50/30 border-b border-slate-200/60 text-slate-750 font-bold uppercase tracking-wider text-[9px] whitespace-nowrap">
+                              <th className="p-3 pl-4 w-8">
+                                <input
+                                  type="checkbox"
+                                  className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer"
+                                  checked={group.list.every(s => isSupplierSelected(s))}
+                                  onChange={e => {
+                                    if (e.target.checked) {
+                                      group.list.forEach(s => { if (!isSupplierSelected(s)) toggleSupplierSelect(s); });
+                                    } else {
+                                      group.list.forEach(s => toggleSupplierSelect(s));
+                                    }
+                                  }}
+                                />
+                              </th>
+                              <th className="p-3 pl-2">Supplier Name</th>
+                              <th className="p-3">Country / Location</th>
+                              <th className="p-3 text-center">Prior Orders</th>
+                              <th className="p-3 text-right">Last Purchase Price</th>
+                              <th className="p-3 text-center">Quality Score</th>
+                              <th className="p-3 text-center">Delivery Score</th>
+                              <th className="p-3 text-center">Response Rate</th>
+                              <th className="p-3 text-center">Risk Level</th>
+                              <th className="p-3 pl-5 max-w-[320px]">AI Match Rationale / Explanation</th>
+                              <th className="p-3 pr-4 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 text-slate-650">
+                            {group.list.map((s, i) => {
+                              const char = s.name.charAt(0).toUpperCase();
+                              let avatarBg = "bg-indigo-50 text-indigo-650 border-indigo-100/50";
+                              if (['A','B','C'].includes(char)) avatarBg = "bg-blue-50 text-blue-650 border-blue-100/50";
+                              else if (['D','E','F','G'].includes(char)) avatarBg = "bg-emerald-50 text-emerald-650 border-emerald-100/50";
+                              else if (['H','I','J','K'].includes(char)) avatarBg = "bg-violet-50 text-violet-75 border-violet-100/50";
+                              else if (['L','M','N','O'].includes(char)) avatarBg = "bg-amber-50 text-amber-650 border-amber-100/50";
+
+                              const isExternal = s.source && (s.source.includes("Google") || s.source.includes("Alibaba") || s.source.includes("OpenAI"));
+                              const isSelected = isSupplierSelected(s);
+
+                              return (
+                                <tr key={i} className={`hover:bg-slate-50/40 transition-colors duration-150 ${isSelected ? 'bg-indigo-50/30 border-l-2 border-indigo-400' : ''}`}>
+                                  {/* Checkbox */}
+                                  <td className="p-3 pl-4">
+                                    <input
+                                      type="checkbox"
+                                      className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer"
+                                      checked={isSelected}
+                                      onChange={() => toggleSupplierSelect(s)}
+                                    />
+                                  </td>
+
+                                  {/* Name and Source */}
+                                  <td className="p-3 pl-2">
+                                    <div className="flex items-center gap-2.5">
+                                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs border border-slate-200/50 shrink-0 shadow-sm ${avatarBg}`}>
+                                        {char}
+                                      </div>
+                                      <div>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span 
+                                            className="font-bold text-slate-800 text-xs hover:text-indigo-600 hover:underline cursor-pointer"
+                                            onClick={() => !isExternal && setSelectedSupplierId(s.id)}
+                                          >
+                                            {s.name}
+                                          </span>
+                                        </div>
+                                        <div className="text-[9px] text-slate-400 font-semibold flex items-center gap-1 mt-0.5">
+                                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold border ${
+                                            s.source?.includes("ERP") ? "bg-blue-500/10 text-blue-700 border-blue-500/15" :
+                                            s.source?.includes("Demo") ? "bg-amber-500/10 text-amber-700 border-amber-500/15" :
+                                            s.source?.includes("Google") ? "bg-rose-500/10 text-rose-700 border-rose-500/15" :
+                                            "bg-emerald-500/10 text-emerald-700 border-emerald-500/15"
+                                          }`}>
+                                            {s.source}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+
+                                  {/* Country */}
+                                  <td className="p-3 whitespace-nowrap">
+                                    <div className="flex items-center gap-1 text-xs text-slate-600 font-semibold">
+                                      <MapPin size={11} className="text-slate-400" />
+                                      <span>{s.country}</span>
+                                    </div>
+                                  </td>
+
+                                  {/* Prior Orders */}
+                                  <td className="p-3 text-center font-semibold text-slate-600 text-xs whitespace-nowrap">
+                                    {s.previous_orders ?? 0}
+                                  </td>
+
+                                  {/* Last Purchase Price */}
+                                  <td className="p-3 text-right font-bold text-slate-850 text-xs whitespace-nowrap">
+                                    {s.last_purchase_price ? `$${s.last_purchase_price.toLocaleString(undefined, {minimumFractionDigits: 2})}/MT` : '—'}
+                                  </td>
+
+                                  {/* Quality Score */}
+                                  <td className="p-3 text-center text-xs font-bold text-slate-700 whitespace-nowrap">
+                                    {s.quality_score ? `${Math.round(s.quality_score)}%` : '—'}
+                                  </td>
+
+                                  {/* Delivery Score */}
+                                  <td className="p-3 text-center text-xs font-bold text-slate-700 whitespace-nowrap">
+                                    {s.delivery_score ? `${Math.round(s.delivery_score)}%` : '—'}
+                                  </td>
+
+                                  {/* Response Rate */}
+                                  <td className="p-3 text-center text-xs font-semibold text-slate-600 whitespace-nowrap">
+                                    {s.average_response_time_hours ? `${s.average_response_time_hours}h` : '—'}
+                                  </td>
+
+                                  {/* Risk */}
+                                  <td className="p-3 text-center whitespace-nowrap">
+                                    <span className={`whitespace-nowrap px-2 py-0.5 rounded-lg text-[9px] font-bold border ${
+                                      s.risk_level === 'High' ? 'bg-rose-500/10 text-rose-700 border-rose-500/15' :
+                                      s.risk_level === 'Medium' ? 'bg-amber-500/10 text-amber-700 border-amber-500/15' :
+                                      'bg-emerald-500/10 text-emerald-700 border-emerald-500/15'
+                                    }`}>
+                                      {s.risk_level === 'High' ? 'High Risk' : s.risk_level === 'Medium' ? 'Medium Risk' : 'Low Risk'}
                                     </span>
-                                  )}
-                                </div>
-                                <div className="text-[10px] text-slate-400 font-semibold flex items-center gap-1 mt-1">
-                                  <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border ${
-                                    s.source?.includes("ERP") ? "bg-blue-500/10 text-blue-700 border-blue-500/15" :
-                                    s.source?.includes("Demo") ? "bg-amber-500/10 text-amber-700 border-amber-500/15" :
-                                    s.source?.includes("Google") ? "bg-rose-500/10 text-rose-700 border-rose-500/15" :
-                                    "bg-emerald-500/10 text-emerald-700 border-emerald-500/15"
-                                  }`}>
-                                    {s.source}
-                                  </span>
-                                  {s.erp_vendor_id && (
-                                    <span className="bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold text-slate-500">
-                                      {s.erp_vendor_id}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
- 
-                          {/* Country */}
-                          <td className="p-4 whitespace-nowrap">
-                            <div className="flex items-center gap-1.5 text-xs text-slate-600 font-semibold">
-                              <MapPin size={12} className="text-slate-400" />
-                              <span>{s.country}</span>
-                            </div>
-                          </td>
- 
-                          {/* Contact Info */}
-                          <td className="p-4 whitespace-nowrap">
-                            <div className="text-xs space-y-0.5 font-semibold">
-                              <a href={`mailto:${s.email}`} className="flex items-center gap-1 text-indigo-650 hover:underline font-bold">
-                                <Mail size={11} className="shrink-0" />
-                                <span className="truncate max-w-[150px]">{s.email}</span>
-                              </a>
-                              {s.phone && (
-                                <div className="flex items-center gap-1 text-slate-500 font-medium">
-                                  <Phone size={11} className="text-slate-450 shrink-0" />
-                                  <span>{s.phone}</span>
-                                </div>
-                              )}
-                            </div>
-                          </td>
- 
-                          {/* Previous Orders */}
-                          <td className="p-4 text-center font-semibold text-slate-600 text-xs whitespace-nowrap">
-                            {s.previous_orders ?? 0}
-                          </td>
- 
-                          {/* Last Purchase Price */}
-                          <td className="p-4 text-right font-bold text-slate-800 text-xs whitespace-nowrap">
-                            {s.last_purchase_price ? `$${s.last_purchase_price.toLocaleString(undefined, {minimumFractionDigits: 2})}/MT` : '—'}
-                          </td>
- 
-                          {/* Rating */}
-                          <td className="p-4 whitespace-nowrap">
-                            <div className="flex items-center gap-1 font-semibold text-amber-500 text-xs justify-center">
-                              <Star fill="currentColor" size={11} />
-                              <span>{s.rating ? s.rating.toFixed(1) : '—'}</span>
-                            </div>
-                          </td>
- 
-                          {/* Risk */}
-                          <td className="p-4 text-center whitespace-nowrap">
-                            <span className={`whitespace-nowrap px-2 py-0.5 rounded-lg text-[10px] font-bold border ${
-                              s.risk_level === 'High' ? 'bg-rose-500/10 text-rose-700 border-rose-500/15' :
-                              s.risk_level === 'Medium' ? 'bg-amber-500/10 text-amber-700 border-amber-500/15' :
-                              'bg-emerald-500/10 text-emerald-700 border-emerald-500/15'
-                            }`}>
-                              {s.risk_level === 'High' ? 'Critical Delivery Risk' : s.risk_level === 'Medium' ? 'Moderate Delivery Risk' : 'Minimal Delivery Risk'}
-                            </span>
-                          </td>
- 
-                          {/* Quality / Delivery */}
-                          <td className="p-4 text-center text-xs font-semibold text-slate-500 whitespace-nowrap">
-                            Q: <span className="font-semibold text-slate-700">{s.quality_score ? `${Math.round(s.quality_score)}%` : '—'}</span> | D: <span className="font-semibold text-slate-700">{s.delivery_score ? `${Math.round(s.delivery_score)}%` : '—'}</span>
-                          </td>
- 
-                          {/* Price Comp */}
-                          <td className="p-4 text-center text-xs font-semibold text-slate-600 whitespace-nowrap">
-                            {s.price_competitiveness ? `${Math.round(s.price_competitiveness)}%` : '—'}
-                          </td>
- 
-                          {/* Lead Time */}
-                          <td className="p-4 text-center font-bold text-slate-650 text-xs whitespace-nowrap">
-                            {s.lead_time} days
-                          </td>
- 
-                          {/* Approved Status Toggle */}
-                          <td className="p-4 text-center whitespace-nowrap">
-                            <button 
-                              onClick={() => handleTogglePreferred(s)}
-                              className={`p-1.5 rounded-xl border transition-all hover:scale-[1.05] active:scale-[0.95] cursor-pointer shadow-sm ${
-                                s.preferred 
-                                  ? 'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border-amber-500/25' 
-                                  : 'bg-white text-slate-400 hover:text-slate-500 hover:bg-slate-550 border-slate-200'
-                              }`}
-                              title={s.preferred ? "Remove Approved Supplier Status" : "Mark as Approved Supplier"}
-                            >
-                              <Star fill={s.preferred ? "currentColor" : "none"} size={13} />
-                            </button>
-                          </td>
- 
-                          {/* Actions */}
-                          <td className="p-4 pr-5 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-2">
-                              {isExternal ? (
-                                <button
-                                  onClick={() => handleRegisterSupplier(s)}
-                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1 cursor-pointer whitespace-nowrap shadow-sm"
-                                  title="Add to ERP Database"
-                                >
-                                  <Plus size={11} />
-                                  <span>Register Vendor</span>
-                                </button>
-                              ) : (
-                                <button 
-                                  onClick={() => setSelectedSupplierId(s.id)}
-                                  className="view-all-btn px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-[10px] font-bold rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1 cursor-pointer whitespace-nowrap shadow-sm"
-                                >
-                                  <Eye size={11} />
-                                  <span>View History</span>
-                                </button>
-                              )}
-                              
-                              <button 
-                                onClick={() => onSendRfqRedirect(s.id)}
-                                className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white text-[10px] font-bold rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1 cursor-pointer whitespace-nowrap shadow-md"
-                              >
-                                <Send size={11} />
-                                <span>Send RFQ</span>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                                  </td>
+
+                                  {/* AI Explanation / Rationale */}
+                                  <td className="p-3 pl-5 max-w-[320px] whitespace-normal">
+                                    <div className="flex items-start gap-1.5 text-[11px] leading-relaxed text-indigo-850 bg-indigo-50/40 p-2 rounded-lg border border-indigo-100/30">
+                                      <Sparkles size={11} className="text-indigo-550 mt-0.5 shrink-0 animate-pulse" />
+                                      <span className="italic font-medium">{s.ai_explanation || "Analyzing sourcing criteria..."}</span>
+                                    </div>
+                                  </td>
+
+                                  {/* Actions */}
+                                  <td className="p-3 pr-4 text-right whitespace-nowrap">
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      {isExternal ? (
+                                        <button
+                                          onClick={() => handleRegisterSupplier(s)}
+                                          className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-lg transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1 cursor-pointer whitespace-nowrap shadow-sm"
+                                          title="Add to ERP Database"
+                                        >
+                                          <Plus size={11} />
+                                          <span>Register</span>
+                                        </button>
+                                      ) : (
+                                        <button 
+                                          onClick={() => setSelectedSupplierId(s.id)}
+                                          className="view-all-btn px-2.5 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-550 text-[10px] font-bold rounded-lg transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1 cursor-pointer whitespace-nowrap shadow-sm"
+                                        >
+                                          <Eye size={11} />
+                                          <span>History</span>
+                                        </button>
+                                      )}
+                                      
+                                      <button 
+                                        onClick={() => toggleSupplierSelect(s)}
+                                        className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1 cursor-pointer whitespace-nowrap shadow-sm border ${
+                                          isSelected
+                                            ? 'bg-indigo-600 text-white border-indigo-700'
+                                            : 'bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white border-transparent'
+                                        }`}
+                                      >
+                                        <Send size={11} />
+                                        <span>{isSelected ? '✓ Selected' : 'Select'}</span>
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()
           )
         )}
       </div>
@@ -866,6 +1004,212 @@ export default function SupplierSearch({ onSendRfqRedirect, initialQuery, clearI
           supplierId={selectedSupplierId} 
           onClose={() => setSelectedSupplierId(null)} 
         />
+      )}
+
+      {/* ── Floating Selection Action Bar ── */}
+      {selectedSuppliers.length > 0 && !showRfqReviewModal && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-slate-900/95 backdrop-blur-md text-white px-6 py-3.5 rounded-2xl shadow-2xl border border-slate-700/60 animate-in slide-in-from-bottom-4 duration-300">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 bg-indigo-600 rounded-full flex items-center justify-center text-xs font-extrabold">
+              {selectedSuppliers.length}
+            </div>
+            <span className="text-sm font-bold">{selectedSuppliers.length} supplier{selectedSuppliers.length > 1 ? 's' : ''} selected</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400 max-w-[260px] truncate">
+            {selectedSuppliers.map(s => s.name).join(', ')}
+          </div>
+          <button
+            onClick={() => setSelectedSuppliers([])}
+            className="text-slate-400 hover:text-white text-xs font-bold px-2 py-1 rounded-lg hover:bg-slate-800 transition-all"
+          >
+            Clear
+          </button>
+          <button
+            onClick={openRfqReview}
+            className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs px-5 py-2 rounded-xl shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <Mail size={14} />
+            Review & Send RFQ
+            <ChevronRight size={13} />
+          </button>
+        </div>
+      )}
+
+      {/* ── RFQ Review → Approve → Send Modal ── */}
+      {showRfqReviewModal && createPortal(
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200/80 w-full max-w-3xl max-h-[92vh] overflow-hidden flex flex-col shadow-2xl">
+
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-indigo-600 to-blue-600 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <Mail size={18} />
+                </div>
+                <div>
+                  <h2 className="text-sm font-extrabold tracking-tight">RFQ Outreach — Review & Approve</h2>
+                  <p className="text-[11px] text-blue-100 mt-0.5">
+                    RFQ: <strong>{activeRfqNum}</strong> · {selectedSuppliers.length} supplier{selectedSuppliers.length > 1 ? 's' : ''} selected
+                  </p>
+                </div>
+              </div>
+              {rfqReviewStep === 'review' && (
+                <button onClick={() => { setShowRfqReviewModal(false); }} className="p-1.5 hover:bg-white/20 rounded-lg transition-all cursor-pointer">
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+
+            {/* Step: Review */}
+            {rfqReviewStep === 'review' && (
+              <>
+                {generatingDrafts ? (
+                  <div className="flex-1 flex flex-col items-center justify-center gap-3 p-12">
+                    <Loader2 size={32} className="text-indigo-600 animate-spin" />
+                    <p className="text-sm font-semibold text-slate-600">Generating personalized email drafts...</p>
+                    <p className="text-xs text-slate-400">Pulling RFQ details and supplier contact info</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Supplier tab pills */}
+                    <div className="flex gap-1.5 px-5 pt-4 pb-0 border-b border-slate-100 overflow-x-auto shrink-0">
+                      {emailDrafts.map((d, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setReviewEmailIdx(i)}
+                          className={`pb-3 px-3.5 text-[11px] font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                            reviewEmailIdx === i
+                              ? 'border-indigo-600 text-indigo-700'
+                              : 'border-transparent text-slate-400 hover:text-slate-600'
+                          }`}
+                        >
+                          <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-[9px] font-extrabold flex items-center justify-center">
+                            {d.supplier.name.charAt(0)}
+                          </div>
+                          {d.supplier.name.split(' ')[0]}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Email Preview */}
+                    {emailDrafts[reviewEmailIdx] && (
+                      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-slate-400 font-bold w-14 shrink-0">TO:</span>
+                            <span className="font-bold text-slate-800">{emailDrafts[reviewEmailIdx].supplier.name}</span>
+                            {emailDrafts[reviewEmailIdx].supplier.email && (
+                              <span className="text-slate-400 text-[10px]">&lt;{emailDrafts[reviewEmailIdx].supplier.email}&gt;</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-slate-400 font-bold w-14 shrink-0">SUBJECT:</span>
+                            <span className="font-semibold text-slate-700">{emailDrafts[reviewEmailIdx].subject}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="text-slate-400 font-bold w-14 shrink-0">ATTACH:</span>
+                            <span className="flex items-center gap-1 text-indigo-600 font-semibold">
+                              <ShieldCheck size={11} /> {activeRfqNum}_RFQ_Package.pdf
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="bg-white border border-slate-200 rounded-xl p-5">
+                          <pre className="text-xs text-slate-700 font-mono leading-relaxed whitespace-pre-wrap">
+                            {emailDrafts[reviewEmailIdx].body}
+                          </pre>
+                        </div>
+
+                        <div className="flex items-center gap-2 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
+                          <AlertCircle size={12} className="shrink-0" />
+                          <span>This is a real outreach email. Once approved it will be sent to the supplier. Review carefully before approving.</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Footer Actions */}
+                    <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-3 shrink-0">
+                      <div className="text-xs text-slate-400 font-semibold">
+                        Previewing {reviewEmailIdx + 1} / {emailDrafts.length} emails
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setShowRfqReviewModal(false)}
+                          className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition-all cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleApproveSend}
+                          className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-extrabold rounded-xl shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                        >
+                          <Send size={13} />
+                          Approve & Send {selectedSuppliers.length} RFQ{selectedSuppliers.length > 1 ? 's' : ''}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            {/* Step: Sending */}
+            {rfqReviewStep === 'sending' && (
+              <div className="flex-1 p-8 space-y-4 overflow-y-auto">
+                <p className="text-sm font-bold text-slate-700 mb-4">Dispatching RFQ emails...</p>
+                {sendProgress.map((p, i) => (
+                  <div key={i} className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-extrabold shrink-0 ${
+                      p.status === 'sent' ? 'bg-emerald-100 text-emerald-700' :
+                      p.status === 'error' ? 'bg-rose-100 text-rose-700' :
+                      'bg-slate-200 text-slate-500'
+                    }`}>
+                      {p.status === 'sent' ? '✓' : p.status === 'error' ? '✕' : <Loader2 size={12} className="animate-spin" />}
+                    </div>
+                    <span className="text-xs font-semibold text-slate-700">{p.name}</span>
+                    <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      p.status === 'sent' ? 'bg-emerald-100 text-emerald-700' :
+                      p.status === 'error' ? 'bg-rose-100 text-rose-700' :
+                      'bg-slate-200 text-slate-500'
+                    }`}>
+                      {p.status === 'sent' ? 'Sent' : p.status === 'error' ? 'Failed' : 'Sending...'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Step: Done */}
+            {rfqReviewStep === 'done' && (
+              <div className="flex-1 flex flex-col items-center justify-center gap-4 p-12 text-center">
+                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
+                  <CheckCircle2 size={32} className="text-emerald-600" />
+                </div>
+                <h3 className="text-base font-extrabold text-slate-800">RFQ Emails Dispatched!</h3>
+                <p className="text-sm text-slate-500 max-w-xs">
+                  {sendProgress.filter(p => p.status === 'sent').length} of {sendProgress.length} emails sent successfully.
+                  Monitor responses in the <strong>Email Bot Console</strong>.
+                </p>
+                <div className="flex gap-3 mt-2">
+                  <button
+                    onClick={() => { setShowRfqReviewModal(false); setSelectedSuppliers([]); }}
+                    className="px-4 py-2 text-xs font-bold bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all cursor-pointer"
+                  >
+                    Stay Here
+                  </button>
+                  <button
+                    onClick={() => { setShowRfqReviewModal(false); setSelectedSuppliers([]); onSendRfqRedirect && onSendRfqRedirect(null); }}
+                    className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-extrabold rounded-xl shadow-md transition-all hover:scale-[1.02] cursor-pointer"
+                  >
+                    <Mail size={13} /> View Email Bot Console
+                  </button>
+                </div>
+              </div>
+            )}
+
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Bulk Import Preview & Execution Modal */}

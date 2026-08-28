@@ -8,6 +8,7 @@ import { rfqService, workflowService } from '../services/api';
 export default function FloatingRfqModal({ isOpen, onClose, onRfqCreated }) {
   const [uploading, setUploading] = useState(false);
   const [isAiExtracted, setIsAiExtracted] = useState(false);
+  const [showAiRecommendation, setShowAiRecommendation] = useState(false);
   const [missingFields, setMissingFields] = useState([]);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -28,7 +29,9 @@ export default function FloatingRfqModal({ isOpen, onClose, onRfqCreated }) {
     delivery_location: 'Riyadh Warehouse',
     expected_delivery_date: '',
     remarks: '',
-    drawing_attachment: ''
+    drawing_attachment: '',
+    warranty_requirement: '',
+    delivery_tolerance: ''
   });
 
   if (!isOpen) return null;
@@ -40,6 +43,7 @@ export default function FloatingRfqModal({ isOpen, onClose, onRfqCreated }) {
 
     setUploading(true);
     setIsAiExtracted(false);
+    setShowAiRecommendation(false);
     setMissingFields([]);
     setErrorMsg('');
 
@@ -61,11 +65,16 @@ export default function FloatingRfqModal({ isOpen, onClose, onRfqCreated }) {
           delivery_location: data.delivery_location || 'Riyadh Warehouse',
           expected_delivery_date: data.expected_delivery_date || '',
           remarks: data.remarks || '',
-          drawing_attachment: data.drawing_attachment || filename
+          drawing_attachment: data.drawing_attachment || filename,
+          warranty_requirement: data.warranty_requirement || '',
+          delivery_tolerance: data.delivery_tolerance || ''
         });
         setMissingFields(data.missing_fields || []);
         setIsAiExtracted(true);
         setUploading(false);
+        if (!data.warranty_requirement || !data.delivery_tolerance) {
+          setShowAiRecommendation(true);
+        }
       })
       .catch((err) => {
         console.error(err);
@@ -203,6 +212,42 @@ export default function FloatingRfqModal({ isOpen, onClose, onRfqCreated }) {
             </div>
           )}
 
+          {showAiRecommendation && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="flex items-center gap-2 text-amber-800 font-bold">
+                <Sparkles size={14} className="text-amber-600 animate-pulse" />
+                <span>AI Sourcing Recommendation</span>
+              </div>
+              <p className="text-[10px] text-amber-700 leading-normal font-medium">
+                “Based on similar historical purchases, 12-month warranty and ±3-day delivery tolerance were previously used. Apply these?”
+              </p>
+              <div className="flex gap-2 justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData(prev => ({
+                      ...prev,
+                      warranty_requirement: '12 Months',
+                      delivery_tolerance: '±3 days'
+                    }));
+                    setMissingFields(prev => prev.filter(f => f !== 'Warranty requirement' && f !== 'Acceptable delivery tolerance'));
+                    setShowAiRecommendation(false);
+                  }}
+                  className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded text-[10px] transition-colors shadow-sm"
+                >
+                  Accept
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAiRecommendation(false)}
+                  className="px-3 py-1 border border-amber-300 text-amber-700 hover:bg-amber-100 font-bold rounded text-[10px] transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Success / Error States */}
           {successMsg && (
             <div className="p-3 bg-emerald-50 border border-emerald-250 text-emerald-700 rounded-xl font-semibold flex items-center gap-2">
@@ -223,7 +268,14 @@ export default function FloatingRfqModal({ isOpen, onClose, onRfqCreated }) {
             
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Project Name</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Project Name
+                  {isAiExtracted && formData.project_name && (
+                    <span className="ml-1.5 inline-flex items-center px-1 py-0.5 rounded text-[8px] font-bold bg-indigo-100 text-indigo-700">
+                      Copilot Filled
+                    </span>
+                  )}
+                </label>
                 <input 
                   type="text" 
                   name="project_name"
@@ -234,7 +286,14 @@ export default function FloatingRfqModal({ isOpen, onClose, onRfqCreated }) {
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Item Name / Category *</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Item Name / Category *
+                  {isAiExtracted && formData.item_name && (
+                    <span className="ml-1.5 inline-flex items-center px-1 py-0.5 rounded text-[8px] font-bold bg-indigo-100 text-indigo-700">
+                      Copilot Filled
+                    </span>
+                  )}
+                </label>
                 <input 
                   type="text" 
                   name="item_name"
@@ -249,7 +308,14 @@ export default function FloatingRfqModal({ isOpen, onClose, onRfqCreated }) {
 
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Quantity *</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Quantity *
+                  {isAiExtracted && formData.quantity && (
+                    <span className="ml-1.5 inline-flex items-center px-1 py-0.5 rounded text-[8px] font-bold bg-indigo-100 text-indigo-700">
+                      Copilot Filled
+                    </span>
+                  )}
+                </label>
                 <input 
                   type="number" 
                   name="quantity"
@@ -291,7 +357,14 @@ export default function FloatingRfqModal({ isOpen, onClose, onRfqCreated }) {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Required Delivery Date</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Required Delivery Date
+                  {isAiExtracted && formData.required_date && (
+                    <span className="ml-1.5 inline-flex items-center px-1 py-0.5 rounded text-[8px] font-bold bg-indigo-100 text-indigo-700">
+                      Copilot Filled
+                    </span>
+                  )}
+                </label>
                 <input 
                   type="date" 
                   name="required_date"
@@ -301,7 +374,14 @@ export default function FloatingRfqModal({ isOpen, onClose, onRfqCreated }) {
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Delivery Destination</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Delivery Destination
+                  {isAiExtracted && formData.delivery_location && (
+                    <span className="ml-1.5 inline-flex items-center px-1 py-0.5 rounded text-[8px] font-bold bg-indigo-100 text-indigo-700">
+                      Copilot Filled
+                    </span>
+                  )}
+                </label>
                 <input 
                   type="text" 
                   name="delivery_location"
@@ -312,8 +392,54 @@ export default function FloatingRfqModal({ isOpen, onClose, onRfqCreated }) {
               </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Warranty Requirement
+                  {isAiExtracted && formData.warranty_requirement && (
+                    <span className="ml-1.5 inline-flex items-center px-1 py-0.5 rounded text-[8px] font-bold bg-indigo-100 text-indigo-700">
+                      Copilot Filled
+                    </span>
+                  )}
+                </label>
+                <input 
+                  type="text" 
+                  name="warranty_requirement"
+                  value={formData.warranty_requirement} 
+                  onChange={handleFormChange}
+                  placeholder="e.g. 12 Months"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white outline-none focus:border-[#0078d4] transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Acceptable Delivery Tolerance
+                  {isAiExtracted && formData.delivery_tolerance && (
+                    <span className="ml-1.5 inline-flex items-center px-1 py-0.5 rounded text-[8px] font-bold bg-indigo-100 text-indigo-700">
+                      Copilot Filled
+                    </span>
+                  )}
+                </label>
+                <input 
+                  type="text" 
+                  name="delivery_tolerance"
+                  value={formData.delivery_tolerance} 
+                  onChange={handleFormChange}
+                  placeholder="e.g. ±3 days"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold bg-slate-50 focus:bg-white outline-none focus:border-[#0078d4] transition-all"
+                />
+              </div>
+            </div>
+
             <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Technical Specifications / Grade Details</label>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                Technical Specifications / Grade Details
+                {isAiExtracted && formData.specifications && (
+                  <span className="ml-1.5 inline-flex items-center px-1 py-0.5 rounded text-[8px] font-bold bg-indigo-100 text-indigo-700">
+                    Copilot Filled
+                  </span>
+                )}
+              </label>
               <textarea 
                 name="specifications"
                 rows={2}

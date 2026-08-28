@@ -255,12 +255,13 @@ def generate_ai_counter_offer(rfq_item: str, supplier_name: str, supplier_price:
     
     default_body = (
         f"Dear {supplier_name} Sales Team,\n\n"
-        f"Thank you for your revised quotation of {currency} {supplier_price:.2f}/unit for {rfq_item} (Round {round_num}).\n"
-        f"We appreciate your response, however, our target price for this requirement is {currency} {target_price:.2f}/unit "
+        f"Thank you for your revised quotation of {currency} {supplier_price:.2f}/unit for {rfq_item} (Round {round_num}).\n\n"
+        f"We appreciate your response. However, our target price for this requirement is {currency} {target_price:.2f}/unit "
         f"with standard Net 60 Days payment terms.\n\n"
-        f"Please let us know if you can accommodate this so we can submit your offer for management review and final shortlist.\n\n"
-        f"Best regards,\n"
-        f"ProcureX Agent\n"
+        f"Could you please confirm if you can accommodate this rate so we can proceed with the final management review and shortlisting?\n\n"
+        f"Best regards,\n\n"
+        f"Petabytz Procurement Team\n"
+        f"Procurement Operations Department\n"
         f"ProcureX Co."
     )
 
@@ -270,7 +271,7 @@ def generate_ai_counter_offer(rfq_item: str, supplier_name: str, supplier_price:
     try:
         client = OpenAI(api_key=openai_key.strip())
         system_prompt = (
-            "You are an expert ProcureX Negotiator. Generate a polite, formal email from ProcureX's Agent "
+            "You are the Petabytz Procurement Team, representing the Procurement Operations Department at ProcureX Co. Generate a polite, formal email "
             "to a supplier. The email should acknowledge their current offer, present a counter-offer target price "
             "(which is 10% lower than their quoted price), request Net 60 Days terms, and ask them to confirm if they can accept.\n"
             "Generate a JSON object with two keys:\n"
@@ -345,7 +346,16 @@ def run_comparison_and_notify(db: Session, rfq_number: str, winner_supplier_id: 
     
     # Create comparison JSON blob
     comparison_data = []
+    from main import classify_supplier_record
     for q in sorted_all_quotes:
+        category = classify_supplier_record(
+            db,
+            q.supplier.id,
+            q.supplier.preferred,
+            q.supplier.synced_to_erp,
+            q.supplier.erp_vendor_id,
+            source="ERP Database" if q.supplier.synced_to_erp else "Demo Catalog"
+        )
         comparison_data.append({
             "supplier_id": q.supplier.id,
             "supplier_name": q.supplier.name,
@@ -356,7 +366,9 @@ def run_comparison_and_notify(db: Session, rfq_number: str, winner_supplier_id: 
             "rating": q.supplier.rating,
             "delivery_score": q.supplier.delivery_score,
             "risk_level": q.supplier.risk_level,
-            "status": q.status
+            "status": q.status,
+            "supplier_category": category,
+            "category": category
         })
         
     settings = get_agent_settings()
@@ -476,8 +488,10 @@ def run_comparison_and_notify(db: Session, rfq_number: str, winner_supplier_id: 
             f"- Payment Terms: {payment_terms}\n"
             f"- Incoterms: {incoterms}\n\n"
             f"Please review the attached PDF document and reply to confirm order acceptance.\n\n"
-            f"Best regards,\n"
-            f"ProcureX Copilot"
+            f"Best regards,\n\n"
+            f"Petabytz Procurement Team\n"
+            f"Procurement Operations Department\n"
+            f"ProcureX Co."
         )
         # Route to custom email override if it was used in initial invitation
         winner_email = winner_supplier.email
@@ -535,28 +549,37 @@ def check_and_process_emails(db: Session, raise_on_error: bool = False):
         # Establish IMAP connection with a 10 second timeout for consistency and reliability
         mail = imaplib.IMAP4_SSL(imap_server, imap_port, timeout=10)
         mail.login(imap_username, imap_password)
-        mail.select("inbox")
-
-        # Fetch UNSEEN emails as well as the last 15 messages so emails opened in Gmail Web UI are not missed
-        status_unseen, msgs_unseen = mail.search(None, 'UNSEEN')
-        unseen_ids = msgs_unseen[0].split() if (status_unseen == "OK" and msgs_unseen[0]) else []
-
-        status_all, msgs_all = mail.search(None, 'ALL')
-        all_ids = msgs_all[0].split()[-15:] if (status_all == "OK" and msgs_all[0]) else []
 
         message_ids = []
-        for m_id in unseen_ids + all_ids:
-            if m_id not in message_ids:
-                message_ids.append(m_id)
+        folders = ["inbox", "Junk", "Spam", "[Gmail]/Spam", "[Gmail]/Junk", "Junk Email"]
+        for folder in folders:
+            try:
+                status, _ = mail.select(folder)
+                if status != "OK":
+                    continue
+                # Fetch UNSEEN emails as well as the last 15 messages so emails opened in Gmail Web UI are not missed
+                status_unseen, msgs_unseen = mail.search(None, 'UNSEEN')
+                unseen_ids = msgs_unseen[0].split() if (status_unseen == "OK" and msgs_unseen[0]) else []
+
+                status_all, msgs_all = mail.search(None, 'ALL')
+                all_ids = msgs_all[0].split()[-15:] if (status_all == "OK" and msgs_all[0]) else []
+
+                for m_id in unseen_ids + all_ids:
+                    item = (folder, m_id)
+                    if item not in message_ids:
+                        message_ids.append(item)
+            except Exception as folder_err:
+                logger.error(f"[Automation Engine] Error searching folder '{folder}': {folder_err}")
 
         if not message_ids:
             mail.logout()
             return
 
-        logger.info(f"[Automation Engine] Inspecting {len(message_ids)} recent/unread emails...")
+        logger.info(f"[Automation Engine] Inspecting {len(message_ids)} recent/unread emails across monitored folders...")
 
-        for msg_id in message_ids:
+        for folder, msg_id in message_ids:
             try:
+                mail.select(folder)
                 res, msg_data = mail.fetch(msg_id, "(RFC822)")
                 for response_part in msg_data:
                     if isinstance(response_part, tuple):
@@ -618,6 +641,14 @@ def check_and_process_emails(db: Session, raise_on_error: bool = False):
                         rfq_match = re.search(r'RFQ-[\w-]+', subject, re.IGNORECASE)
                         if not rfq_match:
                             rfq_match = re.search(r'RFQ-[\w-]+', body_clean, re.IGNORECASE)
+                            
+                        # If the email contains an RFQ reference, it MUST be a reply/forward thread to be processed.
+                        # This prevents invitation emails sent to the suppliers from being misidentified as supplier replies.
+                        if rfq_match:
+                            subject_lower = subject.lower().strip()
+                            if not (subject_lower.startswith("re:") or subject_lower.startswith("fwd:")):
+                                logger.info(f"[Automation Engine] Skipping invitation/outgoing email containing RFQ reference: {subject}")
+                                continue
                         
                         if not rfq_match:
                             # Customer drop-in RFQ (No RFQ-XXXX reference yet)
@@ -794,11 +825,16 @@ def check_and_process_emails(db: Session, raise_on_error: bool = False):
                                     subj = f"RFQ Invitation: {rfq.item_name} ({rfq_number})"
                                     b_msg = (
                                         f"Dear {s.name} Sales Team,\n\n"
-                                        f"ProcureX is requesting a quotation for {rfq.quantity} {rfq.unit} of {rfq.item_name}.\n"
-                                        f"Required Delivery Location: {rfq.delivery_location or 'Yanbu Site'}\n\n"
+                                        f"I hope this email finds you well.\n\n"
+                                        f"We would like to request a formal quotation for the following material requirement:\n\n"
+                                        f"· Item: {rfq.item_name}\n"
+                                        f"· Quantity: {rfq.quantity} {rfq.unit}\n"
+                                        f"· Delivery Location: {rfq.delivery_location or 'Yanbu Site'}\n\n"
                                         f"Please reply directly to this email with your quote (unit price, currency, lead time, and payment terms).\n\n"
-                                        f"Best regards,\n"
-                                        f"ProcureX Agent"
+                                        f"Best regards,\n\n"
+                                        f"Petabytz Procurement Team\n"
+                                        f"Procurement Operations Department\n"
+                                        f"ProcureX Co."
                                     )
                                     db.add(models.EmailHistory(
                                         rfq_number=rfq_number,
@@ -1532,6 +1568,11 @@ def auto_simulate_campaigns(db: Session):
     if not settings.get("auto_simulate_suppliers", True):
         return
         
+    # If real-time outreach is enabled, do not auto-generate responses. 
+    # We must wait for real emails to arrive.
+    if settings.get("real_time_outreach", True):
+        return
+        
     delay = int(settings.get("simulation_delay_seconds", 40))
     
     # Find all RFQs that are in "Outreach Sent" status
@@ -1598,8 +1639,8 @@ def worker_loop():
             db.close()
         except Exception as err:
             logger.error(f"Error in background worker thread: {err}")
-        # Poll every 10 seconds to avoid Gmail connection limits and rate-limiting
-        time.sleep(10)
+        # Poll every 2 seconds for faster response during demos/testing
+        time.sleep(2)
 
 
 def start_background_worker():

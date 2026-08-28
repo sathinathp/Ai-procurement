@@ -182,6 +182,9 @@ export default function AiAgentWorkflow() {
       if (name === 'maxNegotiationRounds') {
         workflowService.saveAgentSettings({ max_negotiation_rounds: value })
           .catch(err => console.error("Failed to save settings:", err));
+      } else if (name === 'realTimeOutreach') {
+        workflowService.saveAgentSettings({ real_time_outreach: value })
+          .catch(err => console.error("Failed to save settings:", err));
       }
       return updated;
     });
@@ -194,7 +197,8 @@ export default function AiAgentWorkflow() {
         if (res.data) {
           setSettings(prev => ({
             ...prev,
-            maxNegotiationRounds: res.data.max_negotiation_rounds || 3
+            maxNegotiationRounds: res.data.max_negotiation_rounds || 3,
+            realTimeOutreach: res.data.real_time_outreach !== undefined ? res.data.real_time_outreach : true
           }));
         }
       } catch (err) {
@@ -522,16 +526,35 @@ export default function AiAgentWorkflow() {
           setSelectedSupplierId(simRes.data.shortlist[0].supplier_id);
         }
         
-        addLog(`[IMAP Inbound] Received reply from Sathya Polymer Suppliers (sathinath.padhi@petabytz.com)`, 'info');
-        addLog(`[AI Parse] Extracted quotation metrics: Price=$290.00, Lead Time=10 days, Terms="Net 30 Days"`, 'success');
-        addLog(`[AI Negotiation] Target price not met. Generating counter-offer via AI...`, 'info');
-        addLog(`[Resend Outbound] Counter-offer email dispatched to: sathinath.padhi@petabytz.com`, 'info');
-        
-        addLog(`[IMAP Inbound] Received reply from Softstandard Polymer Labs (sathinath.padhi@softstandard.com)`, 'info');
-        addLog(`[AI Parse] Extracted quotation metrics: Price=$280.68, Lead Time=8 days, Terms="Net 45 Days"`, 'success');
-        addLog(`[AI Negotiation] Counter-offer accepted by supplier.`, 'success');
-        
-        addLog(`[SUCCESS] Sourcing completed. Received 30 candidate bids. Auto-negotiation active.`, 'success');
+        try {
+          const statusRes = await campaignService.getRealStatus(tempRfqNum);
+          if (statusRes.data.logs) {
+            setCampaignLogs(statusRes.data.logs);
+          }
+          if (statusRes.data.quotes) {
+            setRealQuotes(statusRes.data.quotes);
+          }
+        } catch (err) {
+          console.error("Failed to load logs after simulation:", err);
+        }
+
+        if (simRes.data?.negotiations && Array.isArray(simRes.data.negotiations)) {
+          simRes.data.negotiations.forEach(neg => {
+            const isEur = neg.chat_history && neg.chat_history[0]?.content && neg.chat_history[0].content.includes('€');
+            const currencySymbol = isEur ? '€' : '$';
+            addLog(`[IMAP Inbound] Received quotation email from ${neg.supplier_name}`, 'info');
+            addLog(`[AI Parse] Extracted quotation: Price=${currencySymbol}${neg.original_price}, Terms="${neg.original_terms || 'Net 30 Days'}"`, 'success');
+            if (neg.negotiated_price !== neg.original_price) {
+              addLog(`[AI Negotiation] Target price not met. Generating counter-offer to ${neg.supplier_name}...`, 'info');
+              addLog(`[IMAP Inbound] Received revised offer from ${neg.supplier_name}: Price=${currencySymbol}${neg.negotiated_price}, Terms="${neg.negotiated_terms}"`, 'success');
+            } else {
+              addLog(`[AI Negotiation] Initial quote from ${neg.supplier_name} matches target criteria.`, 'success');
+            }
+          });
+          addLog(`[SUCCESS] Sourcing completed. Received ${simRes.data.quotes_received || 4} candidate bids. Auto-negotiation active.`, 'success');
+        } else {
+          addLog(`[SUCCESS] Sourcing completed. Bids received. Auto-negotiation active.`, 'success');
+        }
       }
 
       // If agentStatus was already set to 'completed' by the Agree-to-Price
@@ -841,13 +864,109 @@ export default function AiAgentWorkflow() {
               <span className="text-[10px] text-slate-400 font-semibold block mt-1">Accepts PDF, DOCX, XLSX, TXT</span>
             </div>
 
-            <div className="pt-2">
+            <div className="pt-2 text-center">
               <button
                 onClick={handleGenerateSampleRfqPdf}
-                className="text-xs font-bold text-[#0078d4] hover:text-[#106ebe] hover:underline flex items-center gap-1.5 mx-auto mt-2 cursor-pointer bg-transparent border-none outline-none"
+                className="text-xs font-bold text-[#0078d4] hover:text-[#106ebe] hover:underline inline-flex items-center gap-1.5 mx-auto mt-2 cursor-pointer bg-transparent border-none outline-none"
               >
                 <Download size={14} /> Generate and Download Sample RFQ PDF
               </button>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-slate-200 max-w-lg mx-auto text-left">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-3 text-center">Demo Files & Mock Supplier Quotes</span>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Dosing Pumps Category */}
+                <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-200">
+                  <div className="text-[10px] font-bold text-[#0078d4] uppercase mb-2 flex items-center gap-1">
+                    <Sparkles size={11} className="text-[#0078d4]" /> Dosing Pumps Demos
+                  </div>
+                  <div className="space-y-1.5">
+                    <a 
+                      href={`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/campaign/download-mock-quote?supplier=Budget%20Pumps%20Inc&category=dosing_pumps`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] font-semibold text-slate-700 hover:text-[#0078d4] bg-white border border-slate-200 hover:border-[#0078d4] rounded-lg px-2.5 py-1.5 text-left flex items-center justify-between transition-all"
+                    >
+                      <span>📄 Budget Pumps (Low Price/Risk)</span>
+                      <span className="text-[8px] bg-red-150 text-red-700 font-bold px-1 py-0.2 rounded uppercase">PDF</span>
+                    </a>
+                    <a 
+                      href={`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/campaign/download-mock-quote?supplier=Munich%20Dosing%20Systems&category=dosing_pumps`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] font-semibold text-slate-700 hover:text-[#0078d4] bg-white border border-slate-200 hover:border-[#0078d4] rounded-lg px-2.5 py-1.5 text-left flex items-center justify-between transition-all"
+                    >
+                      <span>📊 Munich Dosing (Fast/Excel)</span>
+                      <span className="text-[8px] bg-emerald-150 text-emerald-700 font-bold px-1 py-0.2 rounded uppercase">Excel</span>
+                    </a>
+                    <a 
+                      href={`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/campaign/download-mock-quote?supplier=Houston%20Pump%20Solutions&category=dosing_pumps`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] font-semibold text-slate-700 hover:text-[#0078d4] bg-white border border-slate-200 hover:border-[#0078d4] rounded-lg px-2.5 py-1.5 text-left flex items-center justify-between transition-all"
+                    >
+                      <span>📄 Houston Pump (Incumbent)</span>
+                      <span className="text-[8px] bg-red-150 text-red-700 font-bold px-1 py-0.2 rounded uppercase">PDF</span>
+                    </a>
+                    <a 
+                      href={`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/campaign/download-mock-quote?supplier=Tokyo%20Precision%20Flow&category=dosing_pumps`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] font-semibold text-slate-700 hover:text-[#0078d4] bg-white border border-slate-200 hover:border-[#0078d4] rounded-lg px-2.5 py-1.5 text-left flex items-center justify-between transition-all"
+                    >
+                      <span>📄 Tokyo Flow (EUR/LC terms)</span>
+                      <span className="text-[8px] bg-red-150 text-red-700 font-bold px-1 py-0.2 rounded uppercase">PDF</span>
+                    </a>
+                  </div>
+                </div>
+
+                {/* Polymers Category */}
+                <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-200">
+                  <div className="text-[10px] font-bold text-[#0078d4] uppercase mb-2 flex items-center gap-1">
+                    <Sparkles size={11} className="text-[#0078d4]" /> Polymers & Resins Demos
+                  </div>
+                  <div className="space-y-1.5">
+                    <a 
+                      href={`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/campaign/download-mock-quote?supplier=Al-Khobar%20Plastics&category=polymers`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] font-semibold text-slate-700 hover:text-[#0078d4] bg-white border border-slate-200 hover:border-[#0078d4] rounded-lg px-2.5 py-1.5 text-left flex items-center justify-between transition-all"
+                    >
+                      <span>📄 Al-Khobar (Low Price/Risk)</span>
+                      <span className="text-[8px] bg-red-150 text-red-700 font-bold px-1 py-0.2 rounded uppercase">PDF</span>
+                    </a>
+                    <a 
+                      href={`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/campaign/download-mock-quote?supplier=BASF%20Middle%20East&category=polymers`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] font-semibold text-slate-700 hover:text-[#0078d4] bg-white border border-slate-200 hover:border-[#0078d4] rounded-lg px-2.5 py-1.5 text-left flex items-center justify-between transition-all"
+                    >
+                      <span>📊 BASF ME (Fast/Excel)</span>
+                      <span className="text-[8px] bg-emerald-150 text-emerald-700 font-bold px-1 py-0.2 rounded uppercase">Excel</span>
+                    </a>
+                    <a 
+                      href={`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/campaign/download-mock-quote?supplier=SABIC%20Polymers&category=polymers`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] font-semibold text-slate-700 hover:text-[#0078d4] bg-white border border-slate-200 hover:border-[#0078d4] rounded-lg px-2.5 py-1.5 text-left flex items-center justify-between transition-all"
+                    >
+                      <span>📄 SABIC Polymers (Incumbent)</span>
+                      <span className="text-[8px] bg-red-150 text-red-700 font-bold px-1 py-0.2 rounded uppercase">PDF</span>
+                    </a>
+                    <a 
+                      href={`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/campaign/download-mock-quote?supplier=Borouge&category=polymers`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] font-semibold text-slate-700 hover:text-[#0078d4] bg-white border border-slate-200 hover:border-[#0078d4] rounded-lg px-2.5 py-1.5 text-left flex items-center justify-between transition-all"
+                    >
+                      <span>📄 Borouge (EUR/LC terms)</span>
+                      <span className="text-[8px] bg-red-150 text-red-700 font-bold px-1 py-0.2 rounded uppercase">PDF</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -1131,13 +1250,23 @@ export default function AiAgentWorkflow() {
                     
                     {/* Supplier's quoted price — shown as read-only reference */}
                     {latestInboundPrice !== null && (
-                      <div className="flex items-center gap-2 mt-1 mb-1 p-2 bg-amber-50 border border-amber-200 rounded-lg">
-                        <span className="text-[9px] font-bold text-amber-700 uppercase tracking-wider">Supplier Quoted:</span>
-                        <span className="text-[11px] font-extrabold text-amber-800">${latestInboundPrice}/unit</span>
-                        {latestInboundLeadTime && (
-                          <span className="text-[9px] text-amber-600 ml-1">· {latestInboundLeadTime} days</span>
+                      <div className="flex flex-col gap-1 mt-1 mb-1 p-2 bg-amber-50/50 border border-amber-200 rounded-lg text-xs font-semibold text-slate-700">
+                        <div className="flex justify-between items-center text-[10px]">
+                          <span className="text-slate-500 uppercase font-bold">Initial Bid:</span>
+                          <span className="font-extrabold text-slate-700">${firstInboundPrice}/unit</span>
+                        </div>
+                        {firstInboundPrice !== latestInboundPrice && (
+                          <div className="flex justify-between items-center text-[10px] border-t border-amber-100/50 pt-1">
+                            <span className="text-emerald-700 uppercase font-bold">Negotiated Bid:</span>
+                            <span className="font-black text-emerald-800">${latestInboundPrice}/unit</span>
+                          </div>
                         )}
-                        <span className="text-[8px] text-amber-500 ml-auto italic">extracted from email</span>
+                        <div className="flex justify-between items-center text-[9px] text-amber-600 border-t border-amber-100/50 pt-1">
+                          <span>Lead Time: {latestInboundLeadTime || 14} days</span>
+                          {priceDiff && parseFloat(priceDiff) > 0 && (
+                            <span className="text-emerald-600 font-extrabold">Saved: -${priceDiff}/unit ({((parseFloat(priceDiff) / firstInboundPrice) * 100).toFixed(1)}%)</span>
+                          )}
+                        </div>
                       </div>
                     )}
 
@@ -1405,7 +1534,7 @@ export default function AiAgentWorkflow() {
                               Email History with {s.name}
                             </span>
                             <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
-                              {supplierLogs.map((log, logIdx) => (
+                              {supplierLogs.slice().reverse().map((log, logIdx) => (
                                 <div key={logIdx} className={`p-2 rounded text-[10px] border ${
                                   log.direction === 'inbound' 
                                     ? 'bg-slate-50 border-slate-200 text-slate-700' 

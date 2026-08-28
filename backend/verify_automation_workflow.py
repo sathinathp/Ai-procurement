@@ -59,7 +59,7 @@ def test_imap_connection():
         return False
 
 def setup_test_data(tester_email):
-    print("\n--- [3] Setting up Test Supplier and RFQ ---")
+    print("\n--- [3] Setting up Test Suppliers and RFQ ---")
     from database import SessionLocal
     import models
     db = SessionLocal()
@@ -67,38 +67,123 @@ def setup_test_data(tester_email):
     rfq_num = "RFQ-2026-TEST-AUTO"
     
     try:
-        # Find or create a test supplier with the tester's email
-        supplier = db.query(models.Supplier).filter(models.Supplier.email.ilike(tester_email)).first()
-        if not supplier:
-            print(f"Creating a new test supplier with email '{tester_email}'...")
-            supplier = models.Supplier(
-                name="Test Automation Lab",
+        # Create/retrieve 4 distinct suppliers for complete category coverage
+        
+        # 1. Preferred Supplier (Linked to tester_email for self-negotiation capability)
+        supplier_pref = db.query(models.Supplier).filter(models.Supplier.name == "Auto-Negotiator Preferred Lab").first()
+        if not supplier_pref:
+            print("Creating 'Auto-Negotiator Preferred Lab' (Preferred)...")
+            supplier_pref = models.Supplier(
+                name="Auto-Negotiator Preferred Lab",
                 country="Saudi Arabia",
                 email=tester_email,
-                phone="+966 50 123 4567",
-                rating=4.5,
-                lead_time_days=10,
+                phone="+966 50 111 2222",
+                rating=4.8,
+                lead_time_days=9,
                 preferred=True,
-                quality_score=95.0,
-                delivery_score=90.0,
+                quality_score=98.0,
+                delivery_score=95.0,
                 price_competitiveness=85.0,
                 risk_level="Low",
                 products="PVC Resin K-67",
                 categories="Raw Polymers",
                 synced_to_erp=True,
-                erp_vendor_id="ODOO-VEND-TEST-AUTO"
+                erp_vendor_id="ERP-PREF-VERIFY"
             )
-            db.add(supplier)
+            db.add(supplier_pref)
             db.flush()
         else:
-            print(f"Found existing supplier '{supplier.name}' with email '{tester_email}'.")
-            # Ensure details are updated
-            supplier.email = tester_email
-            supplier.synced_to_erp = True
-            supplier.erp_vendor_id = "ODOO-VEND-TEST-AUTO"
+            supplier_pref.email = tester_email
+            supplier_pref.preferred = True
+            supplier_pref.synced_to_erp = True
             db.flush()
             
-        # Clean any old test records for this RFQ including dependents to prevent foreign key violations
+        # 2. Previously Used Supplier
+        supplier_prev = db.query(models.Supplier).filter(models.Supplier.name == "Auto-Negotiator Historical Lab").first()
+        if not supplier_prev:
+            print("Creating 'Auto-Negotiator Historical Lab' (Previously Used)...")
+            supplier_prev = models.Supplier(
+                name="Auto-Negotiator Historical Lab",
+                country="Oman",
+                email="historical.supplier@procurex.com",
+                phone="+968 24 333 4444",
+                rating=4.5,
+                lead_time_days=11,
+                preferred=False,
+                quality_score=92.0,
+                delivery_score=90.0,
+                price_competitiveness=80.0,
+                risk_level="Low",
+                products="PVC Resin K-67",
+                categories="Raw Polymers",
+                synced_to_erp=True,
+                erp_vendor_id="ERP-HIST-VERIFY"
+            )
+            db.add(supplier_prev)
+            db.flush()
+        else:
+            supplier_prev.preferred = False
+            supplier_prev.synced_to_erp = True
+            db.flush()
+            
+        # 3. Other Approved Supplier
+        supplier_app = db.query(models.Supplier).filter(models.Supplier.name == "Auto-Negotiator Approved Lab").first()
+        if not supplier_app:
+            print("Creating 'Auto-Negotiator Approved Lab' (Other Approved)...")
+            supplier_app = models.Supplier(
+                name="Auto-Negotiator Approved Lab",
+                country="United Arab Emirates",
+                email="approved.supplier@procurex.com",
+                phone="+971 4 555 6666",
+                rating=4.4,
+                lead_time_days=12,
+                preferred=False,
+                quality_score=90.0,
+                delivery_score=88.0,
+                price_competitiveness=82.0,
+                risk_level="Low",
+                products="PVC Resin K-67",
+                categories="Raw Polymers",
+                synced_to_erp=True,
+                erp_vendor_id="ERP-APP-VERIFY"
+            )
+            db.add(supplier_app)
+            db.flush()
+        else:
+            supplier_app.preferred = False
+            supplier_app.synced_to_erp = True
+            db.flush()
+            
+        # 4. New Supplier Candidate
+        supplier_cand = db.query(models.Supplier).filter(models.Supplier.name == "Auto-Negotiator Candidate Lab").first()
+        if not supplier_cand:
+            print("Creating 'Auto-Negotiator Candidate Lab' (New Candidate)...")
+            supplier_cand = models.Supplier(
+                name="Auto-Negotiator Candidate Lab",
+                country="India",
+                email="candidate.supplier@procurex.com",
+                phone="+91 22 7777 8888",
+                rating=4.2,
+                lead_time_days=15,
+                preferred=False,
+                quality_score=85.0,
+                delivery_score=85.0,
+                price_competitiveness=90.0,
+                risk_level="Medium",
+                products="PVC Resin K-67",
+                categories="Raw Polymers",
+                synced_to_erp=False,
+                erp_vendor_id=None
+            )
+            db.add(supplier_cand)
+            db.flush()
+        else:
+            supplier_cand.preferred = False
+            supplier_cand.synced_to_erp = False
+            supplier_cand.erp_vendor_id = None
+            db.flush()
+            
+        # Clean any old test records for this RFQ including dependents
         db.query(models.NegotiationLog).filter(models.NegotiationLog.rfq_number == rfq_num).delete(synchronize_session=False)
         db.query(models.WorkflowNotification).filter(models.WorkflowNotification.rfq_number == rfq_num).delete(synchronize_session=False)
         db.query(models.QuoteResponse).filter(models.QuoteResponse.rfq_number == rfq_num).delete(synchronize_session=False)
@@ -119,6 +204,39 @@ def setup_test_data(tester_email):
             
         db.query(models.RFQ).filter(models.RFQ.rfq_number == rfq_num).delete(synchronize_session=False)
         db.commit()
+        
+        # Insert historical PO for Previously Used Supplier
+        hist_rfq_num = "RFQ-HIST-DUMMY"
+        db.query(models.PurchaseOrder).filter(models.PurchaseOrder.rfq_number == hist_rfq_num).delete()
+        db.query(models.RFQ).filter(models.RFQ.rfq_number == hist_rfq_num).delete()
+        db.commit()
+        
+        hist_rfq = models.RFQ(
+            rfq_number=hist_rfq_num,
+            project_name="Historical Project",
+            department="Procurement",
+            required_date=(datetime.now() - timedelta(days=60)).date(),
+            item_name="PVC Resin K-67",
+            item_code="ITM-RAW-PVC-K67",
+            quantity=50.0,
+            unit="MT",
+            status="Completed"
+        )
+        db.add(hist_rfq)
+        db.flush()
+        
+        hist_po = models.PurchaseOrder(
+            po_number="PO-HIST-DUMMY",
+            rfq_number=hist_rfq_num,
+            supplier_id=supplier_prev.id,
+            item_name="PVC Resin K-67",
+            quantity=50.0,
+            unit_price=1350.00,
+            total_amount=67500.00,
+            status="Completed"
+        )
+        db.add(hist_po)
+        db.flush()
         
         # Create fresh RFQ
         print(f"Creating fresh test RFQ '{rfq_num}' for PVC Resin K-67...")
@@ -151,7 +269,12 @@ def setup_test_data(tester_email):
         
         db.commit()
         print("[OK] Database test records set up successfully.")
-        return rfq_num, supplier.id
+        return rfq_num, {
+            "preferred": supplier_pref.id,
+            "previously_used": supplier_prev.id,
+            "other_approved": supplier_app.id,
+            "new_candidate": supplier_cand.id
+        }
     except Exception as e:
         db.rollback()
         print(f"[FAIL] Failed to set up database test records: {e}")
@@ -159,7 +282,7 @@ def setup_test_data(tester_email):
     finally:
         db.close()
 
-def run_real_test(rfq_num, supplier_id, tester_email):
+def run_real_test(rfq_num, suppliers_dict, tester_email):
     print("\n--- [4] Running Interactive Real Email Test ---")
     from database import SessionLocal
     import models
@@ -167,7 +290,8 @@ def run_real_test(rfq_num, supplier_id, tester_email):
     
     db = SessionLocal()
     try:
-        supplier = db.query(models.Supplier).filter(models.Supplier.id == supplier_id).first()
+        preferred_supplier_id = suppliers_dict["preferred"]
+        supplier = db.query(models.Supplier).filter(models.Supplier.id == preferred_supplier_id).first()
         rfq = db.query(models.RFQ).filter(models.RFQ.rfq_number == rfq_num).first()
         
         subject = f"Inquiry: RFQ for PVC Resin K-67 - {rfq_num}"
@@ -194,7 +318,7 @@ def run_real_test(rfq_num, supplier_id, tester_email):
         # Log invitation
         db.add(models.EmailHistory(
             rfq_number=rfq_num,
-            supplier_id=supplier_id,
+            supplier_id=preferred_supplier_id,
             subject=subject,
             body=body,
             type="RFQ Invitation",
@@ -228,6 +352,28 @@ def run_real_test(rfq_num, supplier_id, tester_email):
         print("Triggering IMAP check to read and process your reply...")
         check_and_process_emails(db)
         
+        # Seed the other three suppliers' quotes so they all show up in comparison!
+        print("Seeding other category suppliers for comparison...")
+        prices = {"previously_used": 1300.00, "other_approved": 1280.00, "new_candidate": 1200.00}
+        lead_times = {"previously_used": 9, "other_approved": 10, "new_candidate": 13}
+        for category, s_id in [("previously_used", suppliers_dict["previously_used"]), 
+                               ("other_approved", suppliers_dict["other_approved"]), 
+                               ("new_candidate", suppliers_dict["new_candidate"])]:
+            quote_other = models.QuoteResponse(
+                rfq_number=rfq_num,
+                supplier_id=s_id,
+                price=prices[category],
+                currency="USD",
+                moq=10.0,
+                lead_time_days=lead_times[category],
+                payment_terms="Net 45 Days",
+                incoterms="CIF",
+                responded_at=datetime.utcnow(),
+                status="Quotation Received"
+            )
+            db.add(quote_other)
+        db.commit()
+        
         # Check logs
         print("\n--- Verifying Database Changes ---")
         logs = db.query(models.NegotiationLog).filter(models.NegotiationLog.rfq_number == rfq_num).all()
@@ -235,6 +381,10 @@ def run_real_test(rfq_num, supplier_id, tester_email):
         for l in logs:
             print(f"- Round {l.round_number} | {l.direction.upper()} | Price: {l.extracted_currency} {l.extracted_price} | Subject: {l.subject}")
             
+        # Re-run comparison to build final card
+        from automation_engine import run_comparison_and_notify
+        run_comparison_and_notify(db, rfq_num)
+        
         notifications = db.query(models.WorkflowNotification).filter(models.WorkflowNotification.rfq_number == rfq_num).all()
         if notifications:
             print(f"\n[OK] ProcureX Agent successfully completed negotiation cycles and generated a dashboard comparison approval request!")
@@ -246,98 +396,126 @@ def run_real_test(rfq_num, supplier_id, tester_email):
     finally:
         db.close()
 
-def run_simulation_test(rfq_num, supplier_id, tester_email):
+def run_simulation_test(rfq_num, suppliers_dict, tester_email):
     print("\n--- [4] Running Programmatic Simulation (No real emails) ---")
+    print("No real emails will be sent. Running pure database/LLM transitions for ALL 4 categories.")
     from database import SessionLocal
     import models
     from automation_engine import generate_ai_counter_offer, run_comparison_and_notify
     
     db = SessionLocal()
     try:
-        supplier = db.query(models.Supplier).filter(models.Supplier.id == supplier_id).first()
         rfq = db.query(models.RFQ).filter(models.RFQ.rfq_number == rfq_num).first()
         
-        print("1. Simulating Round 1 Outreach...")
-        db.add(models.EmailHistory(
-            rfq_number=rfq_num,
-            supplier_id=supplier_id,
-            subject=f"Inquiry: RFQ for PVC Resin K-67 - {rfq_num}",
-            body="Simulated outreach",
-            type="RFQ Invitation",
-            sent_at=datetime.utcnow() - timedelta(hours=5),
-            response_received=True
-        ))
+        prices = {
+            "preferred": 1450.00,
+            "previously_used": 1400.00,
+            "other_approved": 1380.00,
+            "new_candidate": 1300.00
+        }
         
-        print("2. Simulating Round 1 Supplier Response (Price: USD 1400/MT, Lead time: 10 days)...")
-        inbound_1 = models.NegotiationLog(
-            rfq_number=rfq_num,
-            supplier_id=supplier_id,
-            supplier_email=tester_email,
-            round_number=1,
-            direction="inbound",
-            subject=f"Re: Inquiry: RFQ for PVC Resin K-67 - {rfq_num}",
-            body="We can supply at USD 1400/MT, lead time 10 days.",
-            extracted_price=1400.00,
-            extracted_currency="USD",
-            extracted_lead_time=10,
-            sent_at=datetime.utcnow() - timedelta(hours=4),
-            reply_received=True
-        )
-        db.add(inbound_1)
+        final_prices = {
+            "preferred": 1350.00,
+            "previously_used": 1300.00,
+            "other_approved": 1280.00,
+            "new_candidate": 1200.00
+        }
         
-        print("3. Generating and Simulating Round 1 ProcureX Agent Counter-Offer (10% target)...")
-        offer_res = generate_ai_counter_offer(rfq.item_name, supplier.name, 1400.00, "USD", 1)
-        outbound_1 = models.NegotiationLog(
-            rfq_number=rfq_num,
-            supplier_id=supplier_id,
-            supplier_email=tester_email,
-            round_number=1,
-            direction="outbound",
-            subject=f"RE: Inquiry: RFQ for PVC Resin K-67 - {rfq_num}",
-            body=offer_res["body"],
-            extracted_price=offer_res["target_price"],
-            extracted_currency="USD",
-            extracted_lead_time=10,
-            sent_at=datetime.utcnow() - timedelta(hours=3),
-            reply_received=True
-        )
-        db.add(outbound_1)
-        print(f"   Target Price generated by AI: USD {offer_res['target_price']}")
+        lead_times = {
+            "preferred": 8,
+            "previously_used": 10,
+            "other_approved": 11,
+            "new_candidate": 14
+        }
         
-        print("4. Simulating Round 2 Supplier Revised Bid (Price: USD 1300/MT)...")
-        inbound_2 = models.NegotiationLog(
-            rfq_number=rfq_num,
-            supplier_id=supplier_id,
-            supplier_email=tester_email,
-            round_number=2,
-            direction="inbound",
-            subject=f"Re: Inquiry: RFQ for PVC Resin K-67 - {rfq_num}",
-            body="We can offer a revised price of USD 1300/MT as our final best offer.",
-            extracted_price=1300.00,
-            extracted_currency="USD",
-            extracted_lead_time=8,
-            sent_at=datetime.utcnow() - timedelta(hours=2),
-            reply_received=True,
-            is_final=True
-        )
-        db.add(inbound_2)
-        
-        # Save Quote Response
-        quote = models.QuoteResponse(
-            rfq_number=rfq_num,
-            supplier_id=supplier_id,
-            price=1300.00,
-            currency="USD",
-            moq=10.0,
-            lead_time_days=8,
-            payment_terms="Net 30 Days",
-            incoterms="CIF",
-            responded_at=datetime.utcnow(),
-            status="Quotation Received"
-        )
-        db.add(quote)
-        db.commit()
-        
+        for category, s_id in suppliers_dict.items():
+            supplier = db.query(models.Supplier).filter(models.Supplier.id == s_id).first()
+            print(f"\nSimulating negotiation for {supplier.name} ({category})...")
+            
+            # 1. Outreach
+            db.add(models.EmailHistory(
+                rfq_number=rfq_num,
+                supplier_id=s_id,
+                subject=f"Inquiry: RFQ for PVC Resin K-67 - {rfq_num}",
+                body=f"Simulated outreach invitation to {supplier.name}",
+                type="RFQ Invitation",
+                sent_at=datetime.utcnow() - timedelta(hours=5),
+                response_received=True
+            ))
+            
+            # 2. Round 1 Supplier Response
+            inbound_1 = models.NegotiationLog(
+                rfq_number=rfq_num,
+                supplier_id=s_id,
+                supplier_email=supplier.email,
+                round_number=1,
+                direction="inbound",
+                subject=f"Re: Inquiry: RFQ for PVC Resin K-67 - {rfq_num}",
+                body=f"We can supply at USD {prices[category]}/MT, lead time {lead_times[category]} days.",
+                extracted_price=prices[category],
+                extracted_currency="USD",
+                extracted_lead_time=lead_times[category],
+                sent_at=datetime.utcnow() - timedelta(hours=4),
+                reply_received=True
+            )
+            db.add(inbound_1)
+            db.commit()
+            
+            # 3. AI Counter-Offer
+            offer = generate_ai_counter_offer(rfq.item_name, supplier.name, prices[category], "USD", 1)
+            print(f"   Target Price generated by AI: USD {offer['target_price']}")
+            
+            outbound_1 = models.NegotiationLog(
+                rfq_number=rfq_num,
+                supplier_id=s_id,
+                supplier_email=supplier.email,
+                round_number=1,
+                direction="outbound",
+                subject=f"RE: Inquiry: RFQ for PVC Resin K-67 - {rfq_num}",
+                body=offer["body"],
+                extracted_price=offer["target_price"],
+                extracted_currency="USD",
+                extracted_lead_time=lead_times[category],
+                sent_at=datetime.utcnow() - timedelta(hours=3),
+                reply_received=True
+            )
+            db.add(outbound_1)
+            db.commit()
+            
+            # 4. Round 2 Supplier Response (Final)
+            inbound_2 = models.NegotiationLog(
+                rfq_number=rfq_num,
+                supplier_id=s_id,
+                supplier_email=supplier.email,
+                round_number=2,
+                direction="inbound",
+                subject=f"Re: Inquiry: RFQ for PVC Resin K-67 - {rfq_num}",
+                body=f"We accept the counter offer but our final best offer is USD {final_prices[category]}/MT.",
+                extracted_price=final_prices[category],
+                extracted_currency="USD",
+                extracted_lead_time=lead_times[category] - 1,
+                sent_at=datetime.utcnow() - timedelta(hours=2),
+                reply_received=True,
+                is_final=True
+            )
+            db.add(inbound_2)
+            
+            # Save QuoteResponse
+            quote = models.QuoteResponse(
+                rfq_number=rfq_num,
+                supplier_id=s_id,
+                price=final_prices[category],
+                currency="USD",
+                moq=10.0,
+                lead_time_days=lead_times[category] - 1,
+                payment_terms="Net 30 Days",
+                incoterms="CIF",
+                responded_at=datetime.utcnow(),
+                status="Quotation Received"
+            )
+            db.add(quote)
+            db.commit()
+            
         print("5. Triggering AI Comparison Analysis & Management Summary Notification...")
         run_comparison_and_notify(db, rfq_num)
         
@@ -377,7 +555,7 @@ if __name__ == "__main__":
         tester_email = custom_email
         
     try:
-        rfq_num, supplier_id = setup_test_data(tester_email)
+        rfq_num, suppliers_dict = setup_test_data(tester_email)
         
         if choice == "1":
             if not smtp_ok or not imap_ok:
@@ -385,9 +563,9 @@ if __name__ == "__main__":
                 proceed = input("Do you still want to try sending? (y/n): ").strip().lower()
                 if proceed != 'y':
                     sys.exit(1)
-            run_real_test(rfq_num, supplier_id, tester_email)
+            run_real_test(rfq_num, suppliers_dict, tester_email)
         else:
-            run_simulation_test(rfq_num, supplier_id, tester_email)
+            run_simulation_test(rfq_num, suppliers_dict, tester_email)
             
     except KeyboardInterrupt:
         print("\nTest cancelled by user.")

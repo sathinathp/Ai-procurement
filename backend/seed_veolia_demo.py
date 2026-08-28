@@ -15,10 +15,20 @@ def seed_veolia_demo():
     print("Initializing Database Seeding for Veolia Procurement Demo...")
     db = SessionLocal()
     
-    # Drop and recreate tables to ensure clean slate
-    print("Dropping and recreating all tables...")
-    models.Base.metadata.drop_all(bind=engine)
-    models.Base.metadata.create_all(bind=engine)
+    print("Cleaning database records...")
+    # Delete from all tables to avoid dropping schema and locks
+    for table in reversed(models.Base.metadata.sorted_tables):
+        db.execute(table.delete())
+        
+    # Reset SQLite autoincrement sequences
+    if str(engine.url).startswith("sqlite"):
+        from sqlalchemy import text
+        try:
+            db.execute(text("DELETE FROM sqlite_sequence;"))
+        except Exception as e:
+            print(f"Sequence reset warning: {e}")
+            
+    db.commit()
     
     # 1. Define the 12 specific Dosing Pump Suppliers for the Veolia Demo
     dosing_pump_suppliers = [
@@ -230,8 +240,7 @@ def seed_veolia_demo():
     ]
     for defect in quality_defects:
         db.add(models.QualityDefect(**defect))
-        
-    # 5. Seed ERP configuration
+        # 5. Seed ERP configuration
     erp_config = models.ERPConfig(
         erp_system="Odoo",
         base_url=os.getenv("ODOO_URL", "http://odoo-simulated-rpc:8069/xmlrpc/2/object"),
@@ -246,7 +255,294 @@ def seed_veolia_demo():
     )
     db.add(erp_config)
     
-    # 6. Reset sequences if using postgres
+    # 6. Seed RFQs and Workflow Notifications for the Dashboard
+    print("Seeding RFQs and notifications...")
+    import json
+    
+    # Clean existing RFQs and notifications to prevent duplicates
+    db.query(models.WorkflowNotification).filter(models.WorkflowNotification.rfq_number.in_(["RFQ-2026-1001", "RFQ-2026-1003"])).delete()
+    db.query(models.QuoteResponse).filter(models.QuoteResponse.rfq_number.in_(["RFQ-2026-1001", "RFQ-2026-1003"])).delete()
+    db.query(models.RFQ).filter(models.RFQ.rfq_number.in_(["RFQ-2026-1001", "RFQ-2026-1003"])).delete()
+    db.commit()
+
+    # Align supplier attributes for test grouping:
+    # Resin Suppliers
+    sabic = db.query(models.Supplier).filter(models.Supplier.name == "SABIC Polymers").first()
+    if sabic:
+        sabic.synced_to_erp = True
+        sabic.preferred = False
+    
+    basf = db.query(models.Supplier).filter(models.Supplier.name == "BASF Middle East").first()
+    if basf:
+        basf.synced_to_erp = True
+        basf.preferred = False
+        
+    alkhobar = db.query(models.Supplier).filter(models.Supplier.name == "Al-Khobar Plastics").first()
+    if alkhobar:
+        alkhobar.synced_to_erp = False
+        alkhobar.preferred = False
+        alkhobar.erp_vendor_id = None
+        
+    borouge = db.query(models.Supplier).filter(models.Supplier.name == "Borouge").first()
+    if borouge:
+        borouge.synced_to_erp = True
+        borouge.preferred = True
+        
+    # Pump Suppliers
+    houston = db.query(models.Supplier).filter(models.Supplier.name == "Houston Pump Solutions").first()
+    if houston:
+        houston.synced_to_erp = True
+        houston.preferred = True
+        
+    munich = db.query(models.Supplier).filter(models.Supplier.name == "Munich Dosing Systems").first()
+    if munich:
+        munich.synced_to_erp = False
+        munich.preferred = False
+        munich.erp_vendor_id = None
+        
+    budget = db.query(models.Supplier).filter(models.Supplier.name == "Budget Pumps Inc").first()
+    if budget:
+        budget.synced_to_erp = True
+        budget.preferred = False
+        
+    tokyo = db.query(models.Supplier).filter(models.Supplier.name == "Tokyo Precision Flow").first()
+    if tokyo:
+        tokyo.synced_to_erp = False
+        tokyo.preferred = False
+        tokyo.erp_vendor_id = None
+        
+    db.commit()
+
+    # Seed mock RFQs for the purchase orders to respect foreign key constraint
+    old_rfq_1 = models.RFQ(
+        rfq_number="RFQ-2026-OLD-1",
+        project_name="Veolia Dosing Pumps Project",
+        item_name="Industrial Chemical Dosing Pump",
+        quantity=10.0,
+        unit="Units",
+        status="Completed",
+        created_at=datetime.utcnow() - timedelta(days=25)
+    )
+    old_rfq_2 = models.RFQ(
+        rfq_number="RFQ-2026-OLD-2",
+        project_name="Veolia Polymers Project",
+        item_name="PVC Resin",
+        quantity=30.0,
+        unit="MT",
+        status="Completed",
+        created_at=datetime.utcnow() - timedelta(days=25)
+    )
+    db.add(old_rfq_1)
+    db.add(old_rfq_2)
+    db.commit()
+
+    # Seed mock purchase orders to trigger "Previously Used" logic:
+    # 1. Munich Dosing Systems (Pump category)
+    if munich:
+        db.add(models.PurchaseOrder(
+            po_number="PO-2026-OLD-001",
+            rfq_number="RFQ-2026-OLD-1",
+            supplier_id=munich.id,
+            item_name="Industrial Chemical Dosing Pump",
+            quantity=10.0,
+            unit_price=1500.0,
+            total_amount=15000.0,
+            status="Completed",
+            created_at=datetime.utcnow() - timedelta(days=20)
+        ))
+    # 2. SABIC Polymers (Resin category)
+    if sabic:
+        db.add(models.PurchaseOrder(
+            po_number="PO-2026-OLD-002",
+            rfq_number="RFQ-2026-OLD-2",
+            supplier_id=sabic.id,
+            item_name="PVC Resin",
+            quantity=30.0,
+            unit_price=1500.0,
+            total_amount=45000.0,
+            status="Completed",
+            created_at=datetime.utcnow() - timedelta(days=20)
+        ))
+    db.commit()
+
+    # Seed RFQ-2026-1001 (Pumps)
+    rfq_1 = models.RFQ(
+        rfq_number="RFQ-2026-1001",
+        project_name="Veolia Dosing Pumps Project",
+        item_name="Industrial Chemical Dosing Pump",
+        quantity=100.0,
+        unit="Units",
+        status="Under Comparison",
+        created_at=datetime.utcnow() - timedelta(days=2)
+    )
+    db.add(rfq_1)
+    
+    # Seed RFQ-2026-1003 (Resin)
+    rfq_2 = models.RFQ(
+        rfq_number="RFQ-2026-1003",
+        project_name="Veolia Polymers Project",
+        item_name="PVC Resin",
+        quantity=150.0,
+        unit="MT",
+        status="Under Comparison",
+        created_at=datetime.utcnow() - timedelta(days=1)
+    )
+    db.add(rfq_2)
+    db.commit()
+
+    # Create Quotes for RFQ 1
+    suppliers_1 = db.query(models.Supplier).filter(models.Supplier.name.in_([
+        "Munich Dosing Systems", "Houston Pump Solutions", "Budget Pumps Inc", "Tokyo Precision Flow"
+    ])).all()
+    
+    quote_metrics_1 = {
+        "Houston Pump Solutions": {"price": 2350.0, "lead_time": 14, "payment_terms": "Net 45 Days", "currency": "USD", "incoterms": "DDP Houston"},
+        "Budget Pumps Inc": {"price": 1900.0, "lead_time": 30, "payment_terms": "Net 30 Days", "currency": "USD", "incoterms": "EXW Shanghai"},
+        "Munich Dosing Systems": {"price": 2150.0, "lead_time": 12, "payment_terms": "Net 45 Days", "currency": "USD", "incoterms": "CIF Dammam"},
+        "Tokyo Precision Flow": {"price": 2200.0, "lead_time": 13, "payment_terms": "10% Advance, 90% LC", "currency": "EUR", "incoterms": "FOB Tokyo"},
+    }
+    
+    quotes_1 = []
+    for s in suppliers_1:
+        metrics = quote_metrics_1[s.name]
+        q = models.QuoteResponse(
+            rfq_number="RFQ-2026-1001",
+            supplier_id=s.id,
+            price=metrics["price"],
+            currency=metrics["currency"],
+            moq=1.0,
+            lead_time_days=metrics["lead_time"],
+            payment_terms=metrics["payment_terms"],
+            incoterms=metrics["incoterms"],
+            warranty="12 Months",
+            validity="60 Days",
+            delivery_details="FOB/CIF standard delivery.",
+            status="Quotation Received"
+        )
+        db.add(q)
+        db.flush()
+        quotes_1.append(q)
+
+    # Resolve categories dynamically for RFQ 1 using helper logic
+    from main import classify_supplier_record
+    comparison_data_1 = []
+    for q in quotes_1:
+        category = classify_supplier_record(db, q.supplier_id, q.supplier.preferred, q.supplier.synced_to_erp, q.supplier.erp_vendor_id)
+        comparison_data_1.append({
+            "supplier_id": q.supplier_id,
+            "supplier_name": q.supplier.name,
+            "price": q.price,
+            "currency": q.currency,
+            "lead_time_days": q.lead_time_days,
+            "payment_terms": q.payment_terms,
+            "rating": q.supplier.rating,
+            "delivery_score": q.supplier.delivery_score,
+            "risk_level": q.supplier.risk_level,
+            "status": "Best Offer" if q.supplier.name == "Munich Dosing Systems" else ("Matched" if q.supplier.name == "Houston Pump Solutions" else ("High Delivery Risk" if q.supplier.name == "Budget Pumps Inc" else ("Varied Terms" if q.supplier.name == "Tokyo Precision Flow" else "Conforming"))),
+            "supplier_category": category,
+            "category": category
+        })
+        
+    summary_msg_1 = (
+        "AI has successfully completed 2 negotiation rounds. "
+        "Munich Dosing Systems (Oppora-discovered) is recommended for award, offering the lowest conforming negotiated price of $2,150/unit "
+        "(6.5% savings from original $2,300 quote). Houston Pump Solutions is the premium alternative ($2,350/unit). "
+        "Budget Pumps Inc offered $1,900/unit but was REJECTED because their 30-day lead time violates the Houston site deadline. "
+        "Action Required: Approve this proposal to generate the Purchase Order and sync to Odoo ERP."
+    )
+    
+    notification_1 = models.WorkflowNotification(
+        rfq_number="RFQ-2026-1001",
+        rfq_item="Industrial Chemical Dosing Pump",
+        type="approval_required",
+        status="pending",
+        recommended_supplier="Munich Dosing Systems",
+        recommended_price=2150.0,
+        recommended_currency="USD",
+        comparison_json=json.dumps(comparison_data_1),
+        summary_message=summary_msg_1,
+        notification_email_sent=True,
+        created_at=datetime.utcnow() - timedelta(hours=1)
+    )
+    db.add(notification_1)
+
+    # Create Quotes for RFQ 2
+    suppliers_2 = db.query(models.Supplier).filter(models.Supplier.name.in_([
+        "SABIC Polymers", "BASF Middle East", "Al-Khobar Plastics", "Borouge"
+    ])).all()
+    
+    quote_metrics_2 = {
+        "SABIC Polymers": {"price": 1120.0, "lead_time": 7, "payment_terms": "Net 60 Days", "currency": "USD", "incoterms": "DDP Dammam"},
+        "BASF Middle East": {"price": 1080.0, "lead_time": 5, "payment_terms": "Net 45 Days", "currency": "USD", "incoterms": "CIF"},
+        "Al-Khobar Plastics": {"price": 950.0, "lead_time": 28, "payment_terms": "Net 30 Days", "currency": "USD", "incoterms": "CIF"},
+        "Borouge": {"price": 1000.0, "lead_time": 7, "payment_terms": "LC at Sight", "currency": "EUR", "incoterms": "FOB"},
+    }
+    
+    quotes_2 = []
+    for s in suppliers_2:
+        metrics = quote_metrics_2[s.name]
+        q = models.QuoteResponse(
+            rfq_number="RFQ-2026-1003",
+            supplier_id=s.id,
+            price=metrics["price"],
+            currency=metrics["currency"],
+            moq=1.0,
+            lead_time_days=metrics["lead_time"],
+            payment_terms=metrics["payment_terms"],
+            incoterms=metrics["incoterms"],
+            warranty="12 Months",
+            validity="60 Days",
+            delivery_details="FOB/CIF standard delivery.",
+            status="Quotation Received"
+        )
+        db.add(q)
+        db.flush()
+        quotes_2.append(q)
+
+    # Resolve categories dynamically for RFQ 2 using helper logic
+    comparison_data_2 = []
+    for q in quotes_2:
+        category = classify_supplier_record(db, q.supplier_id, q.supplier.preferred, q.supplier.synced_to_erp, q.supplier.erp_vendor_id)
+        comparison_data_2.append({
+            "supplier_id": q.supplier_id,
+            "supplier_name": q.supplier.name,
+            "price": q.price,
+            "currency": q.currency,
+            "lead_time_days": q.lead_time_days,
+            "payment_terms": q.payment_terms,
+            "rating": q.supplier.rating,
+            "delivery_score": q.supplier.delivery_score,
+            "risk_level": q.supplier.risk_level,
+            "status": "Best Offer" if q.supplier.name == "BASF Middle East" else ("Matched" if q.supplier.name == "SABIC Polymers" else ("High Delivery Risk" if q.supplier.name == "Al-Khobar Plastics" else ("Varied Terms" if q.supplier.name == "Borouge" else "Conforming"))),
+            "supplier_category": category,
+            "category": category
+        })
+        
+    summary_msg_2 = (
+        "AI has successfully completed 2 negotiation rounds. "
+        "BASF Middle East is recommended for award, offering the lowest conforming negotiated price of $1,080/unit. "
+        "SABIC Polymers is the incumbent alternative ($1,120/unit). "
+        "Al-Khobar Plastics was REJECTED due to poor delivery compliance. "
+        "Action Required: Approve this proposal to generate the Purchase Order and sync to Odoo ERP."
+    )
+    
+    notification_2 = models.WorkflowNotification(
+        rfq_number="RFQ-2026-1003",
+        rfq_item="PVC Resin",
+        type="approval_required",
+        status="pending",
+        recommended_supplier="BASF Middle East",
+        recommended_price=1080.0,
+        recommended_currency="USD",
+        comparison_json=json.dumps(comparison_data_2),
+        summary_message=summary_msg_2,
+        notification_email_sent=True,
+        created_at=datetime.utcnow()
+    )
+    db.add(notification_2)
+    db.commit()
+
+    # 7. Reset sequences if using postgres
     if "postgresql" in str(engine.url):
         try:
             from sqlalchemy import text

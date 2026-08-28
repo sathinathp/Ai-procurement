@@ -99,7 +99,9 @@ def ai_extract_rfq(text: str, openai_key: Optional[str] = None) -> Dict[str, Any
         "delivery_location": "Jeddah Plant",
         "expected_delivery_date": "2026-09-01",
         "remarks": "Test extracted from document upload.",
-        "missing_fields": []
+        "warranty_requirement": "",
+        "delivery_tolerance": "",
+        "missing_fields": ["Warranty requirement", "Acceptable delivery tolerance"]
     }
     
     # Customize mock output depending on file text
@@ -122,7 +124,13 @@ def ai_extract_rfq(text: str, openai_key: Optional[str] = None) -> Dict[str, Any
     
     # If the text is very short/empty, add some missing field warnings
     if not text or len(text) < 20:
-        mock_data["missing_fields"] = ["quantity", "required_date", "drawing_attachment"]
+        mock_data["missing_fields"] = ["quantity", "required_date", "drawing_attachment", "Warranty requirement", "Acceptable delivery tolerance"]
+    else:
+        # For standard text files, we always want to flag these to demonstrate the AI recommendation step
+        if "Warranty requirement" not in mock_data["missing_fields"]:
+            mock_data["missing_fields"].append("Warranty requirement")
+        if "Acceptable delivery tolerance" not in mock_data["missing_fields"]:
+            mock_data["missing_fields"].append("Acceptable delivery tolerance")
         
     if not openai_key:
         return mock_data
@@ -148,7 +156,9 @@ def ai_extract_rfq(text: str, openai_key: Optional[str] = None) -> Dict[str, Any
             "- delivery_location: (str or null, e.g. 'Jeddah Plant')\n"
             "- expected_delivery_date: (str ISO YYYY-MM-DD or null)\n"
             "- remarks: (str or null)\n"
-            "- missing_fields: (list of strings representing fields that are required but missing from the document. Required fields are: item_name, quantity, unit, required_date)\n\n"
+            "- warranty_requirement: (str or null, e.g., '12 Months')\n"
+            "- delivery_tolerance: (str or null, e.g., '±3 days')\n"
+            "- missing_fields: (list of strings representing fields that are required but missing from the document. Required fields are: item_name, quantity, unit, required_date, warranty_requirement, delivery_tolerance. Represent warranty_requirement as 'Warranty requirement' and delivery_tolerance as 'Acceptable delivery tolerance' in the missing_fields list if they are empty or not mentioned in the text.)\n\n"
             "Ensure that you output ONLY a raw JSON string. Do not include markdown code block syntax (like ```json) or any extra characters."
         )
         
@@ -170,6 +180,14 @@ def ai_extract_rfq(text: str, openai_key: Optional[str] = None) -> Dict[str, Any
                 result_text = result_text.rsplit("\n", 1)[0]
         
         data = json.loads(result_text)
+        # Ensure the commercial missing fields are present if not found
+        if "missing_fields" not in data:
+            data["missing_fields"] = []
+        if not data.get("warranty_requirement") and "Warranty requirement" not in data["missing_fields"]:
+            data["missing_fields"].append("Warranty requirement")
+        if not data.get("delivery_tolerance") and "Acceptable delivery tolerance" not in data["missing_fields"]:
+            data["missing_fields"].append("Acceptable delivery tolerance")
+            
         return data
     except Exception as e:
         logger.error(f"OpenAI RFQ extraction error: {e}")
@@ -197,18 +215,69 @@ def ai_extract_quote(text: str, openai_key: Optional[str] = None) -> Dict[str, A
     
     # Customise mock depending on supplier or text keywords
     lowered = text.lower()
-    if "sabic" in lowered:
+    
+    # Dosing Pump Suppliers
+    if "budget pumps" in lowered or "budget" in lowered:
+        mock_data["price"] = 850.0
+        mock_data["currency"] = "USD"
+        mock_data["lead_time_days"] = 25
+        mock_data["payment_terms"] = "100% Advance"
+        mock_data["incoterms"] = "EXW Houston"
+        mock_data["delivery_details"] = "EXW Houston warehouse pickup."
+    elif "munich dosing" in lowered or "munich" in lowered:
+        mock_data["price"] = 1150.0
+        mock_data["currency"] = "USD"
+        mock_data["lead_time_days"] = 3
+        mock_data["payment_terms"] = "Net 30 Days"
+        mock_data["incoterms"] = "DDP Jeddah"
+        mock_data["delivery_details"] = "Air freight delivery DDP Jeddah."
+    elif "houston pump" in lowered or "houston" in lowered:
+        mock_data["price"] = 980.0
+        mock_data["currency"] = "USD"
+        mock_data["lead_time_days"] = 12
+        mock_data["payment_terms"] = "Net 45 Days"
+        mock_data["incoterms"] = "CIF Dammam"
+        mock_data["delivery_details"] = "Sea freight to Dammam port."
+    elif "tokyo precision" in lowered or "tokyo" in lowered:
+        mock_data["price"] = 920.0
+        mock_data["currency"] = "EUR"
+        mock_data["lead_time_days"] = 14
+        mock_data["payment_terms"] = "Letter of Credit (L/C)"
+        mock_data["incoterms"] = "FOB Tokyo"
+        mock_data["delivery_details"] = "FOB Tokyo port shipment."
+        
+    # Polymer Suppliers
+    elif "al-khobar plastics" in lowered or "khobar" in lowered:
+        mock_data["price"] = 950.0
+        mock_data["currency"] = "USD"
+        mock_data["lead_time_days"] = 28
+        mock_data["payment_terms"] = "100% Advance"
+        mock_data["incoterms"] = "EXW Al-Khobar"
+        mock_data["delivery_details"] = "EXW warehouse pickup."
+    elif "basf middle east" in lowered or "basf" in lowered:
+        mock_data["price"] = 1250.0
+        mock_data["currency"] = "USD"
+        mock_data["lead_time_days"] = 4
+        mock_data["payment_terms"] = "Net 30 Days"
+        mock_data["incoterms"] = "DDP Dammam"
+        mock_data["delivery_details"] = "Road cargo shipping to Dammam."
+    elif "sabic" in lowered:
         mock_data["price"] = 1050.0
+        mock_data["currency"] = "USD"
         mock_data["lead_time_days"] = 7
         mock_data["payment_terms"] = "Net 60 Days"
         mock_data["incoterms"] = "DDP Dammam"
+        mock_data["delivery_details"] = "Direct shipping from Jubail refinery."
     elif "borouge" in lowered:
-        mock_data["price"] = 1180.0
+        mock_data["price"] = 1100.0
+        mock_data["currency"] = "EUR"
         mock_data["lead_time_days"] = 10
         mock_data["payment_terms"] = "10% Advance, 90% LC"
         mock_data["incoterms"] = "FOB Shanghai"
+        mock_data["delivery_details"] = "Ocean freight shipment FOB Shanghai."
     elif "jubail" in lowered:
         mock_data["price"] = 990.0
+        mock_data["currency"] = "USD"
         mock_data["lead_time_days"] = 21
         mock_data["payment_terms"] = "Cash against documents"
         mock_data["incoterms"] = "EXW Jubail"

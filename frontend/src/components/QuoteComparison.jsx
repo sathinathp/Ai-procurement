@@ -217,6 +217,97 @@ export default function QuoteComparison({ activeRfqNum }) {
                 <span className="text-[10px] text-slate-450 block mt-1">PDF, Excel, Word or invoice text</span>
               </div>
 
+              {/* Demo Quotes Fast Download Links */}
+              <div className="pt-2 pb-1 border-t border-slate-150 mt-2">
+                <span className="block font-bold text-slate-500 uppercase tracking-wider text-[8.5px] mb-2">Download Demo Quotes to Test OCR:</span>
+                
+                <div className="space-y-2">
+                  <div>
+                    <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-1">Dosing Pumps:</span>
+                    <div className="grid grid-cols-2 gap-1">
+                      <a 
+                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/campaign/download-mock-quote?supplier=Budget%20Pumps%20Inc&category=dosing_pumps`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-slate-100 hover:bg-blue-50 hover:text-[#0078d4] p-1.5 rounded border border-slate-200 hover:border-blue-200 text-[8.5px] font-semibold transition-all flex items-center justify-between"
+                      >
+                        <span>Budget Pumps</span>
+                        <span className="text-[7.5px] bg-red-100 text-red-600 px-1 rounded font-bold">PDF</span>
+                      </a>
+                      <a 
+                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/campaign/download-mock-quote?supplier=Munich%20Dosing%20Systems&category=dosing_pumps`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-slate-100 hover:bg-blue-50 hover:text-[#0078d4] p-1.5 rounded border border-slate-200 hover:border-blue-200 text-[8.5px] font-semibold transition-all flex items-center justify-between"
+                      >
+                        <span>Munich Dos.</span>
+                        <span className="text-[7.5px] bg-emerald-100 text-emerald-600 px-1 rounded font-bold">XLSX</span>
+                      </a>
+                      <a 
+                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/campaign/download-mock-quote?supplier=Houston%20Pump%20Solutions&category=dosing_pumps`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-slate-100 hover:bg-blue-50 hover:text-[#0078d4] p-1.5 rounded border border-slate-200 hover:border-blue-200 text-[8.5px] font-semibold transition-all flex items-center justify-between"
+                      >
+                        <span>Houston Pump</span>
+                        <span className="text-[7.5px] bg-red-100 text-red-650 px-1 rounded font-bold">PDF</span>
+                      </a>
+                      <a 
+                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/campaign/download-mock-quote?supplier=Tokyo%20Precision%20Flow&category=dosing_pumps`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-slate-100 hover:bg-blue-50 hover:text-[#0078d4] p-1.5 rounded border border-slate-200 hover:border-blue-200 text-[8.5px] font-semibold transition-all flex items-center justify-between"
+                      >
+                        <span>Tokyo Flow</span>
+                        <span className="text-[7.5px] bg-red-100 text-red-650 px-1 rounded font-bold">PDF</span>
+                      </a>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-1">Polymers / Materials:</span>
+                    <div className="grid grid-cols-2 gap-1">
+                      <a 
+                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/campaign/download-mock-quote?supplier=Al-Khobar%20Plastics&category=polymers`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-slate-100 hover:bg-blue-50 hover:text-[#0078d4] p-1.5 rounded border border-slate-200 hover:border-blue-200 text-[8.5px] font-semibold transition-all flex items-center justify-between"
+                      >
+                        <span>Al-Khobar</span>
+                        <span className="text-[7.5px] bg-red-100 text-red-650 px-1 rounded font-bold">PDF</span>
+                      </a>
+                      <a 
+                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/campaign/download-mock-quote?supplier=BASF%20Middle%20East&category=polymers`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-slate-100 hover:bg-blue-50 hover:text-[#0078d4] p-1.5 rounded border border-slate-200 hover:border-blue-200 text-[8.5px] font-semibold transition-all flex items-center justify-between"
+                      >
+                        <span>BASF ME</span>
+                        <span className="text-[7.5px] bg-emerald-100 text-emerald-650 px-1 rounded font-bold">XLSX</span>
+                      </a>
+                      <a 
+                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/campaign/download-mock-quote?supplier=SABIC%20Polymers&category=polymers`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-slate-100 hover:bg-blue-50 hover:text-[#0078d4] p-1.5 rounded border border-slate-200 hover:border-blue-200 text-[8.5px] font-semibold transition-all flex items-center justify-between"
+                      >
+                        <span>SABIC Poly.</span>
+                        <span className="text-[7.5px] bg-red-100 text-red-650 px-1 rounded font-bold">PDF</span>
+                      </a>
+                      <a 
+                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/campaign/download-mock-quote?supplier=Borouge&category=polymers`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-slate-100 hover:bg-blue-50 hover:text-[#0078d4] p-1.5 rounded border border-slate-200 hover:border-blue-200 text-[8.5px] font-semibold transition-all flex items-center justify-between"
+                      >
+                        <span>Borouge</span>
+                        <span className="text-[7.5px] bg-red-100 text-red-650 px-1 rounded font-bold">PDF</span>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {uploading && (
                 <div className="ai-thinking-shimmer p-3.5 rounded-lg border border-blue-200 flex items-center gap-2.5">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#0078d4] shrink-0"></div>
