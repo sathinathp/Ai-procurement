@@ -46,6 +46,12 @@ export default function AiAgentWorkflow() {
       const saved = localStorage.getItem('ai_agent_state');
       if (saved) {
         const parsed = JSON.parse(saved);
+        if (key === 'agentStatus' && parsed[key] === 'running') {
+          return 'idle';
+        }
+        if (key === 'uploading' && parsed[key] === true) {
+          return false;
+        }
         if (parsed[key] !== undefined) return parsed[key];
       }
     } catch (e) {

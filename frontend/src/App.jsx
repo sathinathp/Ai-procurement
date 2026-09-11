@@ -104,6 +104,9 @@ export default function App() {
   // Re-seed DB trigger
   const handleReSeedDb = () => {
     setReseeding(true);
+    try {
+      localStorage.removeItem('ai_agent_state');
+    } catch (_) {}
     dbService.seed()
       .then((res) => {
         alert(res.data.message);
