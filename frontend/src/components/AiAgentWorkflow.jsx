@@ -292,7 +292,16 @@ export default function AiAgentWorkflow() {
     setLogs([]);
     setRealQuotes([]);
     setCampaignLogs([]);
+    setMatchedSuppliers([]);
+    setAgreedPrices({});
+    setNegotiationResult(null);
+    setSelectedSupplierId(null);
+    setPoResult(null);
+    setErpSyncResult(null);
+    setRealStatusRfq(null);
+    setInventoryStatus(null);
     setCurrentStep(0);
+    printedLogsRef.current.clear();
     abortRef.current = false;   // reset abort signal
     completedByAgreeRef.current = false; // reset agree completion signal
     
@@ -307,7 +316,14 @@ export default function AiAgentWorkflow() {
       setParsedData(data);
       addLog(`[SUCCESS] AI successfully extracted fields: Item="${data.item_name}", Qty="${data.quantity} ${data.unit}", Delivery="${data.delivery_location}"`, 'success');
       
-      const tempRfqNum = data.rfq_number && data.rfq_number !== "RFQ-2026-TEMP" ? data.rfq_number : `RFQ-${Date.now().toString().slice(-4)}`;
+      const randSuffix = Math.floor(1000 + Math.random() * 9000);
+      let tempRfqNum;
+      if (data.rfq_number && data.rfq_number !== "RFQ-2026-TEMP") {
+        const baseNum = data.rfq_number.replace(/-\d{4}$/, '');
+        tempRfqNum = `${baseNum}-${randSuffix}`;
+      } else {
+        tempRfqNum = `RFQ-${randSuffix}`;
+      }
       const newRfqData = {
         rfq_number: tempRfqNum,
         project_name: data.project_name || 'Wastewater Treatment Plant Upgrade',
@@ -988,6 +1004,9 @@ export default function AiAgentWorkflow() {
     setAgentStatus('idle');
     setCurrentStep(-1);
     setLogs([]);
+    setRealQuotes([]);
+    setCampaignLogs([]);
+    setAgreedPrices({});
     setParsedData(null);
     setInventoryStatus(null);
     setMatchedSuppliers([]);
@@ -1002,6 +1021,10 @@ export default function AiAgentWorkflow() {
     setComplianceModalSupplier(null);
     setComplianceJustification("");
     setComplianceConfirmed(false);
+    printedLogsRef.current.clear();
+    try {
+      localStorage.removeItem('ai_agent_state');
+    } catch (_) {}
   };
 
   const steps = [
