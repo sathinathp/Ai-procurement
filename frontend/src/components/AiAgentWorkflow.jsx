@@ -302,10 +302,11 @@ export default function AiAgentWorkflow() {
     setAgreedPrices({});
     setNegotiationResult(null);
     setSelectedSupplierId(null);
-    setPoResult(null);
-    setErpSyncResult(null);
+    setSyncStatus(null);
     setRealStatusRfq(null);
     setInventoryStatus(null);
+    setPendingRfqData(null);
+    setPendingRfqNum(null);
     setCurrentStep(0);
     printedLogsRef.current.clear();
     abortRef.current = false;   // reset abort signal
