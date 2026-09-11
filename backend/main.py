@@ -3436,9 +3436,11 @@ def simulate_rfp_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
                 (models.Supplier.name.like("%SABIC%")) | 
                 (models.Supplier.name.like("%BASF%")) | 
                 (models.Supplier.name.like("%Khobar%")) |
-                (models.Supplier.name.like("%Borouge%"))
+                (models.Supplier.name.like("%Borouge%")) |
+                (models.Supplier.name.like("%Rajhi%")) |
+                (models.Supplier.name.like("%Jazirah%"))
             ).all()
-            if not polymer_suppliers or len(polymer_suppliers) < 4:
+            if not polymer_suppliers or len(polymer_suppliers) < 3:
                 polymer_suppliers = db.query(models.Supplier).limit(12).all()
                 
             # Clear existing quotes for this RFQ to make it fresh
@@ -3452,6 +3454,8 @@ def simulate_rfp_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
                 "BASF Middle East": {"price": 1150.0, "final_price": 1080.0, "lead_time": 6, "final_lead_time": 5, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days", "currency": "USD", "incoterms": "CIF Jeddah"},
                 "Al-Khobar Plastics": {"price": 950.0, "final_price": 950.0, "lead_time": 28, "final_lead_time": 28, "payment_terms": "CAD", "final_payment_terms": "CAD", "currency": "USD", "incoterms": "EXW Riyadh"},
                 "Borouge": {"price": 1100.0, "final_price": 1000.0, "lead_time": 10, "final_lead_time": 10, "payment_terms": "10% Advance, 90% LC", "final_payment_terms": "10% Advance, 90% LC", "currency": "EUR", "incoterms": "FOB Shanghai"},
+                "Al-Rajhi Chemicals": {"price": 1200.0, "final_price": 1150.0, "lead_time": 9, "final_lead_time": 8, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days", "currency": "USD", "incoterms": "DDP Dammam"},
+                "Al-Jazirah Chemicals": {"price": 1250.0, "final_price": 1180.0, "lead_time": 10, "final_lead_time": 9, "payment_terms": "Net 30 Days", "final_payment_terms": "Net 45 Days", "currency": "USD", "incoterms": "CIF Jeddah"},
             }
             
             negotiation_logs = []
@@ -3475,8 +3479,8 @@ def simulate_rfp_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
                 db.flush()
                 quotes.append(q)
                 
-                # Populate NegotiationLog for SABIC Polymers, BASF Middle East, Al-Khobar Plastics, and Borouge
-                if s.name in ["SABIC Polymers", "BASF Middle East", "Al-Khobar Plastics", "Borouge"]:
+                # Populate NegotiationLog for key bidders
+                if s.name in ["SABIC Polymers", "BASF Middle East", "Al-Khobar Plastics", "Borouge", "Al-Rajhi Chemicals", "Al-Jazirah Chemicals"]:
                     now = datetime.utcnow()
                     orig = metrics["price"]
                     final = metrics["final_price"]
@@ -3507,6 +3511,12 @@ def simulate_rfp_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
                         is_final = True
                     elif s.name == "Borouge":
                         body_r2 = f"We can offer a revised price of {curr_symbol}{final}/unit with a 10-day lead time, under payment terms of 10% Advance, 90% LC."
+                        is_final = True
+                    elif s.name == "Al-Rajhi Chemicals":
+                        body_r2 = f"Thank you for the counter-offer. We agree to a revised price of {curr_symbol}{final}/unit with 8 days lead time."
+                        is_final = True
+                    elif s.name == "Al-Jazirah Chemicals":
+                        body_r2 = f"We accept the revised pricing of {curr_symbol}{final}/unit with 9 days lead time."
                         is_final = True
                     else: # SABIC Polymers
                         body_r2 = f"We can offer a revised price of {curr_symbol}{final}/unit with 7 days lead time and payment terms Net 60 Days."
@@ -5434,8 +5444,11 @@ def launch_real_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
         # Update RFQ status to Outreach Sent
         rfq.status = "Outreach Sent"
         
-        # Clear any existing quotes to avoid duplicates
+        # Clear any existing quotes, notifications, logs, and POs to reset cleanly for a new run
         db.query(models.QuoteResponse).filter(models.QuoteResponse.rfq_number == rfq_number).delete()
+        db.query(models.WorkflowNotification).filter(models.WorkflowNotification.rfq_number == rfq_number).delete()
+        db.query(models.NegotiationLog).filter(models.NegotiationLog.rfq_number == rfq_number).delete()
+        db.query(models.PurchaseOrder).filter(models.PurchaseOrder.rfq_number == rfq_number).delete()
         db.commit()
         
         # Add timeline event
@@ -5775,13 +5788,14 @@ def get_real_campaign_status(rfq_number: str, db: Session = Depends(get_db)):
             models.WorkflowNotification.rfq_number == rfq_number
         ).order_by(models.WorkflowNotification.id.desc()).first()
         
-        rfq = db.query(models.RFQ).filter(models.RFQ.rfq_number == rfq_number).first()
+        quotes = db.query(models.QuoteResponse).filter_by(rfq_number=rfq_number).all()
         
         completed = False
-        if rfq and rfq.status in ["PO Generated", "Approved", "Under Comparison", "Closed"]:
-            completed = True
-        elif notification is not None:
-            completed = True
+        if len(quotes) > 0:
+            if rfq and rfq.status in ["PO Generated", "Approved", "Under Comparison", "Closed"]:
+                completed = True
+            elif notification is not None:
+                completed = True
         
         logs = db.query(models.NegotiationLog).filter_by(
             rfq_number=rfq_number
@@ -5803,7 +5817,6 @@ def get_real_campaign_status(rfq_number: str, db: Session = Depends(get_db)):
                 "sent_at": l.sent_at.strftime("%I:%M:%S %p") if l.sent_at else None
             })
             
-        quotes = db.query(models.QuoteResponse).filter_by(rfq_number=rfq_number).all()
         formatted_quotes = []
         for q in quotes:
             supplier_name = db.query(models.Supplier.name).filter_by(id=q.supplier_id).scalar() or "Unknown"
@@ -5849,11 +5862,14 @@ async def websocket_campaign_status(websocket: WebSocket, rfq_number: str):
             
             rfq = db.query(models.RFQ).filter(models.RFQ.rfq_number == rfq_number).first()
             
+            quotes = db.query(models.QuoteResponse).filter_by(rfq_number=rfq_number).all()
+            
             completed = False
-            if rfq and rfq.status in ["PO Generated", "Approved", "Under Comparison", "Closed"]:
-                completed = True
-            elif notification is not None:
-                completed = True
+            if len(quotes) > 0:
+                if rfq and rfq.status in ["PO Generated", "Approved", "Under Comparison", "Closed"]:
+                    completed = True
+                elif notification is not None:
+                    completed = True
             
             logs = db.query(models.NegotiationLog).filter_by(
                 rfq_number=rfq_number
