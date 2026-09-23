@@ -247,8 +247,8 @@ def generate_ai_counter_offer(rfq_item: str, supplier_name: str, supplier_price:
     """Generate a counter offer email draft and price using OpenAI."""
     openai_key = os.getenv("OPENAI_API_KEY")
     
-    # Propose 10% lower target price or use override
-    if target_price_override is not None:
+    # Propose 10% lower target price or use explicit override if provided
+    if target_price_override is not None and float(target_price_override) > 0:
         target_price = round(float(target_price_override), 2)
     else:
         target_price = round(supplier_price * 0.90, 2)
@@ -271,9 +271,12 @@ def generate_ai_counter_offer(rfq_item: str, supplier_name: str, supplier_price:
     try:
         client = OpenAI(api_key=openai_key.strip())
         system_prompt = (
-            "You are the Petabytz Procurement Team, representing the Procurement Operations Department at ProcureX Co. Generate a polite, formal email "
-            "to a supplier. The email should acknowledge their current offer, present a counter-offer target price "
-            "(which is 10% lower than their quoted price), request Net 60 Days terms, and ask them to confirm if they can accept.\n"
+            "You are the Petabytz Procurement Team, representing the Procurement Operations Department at ProcureX Co. "
+            "Generate a polite, formal email to a supplier. The email should acknowledge their current offer, present the "
+            f"exact counter-offer target price of {currency} {target_price:.2f}/unit requested by the buyer, request Net 60 Days terms, "
+            "and ask them to confirm if they can accept.\n"
+            f"CRITICAL REQUIREMENT: You MUST use the EXACT counter-offer price {currency} {target_price:.2f}/unit in the email body text. "
+            "Do NOT calculate a 10% discount or substitute any other amount.\n"
             "Generate a JSON object with two keys:\n"
             "- body: The email body text (no subject line or headers)\n"
             "- target_price: The exact counter-offer price (float)\n"
@@ -283,8 +286,9 @@ def generate_ai_counter_offer(rfq_item: str, supplier_name: str, supplier_price:
             f"RFQ Item: {rfq_item}\n"
             f"Supplier Name: {supplier_name}\n"
             f"Supplier Price Quoted: {currency} {supplier_price:.2f}\n"
-            f"Target Price (10% lower): {currency} {target_price:.2f}\n"
-            f"Negotiation Round: {round_num}"
+            f"Target Counter-Offer Price: {currency} {target_price:.2f}\n"
+            f"Negotiation Round: {round_num}\n"
+            f"Note: Ensure the email body explicitly requests {currency} {target_price:.2f}/unit."
         )
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -292,7 +296,7 @@ def generate_ai_counter_offer(rfq_item: str, supplier_name: str, supplier_price:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.7
+            temperature=0.2
         )
         res_text = response.choices[0].message.content.strip()
         if res_text.startswith("```"):
@@ -302,7 +306,7 @@ def generate_ai_counter_offer(rfq_item: str, supplier_name: str, supplier_price:
         data = json.loads(res_text.strip())
         return {
             "body": data.get("body", default_body),
-            "target_price": float(data.get("target_price", target_price))
+            "target_price": target_price
         }
     except Exception as e:
         logger.error(f"Error generating AI counter offer: {e}")
@@ -1077,6 +1081,17 @@ def check_and_process_emails(db: Session, raise_on_error: bool = False):
 
                         elif is_agreed:
                             inbound_log.is_final = True
+                            
+                            # If supplier agreed and no explicit price in email, use the last outbound target price
+                            if not price or price <= 0:
+                                last_outbound = db.query(models.NegotiationLog).filter_by(
+                                    rfq_number=rfq_number,
+                                    supplier_id=supplier.id,
+                                    direction="outbound"
+                                ).order_by(models.NegotiationLog.id.desc()).first()
+                                if last_outbound and last_outbound.extracted_price:
+                                    price = float(last_outbound.extracted_price)
+                                    inbound_log.extracted_price = price
                             
                             # Save/Update the final QuoteResponse status as Quotation Received
                             existing_quote = db.query(models.QuoteResponse).filter_by(

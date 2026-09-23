@@ -4,7 +4,7 @@ import {
   Calendar, MapPin, Tag, MessageSquare, ListFilter,
   CheckCircle2, Circle, ArrowLeft, Bot, Sparkles, Send, ShieldAlert,
   Eye, Pencil, MoreVertical, TrendingUp, Award, Clock, ChevronLeft, ChevronRight,
-  Database, RefreshCw, Activity, Search, Trash2
+  Database, RefreshCw, Activity, Search, Trash2, DollarSign, Package, Layers, Zap, Check
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
@@ -19,8 +19,12 @@ export default function RfqAssistant({ initialOpenCreate = false, initialSelecte
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(initialOpenCreate || false);
   
-  // Stock Validation Warning State
+  // Stock Validation Warning State & Live Inventory Cross-Referencing
   const [stockWarningModal, setStockWarningModal] = useState(null);
+  const [liveInventoryAudit, setLiveInventoryAudit] = useState(null);
+  const [isAuditingInventory, setIsAuditingInventory] = useState(false);
+  const [capitalOptimizationApplied, setCapitalOptimizationApplied] = useState(false);
+
   const [aiAgentState, setAiAgentState] = useState(() => {
     try {
       const saved = localStorage.getItem('ai_agent_state');
@@ -266,8 +270,11 @@ export default function RfqAssistant({ initialOpenCreate = false, initialSelecte
     setErrorMsg('');
 
     rfqService.uploadAndExtract(file)
-      .then((res) => {
+      .then(async (res) => {
         const { data, filename } = res.data;
+        const initialQuantity = data.quantity || '';
+        const initialUnit = data.unit || 'MT';
+        const initialItemName = data.item_name || '';
         
         // Populate form
         setFormData({
@@ -275,11 +282,11 @@ export default function RfqAssistant({ initialOpenCreate = false, initialSelecte
           project_name: data.project_name || '',
           department: data.department || 'Procurement',
           required_date: data.required_date || '',
-          item_name: data.item_name || '',
+          item_name: initialItemName,
           item_code: data.item_code || '',
           description: data.description || '',
-          quantity: data.quantity || '',
-          unit: data.unit || 'MT',
+          quantity: initialQuantity,
+          unit: initialUnit,
           specifications: data.specifications || '',
           priority: data.priority || 'Medium',
           delivery_location: data.delivery_location || 'Riyadh Warehouse',
@@ -293,8 +300,27 @@ export default function RfqAssistant({ initialOpenCreate = false, initialSelecte
         setMissingFields(data.missing_fields || []);
         setIsAiExtracted(true);
         setUploading(false);
+        setCapitalOptimizationApplied(false);
+
         if (!data.warranty_requirement || !data.delivery_tolerance) {
           setShowAiRecommendation(true);
+        }
+
+        // Real-Time System Action: Cross-Reference Live Warehouse Database & Capital Optimization
+        if (initialItemName && initialQuantity) {
+          setIsAuditingInventory(true);
+          try {
+            const invRes = await workflowService.validateMaterial({
+              item_name: initialItemName,
+              quantity: parseFloat(initialQuantity) || 0,
+              unit: initialUnit
+            });
+            setLiveInventoryAudit(invRes.data);
+          } catch (invErr) {
+            console.error("Live inventory cross-reference error:", invErr);
+          } finally {
+            setIsAuditingInventory(false);
+          }
         }
       })
       .catch((err) => {
@@ -1127,6 +1153,162 @@ export default function RfqAssistant({ initialOpenCreate = false, initialSelecte
                     <p className="text-[11px] text-slate-500 leading-relaxed">
                       AI has parsed the document. Review the populated fields in the builder block on the right.
                     </p>
+                  </div>
+                )}
+
+                {/* REAL-TIME SYSTEM ACTION: Live Inventory & Capital Optimization Alert */}
+                {isAuditingInventory && (
+                  <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl space-y-2 animate-pulse">
+                    <div className="flex items-center gap-2 text-blue-700 font-semibold text-xs">
+                      <Database size={14} className="animate-spin" />
+                      <span>Live ERP Cross-Referencing...</span>
+                    </div>
+                    <p className="text-[11px] text-blue-600">
+                      Querying warehouse inventory & safety stock thresholds via API...
+                    </p>
+                  </div>
+                )}
+
+                {liveInventoryAudit && !isAuditingInventory && (
+                  <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-sm space-y-5">
+                    {/* Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-12 h-12 rounded-2xl bg-[#fff7ed] border border-amber-100 flex items-center justify-center shrink-0">
+                          <svg className="w-6 h-6 text-[#d97706]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                            <path d="M9 22V12h6v10"/>
+                            <path d="M9 12h6"/>
+                          </svg>
+                        </div>
+                        <div>
+                          <h3 className="text-base font-bold text-slate-900 tracking-tight">Live Warehouse ERP Audit</h3>
+                          <p className="text-xs text-slate-400 font-medium">Real-time stock & working capital validation</p>
+                        </div>
+                      </div>
+                      <span className="bg-[#ffedd5] text-[#c2410c] text-[10px] font-extrabold px-3 py-1 rounded-lg uppercase tracking-wider">
+                        {liveInventoryAudit.alert_type === 'SURPLUS_ALERT' ? 'Surplus Alert' : liveInventoryAudit.alert_type === 'PARTIAL_SURPLUS_ALERT' ? 'Partial Surplus' : 'Deficit Verified'}
+                      </span>
+                    </div>
+
+                    {/* 3 Metric Columns */}
+                    <div className="grid grid-cols-3 gap-2 py-1 text-center">
+                      <div>
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">On-Hand Stock</span>
+                        <span className="text-xl font-black text-slate-900 block mt-1">
+                          {liveInventoryAudit.current_stock} {liveInventoryAudit.unit}
+                        </span>
+                      </div>
+                      <div className="border-x border-slate-150">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Safety Buffer</span>
+                        <span className="text-xl font-black text-slate-900 block mt-1">
+                          {liveInventoryAudit.safety_stock} {liveInventoryAudit.unit}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Usable Surplus</span>
+                        <span className="text-xl font-black text-[#ea580c] block mt-1">
+                          {liveInventoryAudit.usable_surplus} {liveInventoryAudit.unit}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Potential Savings Highlight Banner */}
+                    {liveInventoryAudit.capital_lockup_prevented > 0 && (
+                      <div className="bg-[#ecfdf5] border border-emerald-100 rounded-2xl p-4 flex items-center justify-between">
+                        <div className="flex items-center gap-3.5">
+                          <div className="w-11 h-11 rounded-full bg-[#059669] text-white flex items-center justify-center font-bold text-xl shrink-0 shadow-xs">
+                            $
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-[#059669] font-extrabold uppercase tracking-wider block">Potential Savings</span>
+                            <span className="text-2xl font-black text-[#065f46] tracking-tight block mt-0.5">
+                              ${liveInventoryAudit.capital_lockup_prevented.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (liveInventoryAudit.alert_type === 'SURPLUS_ALERT') {
+                              setFormData(prev => ({ 
+                                ...prev, 
+                                quantity: '0', 
+                                remarks: (prev.remarks ? prev.remarks + ' | ' : '') + `Fulfilled 100% from warehouse surplus (Saved $${liveInventoryAudit.capital_lockup_prevented?.toLocaleString()}).` 
+                              }));
+                            } else {
+                              setFormData(prev => ({ 
+                                ...prev, 
+                                quantity: String(liveInventoryAudit.adjusted_quantity),
+                                remarks: (prev.remarks ? prev.remarks + ' | ' : '') + `Downsized to ${liveInventoryAudit.adjusted_quantity} ${liveInventoryAudit.unit} due to surplus (Saved $${liveInventoryAudit.capital_lockup_prevented?.toLocaleString()}).` 
+                              }));
+                            }
+                            setCapitalOptimizationApplied(true);
+                          }}
+                          className="text-xs font-bold text-[#065f46] hover:text-[#047857] flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <TrendingUp size={16} />
+                          <span>Optimize now</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Bottom Action Row */}
+                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                      {capitalOptimizationApplied ? (
+                        <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
+                          <Check size={14} className="text-emerald-600" />
+                          <span>Requisition adjusted to {formData.quantity} {formData.unit}!</span>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-slate-400 font-medium">
+                          {liveInventoryAudit.alert_type === 'SURPLUS_ALERT' ? '100% warehouse stock available' : 'Surplus stock detected in ERP'}
+                        </div>
+                      )}
+
+                      {liveInventoryAudit.alert_type === 'SURPLUS_ALERT' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormData(prev => ({ 
+                              ...prev, 
+                              quantity: '0', 
+                              remarks: (prev.remarks ? prev.remarks + ' | ' : '') + `Fulfilled 100% from warehouse surplus (Saved $${liveInventoryAudit.capital_lockup_prevented?.toLocaleString()}).` 
+                            }));
+                            setCapitalOptimizationApplied(true);
+                          }}
+                          className="px-5 py-2.5 bg-[#d97706] hover:bg-[#b45309] text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ml-auto"
+                        >
+                          <Zap size={14} fill="currentColor" />
+                          <span>Fulfill 100% from Stock</span>
+                        </button>
+                      )}
+
+                      {liveInventoryAudit.alert_type === 'PARTIAL_SURPLUS_ALERT' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormData(prev => ({ 
+                              ...prev, 
+                              quantity: String(liveInventoryAudit.adjusted_quantity),
+                              remarks: (prev.remarks ? prev.remarks + ' | ' : '') + `Downsized to ${liveInventoryAudit.adjusted_quantity} ${liveInventoryAudit.unit} due to surplus (Saved $${liveInventoryAudit.capital_lockup_prevented?.toLocaleString()}).` 
+                            }));
+                            setCapitalOptimizationApplied(true);
+                          }}
+                          className="px-5 py-2.5 bg-[#d97706] hover:bg-[#b45309] text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ml-auto"
+                        >
+                          <Zap size={14} fill="currentColor" />
+                          <span>Auto-Adjust to {liveInventoryAudit.adjusted_quantity} {liveInventoryAudit.unit}</span>
+                        </button>
+                      )}
+
+                      {liveInventoryAudit.alert_type === 'DEFICIT_VERIFIED' && (
+                        <div className="flex items-center gap-1.5 text-xs text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl ml-auto">
+                          <CheckCircle2 size={14} className="text-emerald-600" />
+                          <span>Deficit Verified: Procurement Authorized</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 

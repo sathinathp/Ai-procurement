@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const hostname = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname;
-const API_BASE_URL = import.meta.env.VITE_API_URL || `http://${hostname}:8000`;
+const API_BASE_URL = import.meta.env.VITE_API_URL || `http://${hostname}:9000`;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -52,9 +52,9 @@ export const rfqService = {
 export const supplierService = {
   getAll: () => api.get('/api/suppliers'),
   search: (query, sources, aiSearch = false) => api.get('/api/suppliers/search', { params: { query, sources, ai_search: aiSearch } }),
-  getProfile: (id) => api.get(`/api/suppliers/${id}/profile`),
+  getProfile: (id) => api.get(`/api/suppliers/${encodeURIComponent(id)}/profile`),
   add: (data) => api.post('/api/suppliers', data),
-  update: (id, data) => api.put(`/api/suppliers/${id}`, data),
+  update: (id, data) => api.put(`/api/suppliers/${encodeURIComponent(id)}`, data),
   opporaSearch: (data) => api.post('/api/suppliers/oppora-search', data),
   importSuppliers: (data) => api.post('/api/suppliers/import', data),
   exportUrl: `${API_BASE_URL}/api/suppliers/export`,
@@ -172,9 +172,27 @@ export const purchaseOrderService = {
   sendEmail: (poNumber) => api.post(`/api/purchase-orders/${poNumber}/send-email`),
 };
 
+export const contractService = {
+  getSupplierContracts: (supplierId) => api.get(`/api/suppliers/${encodeURIComponent(supplierId)}/contracts`),
+  uploadContract: (supplierId, file, title) => {
+    const formData = new FormData();
+    formData.append('supplier_id', supplierId);
+    if (title) formData.append('contract_title', title);
+    formData.append('file', file);
+    return api.post('/api/contracts/upload-extract', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  }
+};
+
+export const forecastingService = {
+  getPredictiveReorders: () => api.get('/api/forecasting/predictive-reorder')
+};
+
 export const dbService = {
   seed: () => api.post('/api/db/seed'),
 };
 
 export default api;
+
 

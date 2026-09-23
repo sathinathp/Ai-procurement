@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   BarChart2, FileText, Search, Mail, Sparkles, 
   Bot, Clock, Lock, ShieldAlert, LogOut, ShoppingCart,
-  MoreVertical, Zap, Cpu, ShieldCheck
+  MoreVertical, Zap, Cpu, ShieldCheck, TrendingUp
 } from 'lucide-react';
 
 export default function Sidebar({ activeTab, onSelectTab, onLogout, user }) {

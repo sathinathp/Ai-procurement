@@ -226,7 +226,7 @@ export default function QuoteComparison({ activeRfqNum }) {
                     <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-1">Dosing Pumps:</span>
                     <div className="grid grid-cols-2 gap-1">
                       <a 
-                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/campaign/download-mock-quote?supplier=Budget%20Pumps%20Inc&category=dosing_pumps`}
+                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:9000'}/api/campaign/download-mock-quote?supplier=Budget%20Pumps%20Inc&category=dosing_pumps`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="bg-slate-100 hover:bg-blue-50 hover:text-[#0078d4] p-1.5 rounded border border-slate-200 hover:border-blue-200 text-[8.5px] font-semibold transition-all flex items-center justify-between"
@@ -235,7 +235,7 @@ export default function QuoteComparison({ activeRfqNum }) {
                         <span className="text-[7.5px] bg-red-100 text-red-600 px-1 rounded font-bold">PDF</span>
                       </a>
                       <a 
-                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/campaign/download-mock-quote?supplier=Munich%20Dosing%20Systems&category=dosing_pumps`}
+                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:9000'}/api/campaign/download-mock-quote?supplier=Munich%20Dosing%20Systems&category=dosing_pumps`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="bg-slate-100 hover:bg-blue-50 hover:text-[#0078d4] p-1.5 rounded border border-slate-200 hover:border-blue-200 text-[8.5px] font-semibold transition-all flex items-center justify-between"
@@ -244,7 +244,7 @@ export default function QuoteComparison({ activeRfqNum }) {
                         <span className="text-[7.5px] bg-emerald-100 text-emerald-600 px-1 rounded font-bold">XLSX</span>
                       </a>
                       <a 
-                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/campaign/download-mock-quote?supplier=Houston%20Pump%20Solutions&category=dosing_pumps`}
+                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:9000'}/api/campaign/download-mock-quote?supplier=Houston%20Pump%20Solutions&category=dosing_pumps`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="bg-slate-100 hover:bg-blue-50 hover:text-[#0078d4] p-1.5 rounded border border-slate-200 hover:border-blue-200 text-[8.5px] font-semibold transition-all flex items-center justify-between"
@@ -253,7 +253,7 @@ export default function QuoteComparison({ activeRfqNum }) {
                         <span className="text-[7.5px] bg-red-100 text-red-650 px-1 rounded font-bold">PDF</span>
                       </a>
                       <a 
-                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/campaign/download-mock-quote?supplier=Tokyo%20Precision%20Flow&category=dosing_pumps`}
+                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:9000'}/api/campaign/download-mock-quote?supplier=Tokyo%20Precision%20Flow&category=dosing_pumps`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="bg-slate-100 hover:bg-blue-50 hover:text-[#0078d4] p-1.5 rounded border border-slate-200 hover:border-blue-200 text-[8.5px] font-semibold transition-all flex items-center justify-between"
@@ -268,7 +268,7 @@ export default function QuoteComparison({ activeRfqNum }) {
                     <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-1">Polymers / Materials:</span>
                     <div className="grid grid-cols-2 gap-1">
                       <a 
-                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/campaign/download-mock-quote?supplier=Al-Khobar%20Plastics&category=polymers`}
+                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:9000'}/api/campaign/download-mock-quote?supplier=Al-Khobar%20Plastics&category=polymers`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="bg-slate-100 hover:bg-blue-50 hover:text-[#0078d4] p-1.5 rounded border border-slate-200 hover:border-blue-200 text-[8.5px] font-semibold transition-all flex items-center justify-between"
@@ -277,7 +277,7 @@ export default function QuoteComparison({ activeRfqNum }) {
                         <span className="text-[7.5px] bg-red-100 text-red-650 px-1 rounded font-bold">PDF</span>
                       </a>
                       <a 
-                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/campaign/download-mock-quote?supplier=BASF%20Middle%20East&category=polymers`}
+                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:9000'}/api/campaign/download-mock-quote?supplier=BASF%20Middle%20East&category=polymers`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="bg-slate-100 hover:bg-blue-50 hover:text-[#0078d4] p-1.5 rounded border border-slate-200 hover:border-blue-200 text-[8.5px] font-semibold transition-all flex items-center justify-between"
@@ -286,7 +286,7 @@ export default function QuoteComparison({ activeRfqNum }) {
                         <span className="text-[7.5px] bg-emerald-100 text-emerald-650 px-1 rounded font-bold">XLSX</span>
                       </a>
                       <a 
-                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/campaign/download-mock-quote?supplier=SABIC%20Polymers&category=polymers`}
+                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:9000'}/api/campaign/download-mock-quote?supplier=SABIC%20Polymers&category=polymers`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="bg-slate-100 hover:bg-blue-50 hover:text-[#0078d4] p-1.5 rounded border border-slate-200 hover:border-blue-200 text-[8.5px] font-semibold transition-all flex items-center justify-between"
@@ -295,7 +295,7 @@ export default function QuoteComparison({ activeRfqNum }) {
                         <span className="text-[7.5px] bg-red-100 text-red-650 px-1 rounded font-bold">PDF</span>
                       </a>
                       <a 
-                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/campaign/download-mock-quote?supplier=Borouge&category=polymers`}
+                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:9000'}/api/campaign/download-mock-quote?supplier=Borouge&category=polymers`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="bg-slate-100 hover:bg-blue-50 hover:text-[#0078d4] p-1.5 rounded border border-slate-200 hover:border-blue-200 text-[8.5px] font-semibold transition-all flex items-center justify-between"
@@ -546,7 +546,7 @@ export default function QuoteComparison({ activeRfqNum }) {
                       <span>Issued Purchase Order: <b>{poResult}</b> for <b>{comparison.recommendation.supplier}</b>.</span>
                     </div>
                     <button
-                      onClick={() => window.open(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/purchase-orders/${poResult}/download`)}
+                      onClick={() => window.open(`${import.meta.env.VITE_API_URL || 'http://localhost:9000'}/api/purchase-orders/${poResult}/download`)}
                       className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded text-[10px] font-bold shadow-sm transition-colors shrink-0"
                     >
                       Download PO PDF

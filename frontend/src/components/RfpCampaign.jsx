@@ -524,7 +524,7 @@ export default function RfpCampaign({ activeRfqNum }) {
                   <h3 className="text-xs font-bold text-slate-800 mt-1.5">{selectedPO.po_number}</h3>
                 </div>
                 <button
-                  onClick={() => window.open(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/purchase-orders/${selectedPO.po_number}/download`)}
+                  onClick={() => window.open(`${import.meta.env.VITE_API_URL || 'http://localhost:9000'}/api/purchase-orders/${selectedPO.po_number}/download`)}
                   className="bg-[#0078d4] hover:bg-[#005a9e] text-white text-[10px] font-bold px-2.5 py-1 rounded transition-colors shrink-0"
                 >
                   Download PO PDF

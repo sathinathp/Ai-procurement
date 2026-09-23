@@ -4,12 +4,12 @@ import {
   Hourglass, CheckCircle2, CheckCircle, TrendingUp, Sparkles,
   Plus, Search, Bot, Upload, BarChart2, Bell, ShieldCheck,
   DollarSign, Users, Cpu, Activity, ChevronRight, Eye, ArrowUpRight, ArrowDownRight, Layers, FileSearch, Database,
-  Mail, Link2, Wifi, Zap, RefreshCw, AlertTriangle
+  Mail, Link2, Wifi, Zap, RefreshCw, AlertTriangle, Package, Calendar, Clock
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
-import { dashboardService, workflowService } from '../services/api';
+import { dashboardService, workflowService, phase2Service, rfqService } from '../services/api';
 import SupplierProfileModal from './SupplierProfileModal';
 
 const formatCurrency = (val) => {
@@ -31,6 +31,21 @@ export default function Dashboard({ onNavigate, onOpenCopilot, onImportTrigger }
   const [activeAlertModal, setActiveAlertModal] = useState(null);
   const [selectedSupplierId, setSelectedSupplierId] = useState(null);
 
+  const defaultInventoryStock = [
+    { item: 'PVC Resin K-67', category: 'Raw Polymers', currentStock: '42 MT', safetyStock: '150 MT', status: 'Critical Low', burnRate: '11.2 MT/day', leadTime: '14 days', urgency: 'Immediate', supplier: 'SABIC Polymers', estSpend: '$529,200', reorderQty: 504 },
+    { item: 'HDPE Blow Molding Granules', category: 'Raw Polymers', currentStock: '210 MT', safetyStock: '180 MT', status: 'Reorder Soon', burnRate: '8.5 MT/day', leadTime: '12 days', urgency: 'In 5 days', supplier: 'Borouge', estSpend: '$300,900', reorderQty: 255 },
+    { item: 'Heat Stabilizers CZ-80', category: 'Chemical Additives', currentStock: '68 MT', safetyStock: '50 MT', status: 'Adequate', burnRate: '1.8 MT/day', leadTime: '10 days', urgency: 'In 12 days', supplier: 'BASF Middle East', estSpend: '$259,200', reorderQty: 108 },
+    { item: 'Titanium Dioxide (TiO2)', category: 'Pigments & Coatings', currentStock: '95 MT', safetyStock: '60 MT', status: 'Healthy', burnRate: '1.1 MT/day', leadTime: '7 days', urgency: 'In 25 days', supplier: 'Tronox Saudi', estSpend: '$185,000', reorderQty: 50 },
+    { item: 'Calcium Carbonate (CaCO3)', category: 'Fillers & Minerals', currentStock: '540 MT', safetyStock: '400 MT', status: 'Optimal', burnRate: '14.0 MT/day', leadTime: '5 days', urgency: 'In 30 days', supplier: 'Omya Middle East', estSpend: '$120,000', reorderQty: 200 }
+  ];
+
+  const defaultContractsIntel = [
+    { supplier: 'SABIC Polymers', contractNumber: 'MSA-2024-08', title: 'Master Polymer Supply Agreement', expirationDate: '30 Nov 2026', monthsRemaining: '2 Months', lastRenewed: '15 Dec 2024', renewalNoticeDays: '60 Days prior', status: 'Pending Renewal Review', liabilityLimit: '$5,000,000', penaltyClause: '0.5% per week delay' },
+    { supplier: 'Brenntag Saudi Arabia', contractNumber: 'CT-2025-088', title: 'Specialty Chemicals Distribution Agreement', expirationDate: '15 Oct 2026', monthsRemaining: '3 Weeks', lastRenewed: '12 Oct 2024', renewalNoticeDays: '30 Days prior', status: 'Immediate Action — Expiry Warning', liabilityLimit: '$2,500,000', penaltyClause: '1.0% per week delay' },
+    { supplier: 'BASF Middle East', contractNumber: 'CT-2025-014', title: 'Additive Supply & Technical SLA', expirationDate: '15 Jan 2027', monthsRemaining: '4 Months', lastRenewed: '10 Jan 2025', renewalNoticeDays: '45 Days prior', status: 'Auto-Renewal Eligible', liabilityLimit: '$3,000,000', penaltyClause: '0.25% per week delay' },
+    { supplier: 'Borouge', contractNumber: 'MSA-2023-99', title: 'Polyolefin Annual Procurement Framework', expirationDate: '31 Mar 2027', monthsRemaining: '6 Months', lastRenewed: '20 Mar 2024', renewalNoticeDays: '30 Days prior', status: 'Active — Good Standing', liabilityLimit: '$8,000,000', penaltyClause: '0.5% per week delay' }
+  ];
+
   const sourcingAlertsData = {
     'Today': {
       rfqsAttention: [
@@ -44,10 +59,8 @@ export default function Dashboard({ onNavigate, onOpenCopilot, onImportTrigger }
         { supplier: 'SAIC Polymers', rfq: 'RFQ #2841', metric: '98% quality' }
       ],
       savings: { amount: '₹2.1L', detail: 'Identified on RFQ-2026-1002' },
-      historicalPrice: [
-        { supplier: 'Brenntag', deviation: '12% above avg' }
-      ],
-      automations: { count: 2, detail: 'AI bidding batches ready' }
+      inventoryStock: defaultInventoryStock.slice(0, 3),
+      contractsIntel: defaultContractsIntel.slice(0, 2)
     },
     'This Week': {
       rfqsAttention: [
@@ -64,11 +77,8 @@ export default function Dashboard({ onNavigate, onOpenCopilot, onImportTrigger }
         { supplier: 'Oman Resin Co.', rfq: 'RFQ #2842', metric: 'Saves 10%' }
       ],
       savings: { amount: '₹5.8L', detail: 'Across 3 active campaigns' },
-      historicalPrice: [
-        { supplier: 'Brenntag', deviation: '12% above avg' },
-        { supplier: 'Jindal Polymers', deviation: '7% above benchmark' }
-      ],
-      automations: { count: 4, detail: 'Auto-counter batches ready' }
+      inventoryStock: defaultInventoryStock.slice(0, 4),
+      contractsIntel: defaultContractsIntel.slice(0, 3)
     },
     'This Month': {
       rfqsAttention: [
@@ -89,11 +99,8 @@ export default function Dashboard({ onNavigate, onOpenCopilot, onImportTrigger }
         { supplier: 'Jindal Polymers', rfq: 'RFQ #2845', metric: 'Optimal price' }
       ],
       savings: { amount: '₹18.4L', detail: 'Identified by AI Auto-Negotiator' },
-      historicalPrice: [
-        { supplier: 'Supplier B', deviation: '12% above avg' },
-        { supplier: 'Brenntag', deviation: '8% deviation' }
-      ],
-      automations: { count: 4, detail: 'Eligible for autonomous agent' }
+      inventoryStock: defaultInventoryStock,
+      contractsIntel: defaultContractsIntel
     },
     'This Year': {
       rfqsAttention: [
@@ -118,12 +125,8 @@ export default function Dashboard({ onNavigate, onOpenCopilot, onImportTrigger }
         { supplier: 'Jindal Polymers', rfq: 'RFQ #2845', metric: 'Optimal price' }
       ],
       savings: { amount: '₹94.2L', detail: 'Cumulative potential savings' },
-      historicalPrice: [
-        { supplier: 'Supplier B', deviation: '12% above avg' },
-        { supplier: 'Brenntag', deviation: '8% deviation' },
-        { supplier: 'SAIC Polymers', deviation: '6% deviation' }
-      ],
-      automations: { count: 24, detail: 'Orchestration eligible' }
+      inventoryStock: defaultInventoryStock,
+      contractsIntel: defaultContractsIntel
     }
   };
 
@@ -143,10 +146,49 @@ export default function Dashboard({ onNavigate, onOpenCopilot, onImportTrigger }
   const [notifications, setNotifications] = useState([]);
   const [approvingId, setApprovingId] = useState(null);
   const [rejectingId, setRejectingId] = useState(null);
+  const [demandForecast, setDemandForecast] = useState(null);
+  const [initiatingForecastItem, setInitiatingForecastItem] = useState(null);
+  const [forecastSuccessMsg, setForecastSuccessMsg] = useState('');
+
+  const fetchDemandForecast = async () => {
+    try {
+      const res = await phase2Service.getDemandForecast(95);
+      if (res.data) {
+        setDemandForecast(res.data);
+      }
+    } catch (err) {
+      console.error("Failed to load demand forecast:", err);
+    }
+  };
+
+  const handleInitiateForecastSourcing = (alertItem) => {
+    setInitiatingForecastItem(alertItem.item_name);
+    rfqService.create({
+      project_name: 'Predictive Demand Reorder',
+      department: 'Procurement / Inventory Ops',
+      item_name: alertItem.rfq_payload?.item_name || alertItem.item_name,
+      quantity: alertItem.rfq_payload?.quantity || alertItem.reorder_quantity_mt,
+      unit: alertItem.rfq_payload?.unit || alertItem.unit || 'MT',
+      priority: alertItem.rfq_payload?.priority || (alertItem.urgency === 'Immediate' ? 'High' : 'Medium'),
+      delivery_location: alertItem.rfq_payload?.delivery_location || 'Riyadh Central Warehouse',
+      remarks: alertItem.action_reason || `Auto-triggered by AI Demand Forecast based on ${alertItem.daily_burn_rate} MT/day burn rate.`
+    }).then((res) => {
+      setForecastSuccessMsg(`🚀 Automated Sourcing Campaign Initiated! RFQ ${res.data.rfq_number} created for ${alertItem.rfq_payload?.quantity || alertItem.reorder_quantity_mt} ${alertItem.rfq_payload?.unit || alertItem.unit || 'MT'} of ${alertItem.item_name}.`);
+      setInitiatingForecastItem(null);
+      setTimeout(() => setForecastSuccessMsg(''), 7000);
+      fetchStats();
+      fetchNotifications();
+    }).catch((err) => {
+      console.error(err);
+      setInitiatingForecastItem(null);
+      alert("Error initiating sourcing: " + (err.response?.data?.detail || err.message));
+    });
+  };
 
   useEffect(() => {
     fetchStats();
     fetchNotifications();
+    fetchDemandForecast();
   }, []);
 
   const playChimeSound = () => {
@@ -647,17 +689,8 @@ export default function Dashboard({ onNavigate, onOpenCopilot, onImportTrigger }
                     `$${Math.round((widgets?.cost_savings || 0) * 12).toLocaleString()}`,
             detail: stats.sourcing_alerts.savings.detail
           },
-          historicalPrice: alertsTimeframe === 'Today' ? stats.sourcing_alerts.historicalPrice.slice(0, Math.min(1, stats.sourcing_alerts.historicalPrice.length)) :
-                           alertsTimeframe === 'This Week' ? stats.sourcing_alerts.historicalPrice.slice(0, Math.min(2, stats.sourcing_alerts.historicalPrice.length)) :
-                           alertsTimeframe === 'This Month' ? stats.sourcing_alerts.historicalPrice.slice(0, Math.min(3, stats.sourcing_alerts.historicalPrice.length)) :
-                           stats.sourcing_alerts.historicalPrice,
-          automations: {
-            count: alertsTimeframe === 'Today' ? Math.max(1, Math.round((widgets?.today_rfqs || 0))) :
-                   alertsTimeframe === 'This Week' ? Math.max(2, Math.round((widgets?.pending_rfqs || 0) / 2)) :
-                   alertsTimeframe === 'This Month' ? (widgets?.pending_rfqs || 0) :
-                   (widgets?.pending_rfqs || 0) * 4,
-            detail: stats.sourcing_alerts.automations.detail
-          }
+          inventoryStock: baseAlerts.inventoryStock || defaultInventoryStock,
+          contractsIntel: baseAlerts.contractsIntel || defaultContractsIntel
         } : baseAlerts;
         return (
           <div className="p-6 rounded-3xl glass-panel shadow-sm">
@@ -790,46 +823,240 @@ export default function Dashboard({ onNavigate, onOpenCopilot, onImportTrigger }
                   <div className="text-[9px] text-amber-600 font-bold mt-2">Click to view &rarr;</div>
                 </div>
 
-                {/* Item 5 */}
+                {/* Item 5: Live Stock on Hand */}
                 <div
-                  onClick={() => setActiveAlertModal({ title: "Price Deviations", type: "deviations", data: currentAlerts.historicalPrice, navigateTarget: "comparison", navigateLabel: "Inspect Pricing Variance" })}
+                  onClick={() => setActiveAlertModal({ title: "Warehouse Live Stock Levels & Safety Thresholds", type: "stock", data: currentAlerts.inventoryStock || defaultInventoryStock, navigateTarget: "demand_forecast", navigateLabel: "Open Demand Forecasting" })}
                   className="p-4 rounded-2xl glass-panel glass-panel-hover flex flex-col justify-between cursor-pointer min-h-[110px]"
                 >
                   <div className="flex items-start justify-between w-full">
-                    <span className="text-[9px] font-extrabold text-pink-700 uppercase tracking-widest">Price Deviations</span>
-                    <div className="w-6 h-6 rounded-lg bg-pink-500/10 text-pink-600 flex items-center justify-center shrink-0 border border-pink-500/15">
-                      <AlertTriangle size={12} className="stroke-[2px]" />
+                    <span className="text-[9px] font-extrabold text-cyan-700 uppercase tracking-widest">Stock on Hand</span>
+                    <div className="w-6 h-6 rounded-lg bg-cyan-500/10 text-cyan-600 flex items-center justify-center shrink-0 border border-cyan-500/15">
+                      <Package size={12} className="stroke-[2px]" />
                     </div>
                   </div>
                   <div className="mt-2 flex items-baseline justify-between">
-                    <span className="text-2xl font-extrabold text-slate-800">{currentAlerts.historicalPrice.length}</span>
-                    <span className="text-[9px] text-pink-700 bg-pink-500/10 border border-pink-500/15 px-2 py-0.5 rounded-lg font-bold">Deviations</span>
+                    <span className="text-2xl font-extrabold text-slate-800">{(currentAlerts.inventoryStock || defaultInventoryStock).length} Items</span>
+                    <span className="text-[9px] text-cyan-700 bg-cyan-500/10 border border-cyan-500/15 px-2 py-0.5 rounded-lg font-bold">Live ERP</span>
                   </div>
-                  <div className="text-[9px] text-pink-600 font-bold mt-2">Click to view &rarr;</div>
+                  <div className="text-[9px] text-cyan-600 font-bold mt-2">Click to view stock levels &rarr;</div>
                 </div>
 
-                {/* Item 6 */}
+                {/* Item 6: Contract Expirations & Renewals */}
                 <div
-                  onClick={() => setActiveAlertModal({ title: "Negotiation Pipelines", type: "automations", data: currentAlerts.automations, navigateTarget: "ai_agent", navigateLabel: "Launch Autonomous Agent" })}
+                  onClick={() => setActiveAlertModal({ title: "Supplier Contract Expirations & Renewal Intelligence", type: "contracts", data: currentAlerts.contractsIntel || defaultContractsIntel, navigateTarget: "supplier_compliance", navigateLabel: "Go to Supplier Compliance" })}
                   className="p-4 rounded-2xl glass-panel glass-panel-hover flex flex-col justify-between cursor-pointer min-h-[110px]"
                 >
                   <div className="flex items-start justify-between w-full">
-                    <span className="text-[9px] font-extrabold text-purple-700 uppercase tracking-widest">Auto Pipelines</span>
+                    <span className="text-[9px] font-extrabold text-purple-700 uppercase tracking-widest">Contract Renewals</span>
                     <div className="w-6 h-6 rounded-lg bg-purple-500/10 text-purple-600 flex items-center justify-center shrink-0 border border-purple-500/15">
-                      <Bot size={12} className="stroke-[2px]" />
+                      <Clock size={12} className="stroke-[2px]" />
                     </div>
                   </div>
                   <div className="mt-2 flex items-baseline justify-between">
-                    <span className="text-2xl font-extrabold text-slate-800">{currentAlerts.automations.count}</span>
-                    <span className="text-[9px] text-purple-700 bg-purple-500/10 border border-purple-500/15 px-2 py-0.5 rounded-lg font-bold">Agent</span>
+                    <span className="text-2xl font-extrabold text-slate-800">{(currentAlerts.contractsIntel || defaultContractsIntel).length} Contracts</span>
+                    <span className="text-[9px] text-purple-700 bg-purple-500/10 border border-purple-500/15 px-2 py-0.5 rounded-lg font-bold">MSA Intel</span>
                   </div>
-                  <div className="text-[9px] text-purple-600 font-bold mt-2">Click to view &rarr;</div>
+                  <div className="text-[9px] text-purple-600 font-bold mt-2">Click to view renewals &rarr;</div>
                 </div>
               </div>
             )}
           </div>
         );
       })()}
+
+      {/* AI Predictive Demand Forecast Block */}
+      <div className="p-6 rounded-3xl glass-panel shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3.5 border-b border-slate-200/60">
+          <div 
+            onClick={() => onNavigate('demand_forecast')}
+            className="flex items-center gap-2.5 cursor-pointer group"
+          >
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500/20 to-blue-500/20 text-cyan-600 flex items-center justify-center border border-cyan-500/30 shrink-0 group-hover:scale-105 transition-transform shadow-sm">
+              <TrendingUp size={16} className="stroke-[2.5px]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-extrabold text-slate-850 uppercase tracking-wider group-hover:text-blue-600 transition-colors flex items-center gap-1">
+                  AI Demand Forecast &amp; Predictive Reorders <ChevronRight size={13} className="text-blue-600 group-hover:translate-x-0.5 transition-transform" />
+                </h3>
+                <span className="bg-cyan-500/10 text-cyan-700 border border-cyan-500/20 text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  Burn Rate AI Telemetry
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-500 font-semibold mt-0.5">
+                Calculates daily PO consumption rates against supplier lead times to trigger automated procurement before stockouts.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span 
+              onClick={() => onNavigate('demand_forecast')}
+              className="text-[10px] font-bold text-amber-700 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-xl cursor-pointer hover:bg-amber-500/20 transition-all"
+            >
+              3 Reorder Alerts
+            </span>
+            <button
+              onClick={() => onNavigate('demand_forecast')}
+              className="text-[11px] font-extrabold text-white bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 px-3.5 py-1.5 rounded-xl shadow-[0_2px_8px_rgba(6,182,212,0.25)] flex items-center gap-1.5 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <TrendingUp size={13} />
+              <span>Full Forecast Page &rarr;</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Success toast if any */}
+        {forecastSuccessMsg && (
+          <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 p-3 rounded-2xl text-xs font-semibold flex items-center justify-between gap-2 animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+              <span>{forecastSuccessMsg}</span>
+            </div>
+            <button 
+              onClick={() => setForecastSuccessMsg('')}
+              className="text-emerald-700 hover:text-emerald-900 font-bold text-sm px-1.5 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* 3 Compact Sourcing Alert Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Card 1: PVC Resin K-67 */}
+          <div className="p-4.5 rounded-2xl bg-white/60 border border-slate-200/70 shadow-sm flex flex-col justify-between hover:shadow-md hover:border-slate-300 transition-all">
+            <div>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="font-bold text-slate-900 text-xs">PVC Resin K-67</div>
+                  <span className="inline-block bg-slate-100 text-slate-600 text-[9px] font-bold px-1.5 py-0.5 rounded mt-0.5">
+                    Raw Polymers • SABIC
+                  </span>
+                </div>
+                <span className="bg-rose-500/10 text-rose-700 border border-rose-500/20 text-[9px] font-extrabold px-2 py-0.5 rounded-lg whitespace-nowrap">
+                  Immediate Action
+                </span>
+              </div>
+
+              <div className="mt-2.5 text-[11px] text-slate-600 leading-snug font-medium">
+                Need <strong className="text-slate-900 font-bold">504.0 MT</strong> in <strong className="text-rose-600 font-bold">3 days</strong> (Burn: 11.2 MT/d, Lead time: 14d).
+              </div>
+
+              <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500 pt-2 border-t border-slate-100">
+                <span>Est. Spend: <strong className="text-slate-800 font-bold">$529,200</strong></span>
+                <span className="text-rose-600 font-extrabold">0 days buffer left</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              disabled={initiatingForecastItem === 'PVC Resin K-67'}
+              onClick={() => handleInitiateForecastSourcing({
+                item_name: 'PVC Resin K-67',
+                reorder_quantity_mt: 504,
+                unit: 'MT',
+                urgency: 'Immediate',
+                daily_burn_rate: 11.2,
+                action_reason: 'Supplier lead time is 14 days. Sourcing must be initiated immediately to prevent production downtime.',
+                rfq_payload: { item_name: 'PVC Resin K-67', quantity: 504, unit: 'MT', priority: 'High', delivery_location: 'Riyadh Central Warehouse' }
+              })}
+              className="mt-3.5 w-full bg-[#0066cc] hover:bg-[#0052a3] text-white font-bold text-[11px] py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+            >
+              <Sparkles size={13} />
+              <span>{initiatingForecastItem === 'PVC Resin K-67' ? 'Launching RFQ...' : 'Auto-Initiate Sourcing (504 MT)'}</span>
+            </button>
+          </div>
+
+          {/* Card 2: HDPE Blow Molding Granules */}
+          <div className="p-4.5 rounded-2xl bg-white/60 border border-slate-200/70 shadow-sm flex flex-col justify-between hover:shadow-md hover:border-slate-300 transition-all">
+            <div>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="font-bold text-slate-900 text-xs">HDPE Blow Molding Granules</div>
+                  <span className="inline-block bg-slate-100 text-slate-600 text-[9px] font-bold px-1.5 py-0.5 rounded mt-0.5">
+                    Raw Polymers • Borouge
+                  </span>
+                </div>
+                <span className="bg-rose-500/10 text-rose-700 border border-rose-500/20 text-[9px] font-extrabold px-2 py-0.5 rounded-lg whitespace-nowrap">
+                  In 5 days
+                </span>
+              </div>
+
+              <div className="mt-2.5 text-[11px] text-slate-600 leading-snug font-medium">
+                Need <strong className="text-slate-900 font-bold">255.0 MT</strong> in <strong className="text-slate-850 font-bold">17 days</strong> (Burn: 8.5 MT/d, Lead time: 12d).
+              </div>
+
+              <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500 pt-2 border-t border-slate-100">
+                <span>Est. Spend: <strong className="text-slate-800 font-bold">$300,900</strong></span>
+                <span className="text-amber-600 font-extrabold">Urgent Sourcing</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              disabled={initiatingForecastItem === 'HDPE Blow Molding Granules'}
+              onClick={() => handleInitiateForecastSourcing({
+                item_name: 'HDPE Blow Molding Granules',
+                reorder_quantity_mt: 255,
+                unit: 'MT',
+                urgency: 'Urgent',
+                daily_burn_rate: 8.5,
+                action_reason: 'Supplier lead time is 12 days. Sourcing must be initiated within 5 days to prevent production downtime.',
+                rfq_payload: { item_name: 'HDPE Blow Molding Granules', quantity: 255, unit: 'MT', priority: 'High', delivery_location: 'Riyadh Central Warehouse' }
+              })}
+              className="mt-3.5 w-full bg-[#0066cc] hover:bg-[#0052a3] text-white font-bold text-[11px] py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+            >
+              <Sparkles size={13} />
+              <span>{initiatingForecastItem === 'HDPE Blow Molding Granules' ? 'Launching RFQ...' : 'Auto-Initiate Sourcing (255 MT)'}</span>
+            </button>
+          </div>
+
+          {/* Card 3: Heat Stabilizers CZ-80 */}
+          <div className="p-4.5 rounded-2xl bg-white/60 border border-slate-200/70 shadow-sm flex flex-col justify-between hover:shadow-md hover:border-slate-300 transition-all">
+            <div>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="font-bold text-slate-900 text-xs">Heat Stabilizers CZ-80</div>
+                  <span className="inline-block bg-slate-100 text-slate-600 text-[9px] font-bold px-1.5 py-0.5 rounded mt-0.5">
+                    Additives • BASF
+                  </span>
+                </div>
+                <span className="bg-amber-500/10 text-amber-700 border border-amber-500/20 text-[9px] font-extrabold px-2 py-0.5 rounded-lg whitespace-nowrap">
+                  In 12 days
+                </span>
+              </div>
+
+              <div className="mt-2.5 text-[11px] text-slate-600 leading-snug font-medium">
+                Need <strong className="text-slate-900 font-bold">108.0 MT</strong> in <strong className="text-slate-850 font-bold">22 days</strong> (Burn: 1.8 MT/d, Lead time: 10d).
+              </div>
+
+              <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500 pt-2 border-t border-slate-100">
+                <span>Est. Spend: <strong className="text-slate-800 font-bold">$259,200</strong></span>
+                <span className="text-blue-600 font-extrabold">Scheduled Reorder</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              disabled={initiatingForecastItem === 'Heat Stabilizers CZ-80'}
+              onClick={() => handleInitiateForecastSourcing({
+                item_name: 'Heat Stabilizers CZ-80',
+                reorder_quantity_mt: 108,
+                unit: 'MT',
+                urgency: 'Scheduled',
+                daily_burn_rate: 1.8,
+                action_reason: 'Supplier lead time is 10 days. Sourcing must be initiated within 12 days to prevent production downtime.',
+                rfq_payload: { item_name: 'Heat Stabilizers CZ-80', quantity: 108, unit: 'MT', priority: 'Medium', delivery_location: 'Riyadh Central Warehouse' }
+              })}
+              className="mt-3.5 w-full bg-[#0066cc] hover:bg-[#0052a3] text-white font-bold text-[11px] py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+            >
+              <Sparkles size={13} />
+              <span>{initiatingForecastItem === 'Heat Stabilizers CZ-80' ? 'Launching RFQ...' : 'Auto-Initiate Sourcing (108 MT)'}</span>
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Middle Row 1: Grouped Bar Chart of Supplier Performance */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -1102,33 +1329,139 @@ export default function Dashboard({ onNavigate, onOpenCopilot, onImportTrigger }
                 </div>
               )}
 
-              {activeAlertModal.type === 'deviations' && (
-                <div className="space-y-4 pb-2">
+              {activeAlertModal.type === 'stock' && (
+                <div className="space-y-3 pb-2">
+                  <div className="text-[11px] text-slate-500 font-semibold mb-1">
+                    Live ERP inventory cross-referencing against safety stock thresholds &amp; production exhaustion dates:
+                  </div>
                   {activeAlertModal.data.map((item, idx) => (
                     <div
                       key={idx}
-                      className="flex items-center justify-between gap-3 bg-pink-500/5 p-4 rounded-2xl border border-pink-500/10 shadow-sm hover:scale-[1.01] transition-all text-xs"
+                      className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-2.5 hover:bg-white hover:shadow-sm transition-all"
                     >
-                      {item.id ? (
-                        <span
-                          className="font-bold text-indigo-600 hover:underline cursor-pointer text-sm"
-                          onClick={() => setSelectedSupplierId(item.id)}
-                        >
-                          {item.supplier}
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <div className="font-bold text-slate-900 text-xs">{item.item}</div>
+                          <span className="text-[10px] text-slate-500 font-semibold">{item.category} • Supplier: <strong className="text-slate-700">{item.supplier}</strong></span>
+                        </div>
+                        <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-md border uppercase tracking-wider ${
+                          item.status === 'Critical Low' 
+                            ? 'bg-rose-500/10 text-rose-700 border-rose-500/20' 
+                            : item.status === 'Reorder Soon'
+                              ? 'bg-amber-500/10 text-amber-700 border-amber-500/20'
+                              : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20'
+                        }`}>
+                          {item.status}
                         </span>
-                      ) : (
-                        <span className="font-bold text-slate-700 text-sm">{item.supplier}</span>
-                      )}
-                      <span className="text-xs text-pink-700 font-bold bg-white border border-pink-500/15 rounded-lg px-2.5 py-0.5">{item.deviation}</span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 bg-white/80 p-2.5 rounded-xl border border-slate-200/60 text-[11px]">
+                        <div>
+                          <span className="text-slate-400 text-[10px] block font-semibold">Stock on Hand</span>
+                          <strong className="text-slate-850 font-bold">{item.currentStock}</strong>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 text-[10px] block font-semibold">Safety Stock</span>
+                          <strong className="text-slate-850 font-bold">{item.safetyStock}</strong>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 text-[10px] block font-semibold">Burn Rate</span>
+                          <strong className="text-indigo-600 font-bold">{item.burnRate}</strong>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1 text-[11px]">
+                        <span className="text-slate-500 text-[10px] font-semibold">
+                          Lead Time: <strong className="text-slate-700">{item.leadTime}</strong> (Reorder: <strong className="text-rose-600">{item.urgency}</strong>)
+                        </span>
+                        <button
+                          type="button"
+                          disabled={initiatingForecastItem === item.item}
+                          onClick={() => {
+                            handleInitiateForecastSourcing({
+                              item_name: item.item,
+                              reorder_quantity_mt: item.reorderQty || 100,
+                              unit: 'MT',
+                              urgency: item.urgency,
+                              daily_burn_rate: parseFloat(item.burnRate) || 10,
+                              action_reason: `Stock is at ${item.currentStock} (Safety: ${item.safetyStock}). Sourcing required: ${item.urgency}.`,
+                              rfq_payload: { item_name: item.item, quantity: item.reorderQty || 100, unit: 'MT', priority: item.status === 'Critical Low' ? 'High' : 'Medium', delivery_location: 'Riyadh Central Warehouse' }
+                            });
+                            setActiveAlertModal(null);
+                          }}
+                          className="bg-[#0066cc] hover:bg-[#0052a3] text-white text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-all shadow-xs"
+                        >
+                          <Sparkles size={11} />
+                          <span>{initiatingForecastItem === item.item ? 'Drafting...' : `Auto-Initiate Sourcing (${item.reorderQty || 'Reorder'})`}</span>
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
 
-              {activeAlertModal.type === 'automations' && (
-                <div className="bg-purple-500/5 p-5 rounded-2xl border border-purple-500/10 space-y-2 text-xs">
-                  <div className="font-bold text-slate-800 text-sm leading-none">{activeAlertModal.data.count} Campaigns Eligible</div>
-                  <div className="text-slate-550 font-semibold leading-relaxed mt-1">{activeAlertModal.data.detail}</div>
+              {activeAlertModal.type === 'contracts' && (
+                <div className="space-y-3.5 pb-2">
+                  <div className="text-[11px] text-slate-500 font-semibold mb-1">
+                    AI Contract Intelligence scanning MSA expiration milestones, renewal notice windows, and legal clauses:
+                  </div>
+                  {activeAlertModal.data.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-2.5 hover:bg-white hover:shadow-sm transition-all"
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <div className="font-bold text-slate-900 text-xs">{item.title}</div>
+                          <span className="text-[10px] text-slate-500 font-semibold">Ref: <strong className="text-slate-700">{item.contractNumber}</strong> • Supplier: <strong className="text-indigo-600 cursor-pointer hover:underline" onClick={() => { setSelectedSupplierId(item.supplier); setActiveAlertModal(null); }}>{item.supplier}</strong></span>
+                        </div>
+                        <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-md border uppercase tracking-wider ${
+                          item.status.includes('Immediate') || item.status.includes('Expiry') 
+                            ? 'bg-rose-500/10 text-rose-700 border-rose-500/20' 
+                            : item.status.includes('Review')
+                              ? 'bg-amber-500/10 text-amber-700 border-amber-500/20'
+                              : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20'
+                        }`}>
+                          {item.status}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 bg-white/80 p-2.5 rounded-xl border border-slate-200/60 text-[11px]">
+                        <div>
+                          <span className="text-slate-400 text-[10px] block font-semibold">Expiration Date</span>
+                          <strong className="text-rose-600 font-bold">{item.expirationDate}</strong>
+                          <span className="text-[9px] text-slate-400 block font-semibold">({item.monthsRemaining})</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 text-[10px] block font-semibold">Last Executed</span>
+                          <strong className="text-slate-750 font-bold">{item.lastRenewed}</strong>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 text-[10px] block font-semibold">Notice Period</span>
+                          <strong className="text-indigo-600 font-bold">{item.renewalNoticeDays}</strong>
+                        </div>
+                      </div>
+
+                      <div className="text-[10px] text-slate-500 bg-indigo-50/40 p-2 rounded-lg border border-indigo-100/60 space-y-0.5">
+                        <div>⚖️ <strong>Late Penalty:</strong> {item.penaltyClause}</div>
+                        <div>🛡️ <strong>Liability Cap:</strong> {item.liabilityLimit}</div>
+                      </div>
+
+                      <div className="flex justify-end pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedSupplierId(item.supplier);
+                            setActiveAlertModal(null);
+                          }}
+                          className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-white border border-indigo-200 px-3 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-all shadow-xs"
+                        >
+                          <Eye size={11} />
+                          <span>View Full MSA &amp; Supplier Profile</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

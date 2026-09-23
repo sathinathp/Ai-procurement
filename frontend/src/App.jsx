@@ -296,7 +296,7 @@ export default function App() {
           )}
 
           {['prod_planning', 'demand_forecast', 'inventory_forecast', 'mfg_ai', 'quality_vision', 'eng_copilot', 'erp_link', 'power_bi'].includes(activeTab) && (
-            <Phase2Modules tab={activeTab} />
+            <Phase2Modules tab={activeTab} onNavigate={handleNavigate} />
           )}
 
         </div>

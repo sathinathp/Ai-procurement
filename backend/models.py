@@ -272,7 +272,30 @@ class NegotiationLog(Base):
     sent_at = Column(DateTime, default=datetime.utcnow)
     # True once supplier has replied for this round
     reply_received = Column(Boolean, default=False)
-    # Is this the final accepted price?
-    is_final = Column(Boolean, default=False)
+    supplier = relationship("Supplier")
+
+
+class SupplierContract(Base):
+    """Stores supplier contracts, MSAs, SLAs and AI-extracted legal clauses."""
+    __tablename__ = "supplier_contracts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False, index=True)
+    contract_title = Column(String(255), nullable=False)
+    contract_type = Column(String(100), default="Master Service Agreement (MSA)") # MSA, SLA, Supply Agreement
+    filename = Column(String(255), nullable=True)
+    effective_date = Column(String(50), nullable=True)
+    expiry_date = Column(String(50), nullable=True)
+    auto_renewal_clause = Column(Text, nullable=True)
+    penalty_clause = Column(Text, nullable=True)
+    liability_clause = Column(Text, nullable=True)
+    termination_clause = Column(Text, nullable=True)
+    governing_law = Column(String(255), nullable=True)
+    payment_terms = Column(String(100), nullable=True)
+    risk_rating = Column(String(50), default="Low Risk") # Low Risk, Medium Risk, High Risk
+    summary_message = Column(Text, nullable=True)
+    extracted_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     supplier = relationship("Supplier")
+

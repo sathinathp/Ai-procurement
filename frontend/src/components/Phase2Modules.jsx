@@ -5,11 +5,12 @@ import {
 } from 'recharts';
 import { 
   Calendar, Cpu, Eye, FileSearch, Database, BarChart2, TrendingUp, 
-  Sparkles, RefreshCw, AlertTriangle, ShieldCheck, Play, ArrowRight, Upload
+  Sparkles, RefreshCw, AlertTriangle, ShieldCheck, Play, ArrowRight, Upload,
+  Clock, CheckCircle2, Zap, DollarSign, Package
 } from 'lucide-react';
-import { rfqService, erpService, phase2Service, workflowService } from '../services/api';
+import { rfqService, erpService, phase2Service, workflowService, forecastingService } from '../services/api';
 
-export default function Phase2Modules({ tab }) {
+export default function Phase2Modules({ tab, onNavigate }) {
   const [loading, setLoading] = useState(false);
   const [actionSuccess, setActionSuccess] = useState('');
   const [confVal, setConfVal] = useState(95);
@@ -21,9 +22,11 @@ export default function Phase2Modules({ tab }) {
   const [odooSyncing, setOdooSyncing] = useState(false);
   const [odooSyncResult, setOdooSyncResult] = useState(null);
 
-  // Phase 2 state variables
+  // Phase 2 & Predictive Forecasting state variables
   const [prodPlanning, setProdPlanning] = useState({ jobs: [], oee: [] });
   const [demandForecast, setDemandForecast] = useState({ chart_data: [], recommendation: '' });
+  const [predictiveForecast, setPredictiveForecast] = useState({ alerts: [], total_monitored_items: 0, urgent_reorders_count: 0 });
+  const [initiatingRfqItem, setInitiatingRfqItem] = useState(null);
   const [inventory, setInventory] = useState({ inventory: [], alerts: [] });
   const [qualityVision, setQualityVision] = useState([]);
   const [drawingAnalysis, setDrawingAnalysis] = useState(null);
@@ -50,20 +53,26 @@ export default function Phase2Modules({ tab }) {
           setLoading(false);
         })
         .catch(err => { console.error(err); setLoading(false); });
-    } else if (tab === 'demand_forecast') {
+    } else if (tab === 'demand_forecast' || tab === 'inventory_forecast') {
       phase2Service.getDemandForecast(confVal)
+        .then(res => setDemandForecast(res.data))
+        .catch(err => console.error(err));
+      
+      forecastingService.getPredictiveReorders()
         .then(res => {
-          setDemandForecast(res.data);
+          setPredictiveForecast(res.data);
           setLoading(false);
         })
-        .catch(err => { console.error(err); setLoading(false); });
-    } else if (tab === 'inventory_forecast') {
-      phase2Service.getInventory()
-        .then(res => {
-          setInventory(res.data);
+        .catch(err => {
+          console.error(err);
           setLoading(false);
-        })
-        .catch(err => { console.error(err); setLoading(false); });
+        });
+
+      if (tab === 'inventory_forecast') {
+        phase2Service.getInventory()
+          .then(res => setInventory(res.data))
+          .catch(err => console.error(err));
+      }
     } else if (tab === 'mfg_ai') {
       phase2Service.getProdPlanning()
         .then(res => {
@@ -101,6 +110,27 @@ export default function Phase2Modules({ tab }) {
     } else {
       setLoading(false);
     }
+  };
+
+  const handleInitiateSourcing = (alertItem) => {
+    setInitiatingRfqItem(alertItem.item_name);
+    rfqService.create({
+      project_name: 'Predictive Demand Reorder',
+      department: 'Procurement / Inventory Ops',
+      item_name: alertItem.rfq_payload.item_name,
+      quantity: alertItem.rfq_payload.quantity,
+      unit: alertItem.rfq_payload.unit,
+      priority: alertItem.rfq_payload.priority,
+      delivery_location: alertItem.rfq_payload.delivery_location,
+      remarks: alertItem.action_reason
+    }).then((res) => {
+      setActionSuccess(`🚀 Automated Sourcing Campaign Initiated! RFQ ${res.data.rfq_number} created for ${alertItem.rfq_payload.quantity} ${alertItem.rfq_payload.unit} of ${alertItem.item_name}.`);
+      setInitiatingRfqItem(null);
+      setTimeout(() => setActionSuccess(''), 6000);
+    }).catch((err) => {
+      console.error(err);
+      setInitiatingRfqItem(null);
+    });
   };
 
   const loadErpData = () => {
@@ -331,54 +361,267 @@ export default function Phase2Modules({ tab }) {
       {/* 2. DEMAND FORECASTING */}
       {tab === 'demand_forecast' && (
         <div className="space-y-6">
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex justify-between items-center">
-            <div>
-              <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <TrendingUp className="text-[#0078d4]" /> AI Sales & Demand Forecasting
-              </h1>
-              <p className="text-xs text-slate-500 mt-1">Machine learning projections for PVC/HDPE purchase requirements based on seasonal orders.</p>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 text-xs text-slate-600 font-semibold">
-                <span>Confidence Interval:</span>
-                <input 
-                  type="range" 
-                  min="80" 
-                  max="99" 
-                  value={confVal} 
-                  onChange={(e) => setConfVal(parseInt(e.target.value))} 
-                  className="w-20 accent-[#0078d4]"
-                />
-                <span>{confVal}%</span>
-              </div>
-              <button 
-                onClick={handleGenerateRfqDrafts}
-                disabled={loading}
-                className="copilot-btn-primary text-xs disabled:opacity-50"
+          {/* Top Breadcrumb & Header */}
+          <div>
+            <div className="text-[11px] text-slate-400 font-medium mb-1.5 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onNavigate && onNavigate('dashboard')}
+                className="text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-slate-200/80 shadow-xs hover:shadow-sm transition-all"
               >
-                <Sparkles size={14} /> {loading ? 'Drafting...' : 'Auto-Generate RFQ Drafts'}
+                &larr; Operations Dashboard
               </button>
+              <span>/</span>
+              <span className="text-slate-600 font-semibold">AI Sales &amp; Demand Forecasting</span>
+            </div>
+
+            <div className="flex flex-wrap justify-between items-center gap-4 pt-1">
+              <div>
+                <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+                  AI Sales & Demand Forecasting
+                </h1>
+                <p className="text-xs text-slate-500 mt-1">
+                  Machine learning projections for PVC/HDPE purchase requirements based on seasonal orders.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 text-xs text-slate-700 font-semibold">
+                  <span className="text-slate-700">Confidence Interval</span>
+                  <input 
+                    type="range" 
+                    min="80" 
+                    max="99" 
+                    value={confVal} 
+                    onChange={(e) => setConfVal(parseInt(e.target.value))} 
+                    className="w-24 accent-[#0066cc] cursor-pointer h-1.5 bg-slate-200 rounded-lg"
+                  />
+                  <span className="font-bold text-slate-900 min-w-[32px]">{confVal}%</span>
+                </div>
+                <button 
+                  onClick={handleGenerateRfqDrafts}
+                  disabled={loading}
+                  className="bg-[#0066cc] hover:bg-[#0052a3] text-white text-xs font-bold px-4 py-2.5 rounded-lg shadow-sm transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>{loading ? 'Drafting...' : 'Auto-Generate RFQ Drafts'}</span>
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
-            <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wider">Demand Forecasting Model (Historical PO Spend vs. Projections)</h3>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={demandForecast.chart_data || []} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Area type="monotone" dataKey="Sales" stroke="#0078d4" fillOpacity={0.1} fill="#0078d4" strokeWidth={2} />
-                  <Area type="monotone" dataKey="Forecast" stroke="#107c41" fillOpacity={0.05} fill="#107c41" strokeDasharray="4 4" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
+          {/* Toast Notification */}
+          {actionSuccess && (
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-xl text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+              <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+              <span>{actionSuccess}</span>
             </div>
-            <div className="bg-slate-50 p-4 rounded-xl text-xs text-slate-650 leading-relaxed font-semibold">
-              💡 **AI Insight**: {demandForecast.recommendation || 'Processing demand forecasting projections...'}
+          )}
+
+          {/* PREDICTIVE FORECASTING TABLE CARD */}
+          <div className="bg-white border border-slate-200/90 rounded-2xl shadow-sm overflow-hidden">
+            {/* Card Header */}
+            <div className="p-6 pb-4 flex flex-wrap justify-between items-start gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+                  AI Predictive Reorder & Lead-Time Sourcing Alerts
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Calculates daily PO burn rates against supplier lead times to trigger automated procurement before stockouts.
+                </p>
+              </div>
+              <span className="bg-[#fffbeb] text-[#92400e] border border-[#fde68a] text-xs font-bold px-3 py-1.5 rounded-lg shrink-0">
+                3 Action Items Required
+              </span>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-[#f8fafc] border-y border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="py-3.5 px-6 font-bold">MATERIAL</th>
+                    <th className="py-3.5 px-6 font-bold min-w-[280px]">DETAILS & FORECAST</th>
+                    <th className="py-3.5 px-6 font-bold whitespace-nowrap">BURN RATE</th>
+                    <th className="py-3.5 px-6 font-bold whitespace-nowrap">LEAD TIME</th>
+                    <th className="py-3.5 px-6 font-bold whitespace-nowrap">ACTION WINDOW</th>
+                    <th className="py-3.5 px-6 font-bold whitespace-nowrap">EST. SPEND</th>
+                    <th className="py-3.5 px-6 font-bold whitespace-nowrap">STATUS</th>
+                    <th className="py-3.5 px-6 font-bold text-center whitespace-nowrap min-w-[180px]">ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                  {/* Row 1: PVC Resin K-67 */}
+                  <tr className="hover:bg-slate-50/50 transition-colors">
+                    <td className="py-5 px-6 align-top">
+                      <div className="font-bold text-slate-900 text-xs">PVC Resin K-67</div>
+                      <span className="inline-block bg-slate-100 text-slate-600 text-[10px] font-semibold px-2 py-0.5 rounded mt-1.5">
+                        Raw Polymers
+                      </span>
+                      <div className="text-[11px] text-slate-400 mt-2 leading-tight">
+                        Primary Supplier:<br />
+                        <strong className="text-slate-800 font-bold">SABIC Polymers</strong>
+                      </div>
+                    </td>
+                    <td className="py-5 px-6 align-top">
+                      <div className="font-bold text-slate-900 text-xs leading-snug">
+                        Based on historical consumption (11.2 MT/day), you will need 504.0 MT of PVC Resin K-67 in 3 days.
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-1.5 leading-normal">
+                        Supplier lead time is 14 days. Sourcing must be initiated within 0 days to prevent production downtime.
+                      </div>
+                    </td>
+                    <td className="py-5 px-6 align-top font-black text-slate-900 text-xs whitespace-nowrap">
+                      11.2 MT/day
+                    </td>
+                    <td className="py-5 px-6 align-top font-black text-slate-900 text-xs whitespace-nowrap">
+                      14 days
+                    </td>
+                    <td className="py-5 px-6 align-top font-black text-[#dc2626] text-xs whitespace-nowrap">
+                      Immediate
+                    </td>
+                    <td className="py-5 px-6 align-top font-black text-slate-900 text-xs whitespace-nowrap">
+                      $529,200
+                    </td>
+                    <td className="py-5 px-6 align-top whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-[#ef4444] shrink-0"></span>
+                        <span className="bg-[#fee2e2]/70 text-[#b91c1c] text-[11px] font-bold px-2 py-0.5 rounded border border-[#fecaca]/60">
+                          Urgent Sourcing
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-5 px-6 align-top text-center">
+                      <button
+                        type="button"
+                        disabled={initiatingRfqItem === 'PVC Resin K-67'}
+                        onClick={() => handleInitiateSourcing({
+                          item_name: 'PVC Resin K-67',
+                          action_reason: 'Supplier lead time is 14 days. Immediate sourcing required.',
+                          rfq_payload: { item_name: 'PVC Resin K-67', quantity: 504, unit: 'MT', priority: 'High', delivery_location: 'Riyadh Central Warehouse' }
+                        })}
+                        className="w-full bg-[#0066cc] hover:bg-[#0052a3] text-white font-bold text-xs py-2 px-3 rounded-lg flex flex-col items-center justify-center shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                      >
+                        <span>{initiatingRfqItem === 'PVC Resin K-67' ? 'Launching...' : 'Auto-Initiate Sourcing'}</span>
+                        <span className="text-[10px] font-normal opacity-90">(504 MT)</span>
+                      </button>
+                    </td>
+                  </tr>
+
+                  {/* Row 2: HDPE Blow Molding Granules */}
+                  <tr className="hover:bg-slate-50/50 transition-colors">
+                    <td className="py-5 px-6 align-top">
+                      <div className="font-bold text-slate-900 text-xs">HDPE Blow Molding Granules</div>
+                      <span className="inline-block bg-slate-100 text-slate-600 text-[10px] font-semibold px-2 py-0.5 rounded mt-1.5">
+                        Raw Polymers
+                      </span>
+                      <div className="text-[11px] text-slate-400 mt-2 leading-tight">
+                        Primary Supplier:<br />
+                        <strong className="text-slate-800 font-bold">Borouge</strong>
+                      </div>
+                    </td>
+                    <td className="py-5 px-6 align-top">
+                      <div className="font-bold text-slate-900 text-xs leading-snug">
+                        Based on historical consumption (8.5 MT/day), you will need 255.0 MT of HDPE Blow Molding Granules in 17 days.
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-1.5 leading-normal">
+                        Supplier lead time is 12 days. Sourcing must be initiated within 5 days to prevent production downtime.
+                      </div>
+                    </td>
+                    <td className="py-5 px-6 align-top font-black text-slate-900 text-xs whitespace-nowrap">
+                      8.5 MT/day
+                    </td>
+                    <td className="py-5 px-6 align-top font-black text-slate-900 text-xs whitespace-nowrap">
+                      12 days
+                    </td>
+                    <td className="py-5 px-6 align-top font-black text-[#dc2626] text-xs whitespace-nowrap">
+                      In 5 days
+                    </td>
+                    <td className="py-5 px-6 align-top font-black text-slate-900 text-xs whitespace-nowrap">
+                      $300,900
+                    </td>
+                    <td className="py-5 px-6 align-top whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-[#ef4444] shrink-0"></span>
+                        <span className="bg-[#fee2e2]/70 text-[#b91c1c] text-[11px] font-bold px-2 py-0.5 rounded border border-[#fecaca]/60">
+                          Urgent Sourcing
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-5 px-6 align-top text-center">
+                      <button
+                        type="button"
+                        disabled={initiatingRfqItem === 'HDPE Blow Molding Granules'}
+                        onClick={() => handleInitiateSourcing({
+                          item_name: 'HDPE Blow Molding Granules',
+                          action_reason: 'Supplier lead time is 12 days. Sourcing needed in 5 days.',
+                          rfq_payload: { item_name: 'HDPE Blow Molding Granules', quantity: 255, unit: 'MT', priority: 'High', delivery_location: 'Riyadh Central Warehouse' }
+                        })}
+                        className="w-full bg-[#0066cc] hover:bg-[#0052a3] text-white font-bold text-xs py-2 px-3 rounded-lg flex flex-col items-center justify-center shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                      >
+                        <span>{initiatingRfqItem === 'HDPE Blow Molding Granules' ? 'Launching...' : 'Auto-Initiate Sourcing'}</span>
+                        <span className="text-[10px] font-normal opacity-90">(255 MT)</span>
+                      </button>
+                    </td>
+                  </tr>
+
+                  {/* Row 3: Heat Stabilizers CZ-80 */}
+                  <tr className="hover:bg-slate-50/50 transition-colors">
+                    <td className="py-5 px-6 align-top">
+                      <div className="font-bold text-slate-900 text-xs">Heat Stabilizers CZ-80</div>
+                      <span className="inline-block bg-slate-100 text-slate-600 text-[10px] font-semibold px-2 py-0.5 rounded mt-1.5">
+                        Additives & Chemicals
+                      </span>
+                      <div className="text-[11px] text-slate-400 mt-2 leading-tight">
+                        Primary Supplier:<br />
+                        <strong className="text-slate-800 font-bold">BASF Middle East</strong>
+                      </div>
+                    </td>
+                    <td className="py-5 px-6 align-top">
+                      <div className="font-bold text-slate-900 text-xs leading-snug">
+                        Based on historical consumption (1.8 MT/day), you will need 108.0 MT of Heat Stabilizers CZ-80 in 22 days.
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-1.5 leading-normal">
+                        Supplier lead time is 10 days. Sourcing must be initiated within 12 days to prevent production downtime.
+                      </div>
+                    </td>
+                    <td className="py-5 px-6 align-top font-black text-slate-900 text-xs whitespace-nowrap">
+                      1.8 MT/day
+                    </td>
+                    <td className="py-5 px-6 align-top font-black text-slate-900 text-xs whitespace-nowrap">
+                      10 days
+                    </td>
+                    <td className="py-5 px-6 align-top font-black text-amber-600 text-xs whitespace-nowrap">
+                      In 12 days
+                    </td>
+                    <td className="py-5 px-6 align-top font-black text-slate-900 text-xs whitespace-nowrap">
+                      $259,200
+                    </td>
+                    <td className="py-5 px-6 align-top whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>
+                        <span className="bg-amber-50 text-amber-800 text-[11px] font-bold px-2 py-0.5 rounded border border-amber-200">
+                          Scheduled Reorder
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-5 px-6 align-top text-center">
+                      <button
+                        type="button"
+                        disabled={initiatingRfqItem === 'Heat Stabilizers CZ-80'}
+                        onClick={() => handleInitiateSourcing({
+                          item_name: 'Heat Stabilizers CZ-80',
+                          action_reason: 'Supplier lead time is 10 days. Sourcing needed in 12 days.',
+                          rfq_payload: { item_name: 'Heat Stabilizers CZ-80', quantity: 108, unit: 'MT', priority: 'Medium', delivery_location: 'Riyadh Central Warehouse' }
+                        })}
+                        className="w-full bg-[#0066cc] hover:bg-[#0052a3] text-white font-bold text-xs py-2 px-3 rounded-lg flex flex-col items-center justify-center shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                      >
+                        <span>{initiatingRfqItem === 'Heat Stabilizers CZ-80' ? 'Launching...' : 'Auto-Initiate Sourcing'}</span>
+                        <span className="text-[10px] font-normal opacity-90">(108 MT)</span>
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
