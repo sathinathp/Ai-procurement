@@ -236,6 +236,31 @@ def ai_extract_from_body(body_text: str) -> dict:
         return default_vals
 
 
+def sanitize_counter_offer_text(text: str) -> str:
+    """Strip any percentage reduction phrases, 10% lower mentions, or formula calculations."""
+    if not text:
+        return text
+    # Regex patterns to strip percentage/reduction phrasing
+    patterns = [
+        r",?\s*which is \d+(?:\.\d+)?%\s*(?:lower|discount|reduction|less)(?:\s+than your quoted price)?",
+        r",?\s*which represents a \d+(?:\.\d+)?%\s*(?:lower|discount|reduction|decrease)(?:\s+from your quoted price)?",
+        r",?\s*which is a \d+(?:\.\d+)?%\s*(?:discount|reduction|decrease|lower rate)(?:\s+than your quoted price)?",
+        r"\(\d+(?:\.\d+)?%\s*(?:discount|reduction|lower|off)\)",
+        r",?\s*\d+(?:\.\d+)?%\s*(?:discount|reduction|lower|off)",
+        r",?\s*representing a \d+(?:\.\d+)?%\s*discount",
+        r",?\s*due to budget constraints and market conditions",
+        r",?\s*representing a \d+(?:\.\d+)?%\s*price adjustment",
+    ]
+    for pattern in patterns:
+        text = re.sub(pattern, "", text, flags=re.IGNORECASE)
+    
+    # Ensure punctuation & spacing is clean after stripping
+    text = re.sub(r"\s+,", ",", text)
+    text = re.sub(r"\s+\.", ".", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    return text.strip()
+
+
 def generate_ai_counter_offer(rfq_item: str, supplier_name: str, supplier_price: float, currency: str, round_num: int, target_price_override: float = None) -> dict:
     """Generate a counter offer email draft and price using OpenAI."""
     openai_key = os.getenv("OPENAI_API_KEY")
@@ -249,13 +274,13 @@ def generate_ai_counter_offer(rfq_item: str, supplier_name: str, supplier_price:
         target_price = 0.0
     
     default_body = (
-        f"Dear {supplier_name} Sales Team,\n\n"
-        f"Thank you for your quotation for {rfq_item}.\n\n"
-        f"We would like to propose a counter-offer price of {currency} {target_price:.2f}/unit with standard Net 60 Days payment terms.\n\n"
-        f"Could you please confirm if you can accommodate this rate of {currency} {target_price:.2f}/unit so we can proceed with final order placement?\n\n"
+        f"Dear {supplier_name} Team,\n\n"
+        f"Thank you for your recent offer regarding the {rfq_item}. We appreciate your prompt response and the details provided.\n\n"
+        f"After careful consideration, we would like to present a counter-offer of {currency} {target_price:.2f}/unit with Net 60 Days payment terms for this transaction.\n\n"
+        f"Could you please confirm if you can accept this counter-offer?\n\n"
+        f"Thank you for your attention to this matter. We look forward to your prompt response.\n\n"
         f"Best regards,\n\n"
-        f"Petabytz Procurement Team\n"
-        f"Procurement Operations Department\n"
+        f"Procurement Operations Team\n"
         f"ProcureX Co."
     )
 
@@ -265,12 +290,17 @@ def generate_ai_counter_offer(rfq_item: str, supplier_name: str, supplier_price:
     try:
         client = OpenAI(api_key=openai_key.strip())
         system_prompt = (
-            "You are the Petabytz Procurement Team, representing the Procurement Operations Department at ProcureX Co. "
-            "Generate a concise, polite, formal email to a supplier proposing a counter-offer.\n"
-            "STRICT GUIDELINES:\n"
+            "You are the Procurement Operations Team representing ProcureX Co. "
+            "Generate a concise, polite, formal email to a supplier presenting a counter-offer.\n"
+            "STRICT GUIDELINES & RULES:\n"
             f"- You MUST present the EXACT counter-offer price of {currency} {target_price:.2f}/unit.\n"
-            "- Do NOT mention '10% reduction', percentage discounts, or formula calculations. Do NOT use phrases like 'which represents a 10% reduction from your quoted price' or 'budget constraints and market conditions'.\n"
-            f"- State directly and clearly that we are proposing a counter-offer rate of {currency} {target_price:.2f}/unit with Net 60 Days payment terms.\n"
+            "- CRITICAL: DO NOT include ANY phrase mentioning percentages, discounts, reductions, formulas, or calculations. "
+            "NEVER say 'which is 10% lower than your quoted price', '10% discount', 'representing a reduction', or '% lower'.\n"
+            f"- Use this standard sentence: 'After careful consideration, we would like to present a counter-offer of {currency} {target_price:.2f}/unit with Net 60 Days payment terms for this transaction.'\n"
+            "- Sign off with:\n"
+            "Best regards,\n\n"
+            "Procurement Operations Team\n"
+            "ProcureX Co.\n\n"
             "- Generate a JSON object with two keys:\n"
             "  - body: The email body text (no subject line or headers)\n"
             "  - target_price: The exact counter-offer price (float)\n"
@@ -282,7 +312,7 @@ def generate_ai_counter_offer(rfq_item: str, supplier_name: str, supplier_price:
             f"Supplier Quoted Price: {currency} {supplier_price:.2f}\n"
             f"Our Exact Counter-Offer Price: {currency} {target_price:.2f}\n"
             f"Negotiation Round: {round_num}\n"
-            f"Instruction: State the counter-offer price {currency} {target_price:.2f}/unit directly. Do not mention any percentage or reduction breakdown."
+            f"Instruction: Present the counter-offer of {currency} {target_price:.2f}/unit with Net 60 Days payment terms. Zero mention of percentages or 10% reductions."
         )
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -298,8 +328,15 @@ def generate_ai_counter_offer(rfq_item: str, supplier_name: str, supplier_price:
             if res_text.endswith("```"):
                 res_text = res_text.rsplit("\n", 1)[0]
         data = json.loads(res_text.strip())
+        raw_body = data.get("body", default_body)
+        cleaned_body = sanitize_counter_offer_text(raw_body)
+        
+        # Ensure the body contains the exact target price; if lost or mangled, use default_body
+        if f"{target_price:.2f}" not in cleaned_body and str(int(target_price)) not in cleaned_body:
+            cleaned_body = default_body
+
         return {
-            "body": data.get("body", default_body),
+            "body": cleaned_body,
             "target_price": target_price
         }
     except Exception as e:
