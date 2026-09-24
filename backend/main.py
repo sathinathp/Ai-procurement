@@ -21,6 +21,36 @@ logger = logging.getLogger(__name__)
 # Ensure tables are created
 models.Base.metadata.create_all(bind=engine)
 
+def run_db_migrations():
+    import sqlite3
+    try:
+        db_path = os.path.join(os.path.dirname(__file__), "procurement.db")
+        if os.path.exists(db_path):
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+            cur.execute("PRAGMA table_info(rfqs)")
+            cols = [row[1] for row in cur.fetchall()]
+            if cols and "target_price" not in cols:
+                cur.execute("ALTER TABLE rfqs ADD COLUMN target_price REAL")
+                logger.info("Migrated rfqs table: added target_price column.")
+            if cols and "target_currency" not in cols:
+                cur.execute("ALTER TABLE rfqs ADD COLUMN target_currency TEXT DEFAULT 'USD'")
+                logger.info("Migrated rfqs table: added target_currency column.")
+            if cols and "auto_negotiate" not in cols:
+                cur.execute("ALTER TABLE rfqs ADD COLUMN auto_negotiate INTEGER DEFAULT 1")
+                logger.info("Migrated rfqs table: added auto_negotiate column.")
+            cur.execute("PRAGMA table_info(negotiation_logs)")
+            nego_cols = [row[1] for row in cur.fetchall()]
+            if nego_cols and "is_final" not in nego_cols:
+                cur.execute("ALTER TABLE negotiation_logs ADD COLUMN is_final INTEGER DEFAULT 0")
+                logger.info("Migrated negotiation_logs table: added is_final column.")
+            conn.commit()
+            conn.close()
+    except Exception as e:
+        logger.warning(f"Migration check error: {e}")
+
+run_db_migrations()
+
 app = FastAPI(title="ProcureX Copilot API", version="1.0.0")
 
 # CORS middleware config
@@ -701,9 +731,16 @@ def create_rfq(rfq_data: dict, db: Session = Depends(get_db)):
             existing.remarks              = rfq_data.get("remarks",             existing.remarks)
             existing.warranty_requirement = rfq_data.get("warranty_requirement", existing.warranty_requirement)
             existing.delivery_tolerance   = rfq_data.get("delivery_tolerance",   existing.delivery_tolerance)
+            if "target_price" in rfq_data:
+                existing.target_price     = float(rfq_data["target_price"]) if rfq_data["target_price"] is not None else None
+            if "target_currency" in rfq_data:
+                existing.target_currency  = rfq_data.get("target_currency", "USD")
+            if "auto_negotiate" in rfq_data:
+                existing.auto_negotiate   = bool(rfq_data["auto_negotiate"])
             new_rfq = existing
         else:
             # Create
+            target_price_val = float(rfq_data["target_price"]) if rfq_data.get("target_price") is not None and str(rfq_data.get("target_price")).strip() != "" else None
             new_rfq = models.RFQ(
                 rfq_number          = rfq_number,
                 project_name        = rfq_data.get("project_name", ""),
@@ -722,7 +759,10 @@ def create_rfq(rfq_data: dict, db: Session = Depends(get_db)):
                 remarks             = rfq_data.get("remarks"),
                 warranty_requirement = rfq_data.get("warranty_requirement"),
                 delivery_tolerance   = rfq_data.get("delivery_tolerance"),
-                status              = "Created"
+                status              = "Created",
+                target_price        = target_price_val,
+                target_currency     = rfq_data.get("target_currency", "USD"),
+                auto_negotiate      = rfq_data.get("auto_negotiate", True)
             )
             db.add(new_rfq)
             db.add(models.RFQTimeline(
@@ -741,7 +781,10 @@ def create_rfq(rfq_data: dict, db: Session = Depends(get_db)):
                 "item_name":    new_rfq.item_name,
                 "quantity":     new_rfq.quantity,
                 "unit":         new_rfq.unit,
-                "status":       new_rfq.status
+                "status":       new_rfq.status,
+                "target_price": new_rfq.target_price,
+                "target_currency": new_rfq.target_currency,
+                "auto_negotiate": new_rfq.auto_negotiate
             }
         }
     except Exception as e:
@@ -5623,19 +5666,39 @@ def run_db_migrations():
         if "postgresql" in db_url:
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE email_history ADD COLUMN IF NOT EXISTS supplier_email VARCHAR(255);"))
+                conn.execute(text("ALTER TABLE rfqs ADD COLUMN IF NOT EXISTS target_price DOUBLE PRECISION;"))
+                conn.execute(text("ALTER TABLE rfqs ADD COLUMN IF NOT EXISTS target_currency VARCHAR(10) DEFAULT 'USD';"))
+                conn.execute(text("ALTER TABLE rfqs ADD COLUMN IF NOT EXISTS auto_negotiate BOOLEAN DEFAULT TRUE;"))
                 conn.commit()
-                logger.info("Database migration successful: ALTER TABLE email_history ADD COLUMN IF NOT EXISTS supplier_email")
+                logger.info("PostgreSQL migrations applied successfully")
         else:
             with engine.connect() as conn:
-                try:
-                    conn.execute(text("ALTER TABLE email_history ADD COLUMN supplier_email VARCHAR(255);"))
-                    conn.commit()
-                    logger.info("Database migration successful: ALTER TABLE email_history ADD COLUMN supplier_email")
-                except Exception as sqlite_err:
-                    if "duplicate column name" in str(sqlite_err).lower() or "already exists" in str(sqlite_err).lower():
-                        logger.info("Column supplier_email already exists in email_history (SQLite)")
-                    else:
-                        logger.error(f"SQLite migration error: {sqlite_err}")
+                for col, col_def in [
+                    ("supplier_email", "supplier_email VARCHAR(255)"),
+                ]:
+                    try:
+                        conn.execute(text(f"ALTER TABLE email_history ADD COLUMN {col_def};"))
+                        conn.commit()
+                    except Exception as err:
+                        if "duplicate column name" in str(err).lower() or "already exists" in str(err).lower():
+                            pass
+                        else:
+                            logger.error(f"Migration error on email_history.{col}: {err}")
+                
+                for col, col_def in [
+                    ("target_price", "target_price REAL"),
+                    ("target_currency", "target_currency VARCHAR(10) DEFAULT 'USD'"),
+                    ("auto_negotiate", "auto_negotiate BOOLEAN DEFAULT 1"),
+                ]:
+                    try:
+                        conn.execute(text(f"ALTER TABLE rfqs ADD COLUMN {col_def};"))
+                        conn.commit()
+                    except Exception as err:
+                        if "duplicate column name" in str(err).lower() or "already exists" in str(err).lower():
+                            pass
+                        else:
+                            logger.error(f"Migration error on rfqs.{col}: {err}")
+                logger.info("SQLite database columns verified and migrated.")
     except Exception as e:
         logger.error(f"Database migration failed: {e}")
 
@@ -5896,6 +5959,17 @@ def launch_real_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
         if not rfq:
             raise HTTPException(status_code=404, detail="RFQ not found")
             
+        # Update RFQ settings if provided in payload
+        if "target_price" in data and data["target_price"] is not None and str(data["target_price"]).strip() != "":
+            try:
+                rfq.target_price = float(data["target_price"])
+            except (ValueError, TypeError):
+                pass
+        if "target_currency" in data and data["target_currency"]:
+            rfq.target_currency = str(data["target_currency"])
+        if "auto_negotiate" in data:
+            rfq.auto_negotiate = bool(data["auto_negotiate"])
+
         # Update RFQ status to Outreach Sent
         rfq.status = "Outreach Sent"
         
@@ -5911,7 +5985,7 @@ def launch_real_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
             rfq_number=rfq_number,
             stage="RFQ Sent",
             timestamp=datetime.utcnow(),
-            details=f"Real RFP outreach campaign launched to {len(supplier_ids)} matched suppliers."
+            details=f"Real RFP outreach campaign launched to {len(supplier_ids)} matched suppliers. Auto-Negotiate: {'Enabled (Target: ' + str(rfq.target_currency or 'USD') + ' ' + str(rfq.target_price) + ')' if rfq.auto_negotiate and rfq.target_price else 'Disabled'}."
         ))
         
         custom_emails = data.get("custom_emails", {})
@@ -5922,29 +5996,50 @@ def launch_real_campaign(data: Dict[str, Any], db: Session = Depends(get_db)):
                 continue
                 
             custom_email = custom_emails.get(str(s_id)) or custom_emails.get(int(s_id))
-            # Use the custom_email as a dispatch-only override — do NOT permanently overwrite
-            # the supplier's DB email, as that causes all suppliers with the same test mailbox
-            # to share one inbox and cross-contaminate negotiation replies.
             dispatch_email = (custom_email.strip() if custom_email and custom_email.strip() else None) or supplier.email
                 
             if not dispatch_email:
                 continue
                 
-            subject = f"Request for Quotation: {rfq.item_name} ({rfq.rfq_number})"
-            body = (
-                f"Dear {supplier.name} Sales Team,\n\n"
-                f"I hope this email finds you well.\n\n"
-                f"We would like to request a formal commercial quotation for the following material requirement:\n\n"
-                f"· Item: {rfq.item_name}\n"
-                f"· Quantity: {rfq.quantity} {rfq.unit}\n"
-                f"· Delivery Location: {rfq.delivery_location or 'Yanbu Site'}\n"
-                f"· Required Delivery Date: {rfq.required_date or 'As soon as possible'}\n\n"
-                f"Please reply directly to this email with your quote (Price per unit, currency, payment terms, and lead time) so we can proceed with the review process.\n\n"
-                f"Best regards,\n\n"
-                f"Petabytz Procurement Team\n"
-                f"Procurement Operations Department\n"
-                f"ProcureX Co."
-            )
+            is_auto_neg = bool(rfq.auto_negotiate and rfq.target_price is not None and float(rfq.target_price) > 0)
+            curr = rfq.target_currency or "USD"
+
+            if is_auto_neg:
+                t_price_str = f"{curr} {float(rfq.target_price):.2f}"
+                subject = f"Request for Quotation: {rfq.item_name} ({rfq.rfq_number}) - Target Price: {t_price_str}"
+                body = (
+                    f"Dear {supplier.name} Sales Team,\n\n"
+                    f"I hope this email finds you well.\n\n"
+                    f"We would like to request a formal commercial quotation for the following material requirement:\n\n"
+                    f"· Item: {rfq.item_name}\n"
+                    f"· Quantity: {rfq.quantity} {rfq.unit}\n"
+                    f"· Delivery Location: {rfq.delivery_location or 'Yanbu Site'}\n"
+                    f"· Required Delivery Date: {rfq.required_date or 'As soon as possible'}\n"
+                    f"· Buyer Target / Negotiation Price: {t_price_str}/unit\n\n"
+                    f"Our target negotiation price for this requirement is {t_price_str}/unit. "
+                    f"Please review and reply directly to this email with your best quotation around this target price "
+                    f"(including exact unit price, currency, payment terms, and lead time) so we can proceed with the review and negotiation process.\n\n"
+                    f"Best regards,\n\n"
+                    f"Petabytz Procurement Team\n"
+                    f"Procurement Operations Department\n"
+                    f"ProcureX Co."
+                )
+            else:
+                subject = f"Request for Quotation: {rfq.item_name} ({rfq.rfq_number})"
+                body = (
+                    f"Dear {supplier.name} Sales Team,\n\n"
+                    f"I hope this email finds you well.\n\n"
+                    f"We would like to request a formal commercial quotation for the following material requirement:\n\n"
+                    f"· Item: {rfq.item_name}\n"
+                    f"· Quantity: {rfq.quantity} {rfq.unit}\n"
+                    f"· Delivery Location: {rfq.delivery_location or 'Yanbu Site'}\n"
+                    f"· Required Delivery Date: {rfq.required_date or 'As soon as possible'}\n\n"
+                    f"Please reply directly to this email with your quote (Price per unit, currency, payment terms, and lead time) so we can proceed with the review process.\n\n"
+                    f"Best regards,\n\n"
+                    f"Petabytz Procurement Team\n"
+                    f"Procurement Operations Department\n"
+                    f"ProcureX Co."
+                )
             
             # Record in EmailHistory (use dispatch_email for the email field, keep DB email untouched)
             db.add(models.EmailHistory(
@@ -6163,12 +6258,13 @@ def send_counter_offer_email(data: Dict[str, Any], db: Session = Depends(get_db)
 
         # Generate AI counter-offer body
         from automation_engine import generate_ai_counter_offer, send_real_email_direct
-        target_price = price if price > 0 else last_quoted_price * 0.90
+        currency = rfq.target_currency or "USD"
+        target_price = price if price > 0 else (rfq.target_price if rfq.target_price else last_quoted_price * 0.90)
         negotiation_res = generate_ai_counter_offer(
             rfq.item_name,
             supplier.name,
             last_quoted_price,
-            "USD",
+            currency,
             round_num,
             target_price_override=target_price
         )
@@ -6202,7 +6298,7 @@ def send_counter_offer_email(data: Dict[str, Any], db: Session = Depends(get_db)
             subject=outbound_subject,
             body=outbound_body,
             extracted_price=target_price,
-            extracted_currency="USD",
+            extracted_currency=currency,
             extracted_lead_time=lead_time,
             sent_at=datetime.utcnow(),
             reply_received=False,
@@ -6240,6 +6336,7 @@ def send_counter_offer_email(data: Dict[str, Any], db: Session = Depends(get_db)
 @app.get("/api/campaign/real-status")
 def get_real_campaign_status(rfq_number: str, db: Session = Depends(get_db)):
     try:
+        rfq = db.query(models.RFQ).filter(models.RFQ.rfq_number == rfq_number).first()
         notification = db.query(models.WorkflowNotification).filter(
             models.WorkflowNotification.rfq_number == rfq_number
         ).order_by(models.WorkflowNotification.id.desc()).first()
@@ -6289,6 +6386,9 @@ def get_real_campaign_status(rfq_number: str, db: Session = Depends(get_db)):
         return {
             "completed": completed,
             "notification_id": notification.id if notification else None,
+            "target_price": rfq.target_price if rfq else None,
+            "target_currency": rfq.target_currency if rfq else "USD",
+            "auto_negotiate": rfq.auto_negotiate if rfq else True,
             "logs": formatted_logs,
             "quotes": formatted_quotes
         }
@@ -6372,6 +6472,9 @@ async def websocket_campaign_status(websocket: WebSocket, rfq_number: str):
                 await websocket.send_json({
                     "completed": completed,
                     "notification_id": notification.id if notification else None,
+                    "target_price": rfq.target_price if rfq else None,
+                    "target_currency": rfq.target_currency if rfq else "USD",
+                    "auto_negotiate": rfq.auto_negotiate if rfq else True,
                     "logs": formatted_logs,       # new only — for addLog dedup in frontend
                     "all_logs": all_logs,          # all — for setCampaignLogs full state
                     "quotes": formatted_quotes

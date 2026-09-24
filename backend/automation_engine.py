@@ -247,18 +247,19 @@ def generate_ai_counter_offer(rfq_item: str, supplier_name: str, supplier_price:
     """Generate a counter offer email draft and price using OpenAI."""
     openai_key = os.getenv("OPENAI_API_KEY")
     
-    # Propose 10% lower target price or use explicit override if provided
+    # Use explicit target price entered by user
     if target_price_override is not None and float(target_price_override) > 0:
         target_price = round(float(target_price_override), 2)
-    else:
+    elif supplier_price > 0:
         target_price = round(supplier_price * 0.90, 2)
+    else:
+        target_price = 0.0
     
     default_body = (
         f"Dear {supplier_name} Sales Team,\n\n"
-        f"Thank you for your revised quotation of {currency} {supplier_price:.2f}/unit for {rfq_item} (Round {round_num}).\n\n"
-        f"We appreciate your response. However, our target price for this requirement is {currency} {target_price:.2f}/unit "
-        f"with standard Net 60 Days payment terms.\n\n"
-        f"Could you please confirm if you can accommodate this rate so we can proceed with the final management review and shortlisting?\n\n"
+        f"Thank you for your quotation for {rfq_item}.\n\n"
+        f"We would like to propose a counter-offer price of {currency} {target_price:.2f}/unit with standard Net 60 Days payment terms.\n\n"
+        f"Could you please confirm if you can accommodate this rate of {currency} {target_price:.2f}/unit so we can proceed with final order placement?\n\n"
         f"Best regards,\n\n"
         f"Petabytz Procurement Team\n"
         f"Procurement Operations Department\n"
@@ -272,23 +273,23 @@ def generate_ai_counter_offer(rfq_item: str, supplier_name: str, supplier_price:
         client = OpenAI(api_key=openai_key.strip())
         system_prompt = (
             "You are the Petabytz Procurement Team, representing the Procurement Operations Department at ProcureX Co. "
-            "Generate a polite, formal email to a supplier. The email should acknowledge their current offer, present the "
-            f"exact counter-offer target price of {currency} {target_price:.2f}/unit requested by the buyer, request Net 60 Days terms, "
-            "and ask them to confirm if they can accept.\n"
-            f"CRITICAL REQUIREMENT: You MUST use the EXACT counter-offer price {currency} {target_price:.2f}/unit in the email body text. "
-            "Do NOT calculate a 10% discount or substitute any other amount.\n"
-            "Generate a JSON object with two keys:\n"
-            "- body: The email body text (no subject line or headers)\n"
-            "- target_price: The exact counter-offer price (float)\n"
+            "Generate a concise, polite, formal email to a supplier proposing a counter-offer.\n"
+            "STRICT GUIDELINES:\n"
+            f"- You MUST present the EXACT counter-offer price of {currency} {target_price:.2f}/unit.\n"
+            "- Do NOT mention '10% reduction', percentage discounts, or formula calculations. Do NOT use phrases like 'which represents a 10% reduction from your quoted price' or 'budget constraints and market conditions'.\n"
+            f"- State directly and clearly that we are proposing a counter-offer rate of {currency} {target_price:.2f}/unit with Net 60 Days payment terms.\n"
+            "- Generate a JSON object with two keys:\n"
+            "  - body: The email body text (no subject line or headers)\n"
+            "  - target_price: The exact counter-offer price (float)\n"
             "Output ONLY raw JSON."
         )
         user_prompt = (
             f"RFQ Item: {rfq_item}\n"
             f"Supplier Name: {supplier_name}\n"
-            f"Supplier Price Quoted: {currency} {supplier_price:.2f}\n"
-            f"Target Counter-Offer Price: {currency} {target_price:.2f}\n"
+            f"Supplier Quoted Price: {currency} {supplier_price:.2f}\n"
+            f"Our Exact Counter-Offer Price: {currency} {target_price:.2f}\n"
             f"Negotiation Round: {round_num}\n"
-            f"Note: Ensure the email body explicitly requests {currency} {target_price:.2f}/unit."
+            f"Instruction: State the counter-offer price {currency} {target_price:.2f}/unit directly. Do not mention any percentage or reduction breakdown."
         )
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -296,7 +297,7 @@ def generate_ai_counter_offer(rfq_item: str, supplier_name: str, supplier_price:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.2
+            temperature=0.1
         )
         res_text = response.choices[0].message.content.strip()
         if res_text.startswith("```"):
@@ -1016,6 +1017,9 @@ def check_and_process_emails(db: Session, raise_on_error: bool = False):
                         max_rounds = settings.get("max_negotiation_rounds", 3)
                         is_rejected = quote_data.get("rejected", False)
                         is_agreed = quote_data.get("agreed", False)
+                        is_auto_neg = bool(rfq.auto_negotiate if hasattr(rfq, 'auto_negotiate') and rfq.auto_negotiate is not None else True)
+                        target_price_ref = float(rfq.target_price) if (hasattr(rfq, 'target_price') and rfq.target_price is not None and float(rfq.target_price) > 0) else None
+                        target_already_met = bool(target_price_ref is not None and price is not None and price <= target_price_ref)
 
                         if is_rejected:
                             inbound_log.is_final = True
@@ -1079,11 +1083,11 @@ def check_and_process_emails(db: Session, raise_on_error: bool = False):
                                 logger.info(f"All invited suppliers have completed negotiations for RFQ {rfq_number}. Running comparison...")
                                 run_comparison_and_notify(db, rfq_number)
 
-                        elif is_agreed:
+                        elif is_agreed or target_already_met or not is_auto_neg:
                             inbound_log.is_final = True
                             
                             # If supplier agreed and no explicit price in email, use the last outbound target price
-                            if not price or price <= 0:
+                            if is_agreed and (not price or price <= 0):
                                 last_outbound = db.query(models.NegotiationLog).filter_by(
                                     rfq_number=rfq_number,
                                     supplier_id=supplier.id,
@@ -1120,14 +1124,15 @@ def check_and_process_emails(db: Session, raise_on_error: bool = False):
                                 db.add(new_quote)
                                 
                             # Add timeline event
+                            reason_note = "Target Price Met" if target_already_met else ("Auto-Negotiation Disabled" if not is_auto_neg else "Agreed to Target Price")
                             db.add(models.RFQTimeline(
                                 rfq_number=rfq_number,
                                 stage="Supplier Responded",
                                 timestamp=datetime.utcnow(),
-                                details=f"{supplier.name} agreed to target price. Final bid: {currency} {price}/unit."
+                                details=f"{supplier.name} quotation received: {currency} {price}/unit ({reason_note})."
                             ))
                             db.commit()
-                            logger.info(f"Supplier {supplier.name} agreed to target price on RFQ {rfq_number}.")
+                            logger.info(f"Supplier {supplier.name} quote saved for RFQ {rfq_number}: {currency} {price} ({reason_note}).")
                             
                             # Check if ALL invited suppliers have completed negotiations
                             invited_emails = db.query(models.EmailHistory).filter_by(
@@ -1155,9 +1160,9 @@ def check_and_process_emails(db: Session, raise_on_error: bool = False):
                                 logger.info(f"All invited suppliers have completed negotiations for RFQ {rfq_number}. Running comparison...")
                                 run_comparison_and_notify(db, rfq_number)
 
-                        elif current_round < max_rounds:
+                        elif is_auto_neg and current_round < max_rounds:
                             # Generate Counter-Offer!
-                            negotiation_res = generate_ai_counter_offer(rfq.item_name, supplier.name, price, currency, current_round)
+                            negotiation_res = generate_ai_counter_offer(rfq.item_name, supplier.name, price, currency, current_round, target_price_override=target_price_ref)
                             outbound_body = negotiation_res.get("body")
                             target_price = negotiation_res.get("target_price")
                             
@@ -1333,6 +1338,10 @@ def process_inbound_supplier_reply(db: Session, rfq_number: str, supplier_id: in
     settings = get_agent_settings()
     max_rounds = int(settings.get("max_negotiation_rounds", 3))
     
+    is_auto_neg = bool(rfq.auto_negotiate if hasattr(rfq, 'auto_negotiate') and rfq.auto_negotiate is not None else True)
+    target_price_ref = float(rfq.target_price) if (hasattr(rfq, 'target_price') and rfq.target_price is not None and float(rfq.target_price) > 0) else None
+    target_already_met = bool(target_price_ref is not None and price is not None and price <= target_price_ref)
+
     if rejected:
         inbound_log.is_final = True
         existing_quote = db.query(models.QuoteResponse).filter_by(
@@ -1362,7 +1371,7 @@ def process_inbound_supplier_reply(db: Session, rfq_number: str, supplier_id: in
             details=f"{supplier.name} rejected target price or cancelled negotiation. Final: USD {price}."
         ))
         db.commit()
-    elif agreed:
+    elif agreed or target_already_met or not is_auto_neg:
         inbound_log.is_final = True
         existing_quote = db.query(models.QuoteResponse).filter_by(
             rfq_number=rfq_number,
@@ -1386,15 +1395,16 @@ def process_inbound_supplier_reply(db: Session, rfq_number: str, supplier_id: in
                 responded_at=datetime.utcnow(),
                 status="Quotation Received"
             ))
+        reason_note = "Target Price Met" if target_already_met else ("Auto-Negotiation Disabled" if not is_auto_neg else "Agreed to Price")
         db.add(models.RFQTimeline(
             rfq_number=rfq_number,
             stage="Supplier Responded",
             timestamp=datetime.utcnow(),
-            details=f"{supplier.name} agreed to target price. Final bid: USD {price}/unit."
+            details=f"{supplier.name} quotation received: USD {price}/unit ({reason_note})."
         ))
         db.commit()
-    elif current_round < max_rounds:
-        negotiation_res = generate_ai_counter_offer(rfq.item_name, supplier.name, price, "USD", current_round)
+    elif is_auto_neg and current_round < max_rounds:
+        negotiation_res = generate_ai_counter_offer(rfq.item_name, supplier.name, price, "USD", current_round, target_price_override=target_price_ref)
         outbound_body = negotiation_res.get("body")
         target_price = negotiation_res.get("target_price")
         outbound_subject = f"RE: RFQ Invitation: {rfq.item_name} ({rfq_number})"

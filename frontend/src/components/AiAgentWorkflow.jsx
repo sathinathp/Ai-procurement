@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Bot, Sparkles, Upload, Download, Play, RefreshCw, 
   CheckCircle, AlertCircle, Terminal, Settings, FileText, 
@@ -12,6 +13,25 @@ import {
 } from '../services/api';
 
 export default function AiAgentWorkflow() {
+  const getInitialState = (key, fallback) => {
+    try {
+      const saved = localStorage.getItem('ai_agent_state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (key === 'agentStatus' && parsed[key] === 'running') {
+          return 'idle';
+        }
+        if (key === 'uploading' && parsed[key] === true) {
+          return false;
+        }
+        if (parsed[key] !== undefined) return parsed[key];
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return fallback;
+  };
+
   const [systemPrompt, setSystemPrompt] = useState(
     "You are an autonomous procurement ProcureX agent. Upon RFQ upload, extract parameters, perform stock verification, match the top 3 suppliers, generate outreach emails, simulate best-price negotiations, automatically create a purchase order, and sync the PO directly to the Dynamics 365 ERP gateway."
   );
@@ -20,6 +40,13 @@ export default function AiAgentWorkflow() {
   const [agreedPrices, setAgreedPrices] = useState({}); // { [supplierId]: { target: number, original: number } }
   const [lastLogCount, setLastLogCount] = useState({});
   
+  const [showTargetPriceModal, setShowTargetPriceModal] = useState(false);
+  const [targetPriceInput, setTargetPriceInput] = useState(() => getInitialState('targetPriceInput', ''));
+  const [targetCurrency, setTargetCurrency] = useState(() => getInitialState('targetCurrency', 'USD'));
+  const [confirmedTargetPrice, setConfirmedTargetPrice] = useState(() => getInitialState('confirmedTargetPrice', null));
+  const [pendingUploadFile, setPendingUploadFile] = useState(null);
+  const [pendingRecommendationAction, setPendingRecommendationAction] = useState(null);
+
   const [settings, setSettings] = useState({
     autoNegotiation: true,
     matchThreshold: 80,
@@ -41,25 +68,6 @@ export default function AiAgentWorkflow() {
       return [];
     }
   });
-
-  const getInitialState = (key, fallback) => {
-    try {
-      const saved = localStorage.getItem('ai_agent_state');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (key === 'agentStatus' && parsed[key] === 'running') {
-          return 'idle';
-        }
-        if (key === 'uploading' && parsed[key] === true) {
-          return false;
-        }
-        if (parsed[key] !== undefined) return parsed[key];
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    return fallback;
-  };
 
   const [uploading, setUploading] = useState(() => getInitialState('uploading', false));
   const [agentStatus, setAgentStatus] = useState(() => getInitialState('agentStatus', 'idle'));
@@ -120,11 +128,14 @@ export default function AiAgentWorkflow() {
       selectedSupplierId,
       pendingRfqData,
       pendingRfqNum,
+      targetPriceInput,
+      targetCurrency,
+      confirmedTargetPrice,
       status: agentStatus, // for compatibility with RfqAssistant listener
       timestamp: new Date().toLocaleTimeString()
     }));
     window.dispatchEvent(new Event('ai_agent_update'));
-  }, [agentStatus, currentStep, parsedData, logs, inventoryStatus, matchedSuppliers, negotiationResult, syncStatus, uploading, realStatusRfq, realQuotes, campaignLogs, selectedSupplierId, pendingRfqData, pendingRfqNum]);
+  }, [agentStatus, currentStep, parsedData, logs, inventoryStatus, matchedSuppliers, negotiationResult, syncStatus, uploading, realStatusRfq, realQuotes, campaignLogs, selectedSupplierId, pendingRfqData, pendingRfqNum, targetPriceInput, targetCurrency, confirmedTargetPrice]);
 
   // Watch for new inbound emails — detect new arrivals for notifications only
   // NOTE: We do NOT auto-fill the price input anymore. The amber badge shows the supplier's quoted price.
@@ -194,6 +205,14 @@ export default function AiAgentWorkflow() {
   };
 
   const handleSettingChange = (name, value) => {
+    if (name === 'autoNegotiation') {
+      setSettings(prev => ({ ...prev, autoNegotiation: value }));
+      if (!value) {
+        setConfirmedTargetPrice(null);
+        setTargetPriceInput('');
+      }
+      return;
+    }
     setSettings(prev => {
       const updated = { ...prev, [name]: value };
       if (name === 'maxNegotiationRounds') {
@@ -205,6 +224,60 @@ export default function AiAgentWorkflow() {
       }
       return updated;
     });
+  };
+
+  const handleConfirmTargetPrice = async () => {
+    const num = parseFloat(targetPriceInput);
+    if (!num || isNaN(num) || num <= 0) {
+      alert("Please enter a valid target price greater than 0.");
+      return;
+    }
+    setConfirmedTargetPrice(num);
+    setShowTargetPriceModal(false);
+
+    if (pendingRecommendationAction) {
+      const action = pendingRecommendationAction;
+      setPendingRecommendationAction(null);
+      setAgentStatus('running');
+      setUploading(true);
+      setCurrentStep(1);
+      
+      const rfqWithTarget = {
+        ...action.rfqData,
+        target_price: num,
+        target_currency: targetCurrency || 'USD',
+        auto_negotiate: true
+      };
+      
+      addLog(`[Auto-Negotiate] Buyer negotiation target set to: ${targetCurrency || 'USD'} ${num.toFixed(2)}`, 'info');
+      await resumeAutonomousWorkflow(rfqWithTarget, action.rfqNum, action.fileName, num, targetCurrency || 'USD');
+      return;
+    }
+
+    if (pendingUploadFile) {
+      const fileToStart = pendingUploadFile;
+      setPendingUploadFile(null);
+      startAutonomousWorkflow(fileToStart, num, targetCurrency);
+    }
+  };
+
+  const handleCancelTargetPrice = () => {
+    setShowTargetPriceModal(false);
+    setPendingUploadFile(null);
+    if (pendingRecommendationAction) {
+      const action = pendingRecommendationAction;
+      setPendingRecommendationAction(null);
+      setAgentStatus('running');
+      setUploading(true);
+      setCurrentStep(1);
+      const rfqWithoutTarget = {
+        ...action.rfqData,
+        target_price: null,
+        auto_negotiate: false
+      };
+      setSettings(prev => ({ ...prev, autoNegotiation: false }));
+      resumeAutonomousWorkflow(rfqWithoutTarget, action.rfqNum, action.fileName, null, targetCurrency || 'USD');
+    }
   };
 
   useEffect(() => {
@@ -244,10 +317,20 @@ export default function AiAgentWorkflow() {
         printedLogsRef.current.add(signature);
         if (l.direction === 'inbound') {
           addLog(`[IMAP Inbound] Received reply from ${l.supplier_name}: "${l.body.slice(0, 80)}..."`, 'info');
-          addLog(`[AI Parse] Extracted quotation metrics: Price=$${l.price}, Lead Time=${l.lead_time} days`, 'success');
+          if (settings.autoNegotiation && confirmedTargetPrice && l.price > 0) {
+            const diff = l.price - confirmedTargetPrice;
+            const diffStr = diff > 0 ? `+$${diff.toFixed(2)}` : (diff === 0 ? `$0.00` : `-$${Math.abs(diff).toFixed(2)}`);
+            addLog(`[AI Parse] Extracted quotation metrics: Supplier Quoted Price=$${l.price.toFixed(2)} | Target Price=$${Number(confirmedTargetPrice).toFixed(2)} (Variance: ${diffStr}) | Lead Time=${l.lead_time} days`, 'success');
+          } else {
+            addLog(`[AI Parse] Extracted quotation metrics: Supplier Quoted Price=$${l.price.toFixed(2)}, Lead Time=${l.lead_time} days`, 'success');
+          }
         } else {
-          addLog(`[AI Negotiation] Target price not met. Generating counter-offer via AI...`, 'info');
-          addLog(`[Resend Outbound] Counter-offer email dispatched to ${l.supplier_name}: Proposed $${l.price}`, 'info');
+          if (settings.autoNegotiation) {
+            addLog(`[AI Negotiation] Target price not met. Generating counter-offer via AI...`, 'info');
+            addLog(`[Resend Outbound] Counter-offer email dispatched to ${l.supplier_name}: Proposed Target $${l.price}`, 'info');
+          } else {
+            addLog(`[Resend Outbound] Email dispatched to ${l.supplier_name}`, 'info');
+          }
         }
       }
     });
@@ -292,9 +375,12 @@ export default function AiAgentWorkflow() {
   }, [realStatusRfq]);
 
   // Run the full autonomous workflow
-  const startAutonomousWorkflow = async (file) => {
+  const startAutonomousWorkflow = async (file, targetPriceOverride = null, currencyOverride = null) => {
     if (!file) return;
     
+    const activeTargetPrice = targetPriceOverride !== null ? targetPriceOverride : (settings.autoNegotiation ? confirmedTargetPrice : null);
+    const activeCurrency = currencyOverride || targetCurrency || 'USD';
+
     setUploading(true);
     setAgentStatus('running');
     setLogs([]);
@@ -315,7 +401,7 @@ export default function AiAgentWorkflow() {
     completedByAgreeRef.current = false; // reset agree completion signal
     
     addLog(`[System Config] Instruction: "${systemPrompt}"`, 'system');
-    addLog(`[System Config] Auto-Negotiation: ${settings.autoNegotiation ? 'ON' : 'OFF'} | Match Threshold: ${settings.matchThreshold} | Auto-Sync ERP: ${settings.autoSyncErp ? 'ON' : 'OFF'}`, 'system');
+    addLog(`[System Config] Auto-Negotiation: ${settings.autoNegotiation ? `ON (Target Price: ${activeCurrency} ${activeTargetPrice ? Number(activeTargetPrice).toFixed(2) : 'Not Specified'})` : 'OFF'} | Match Threshold: ${settings.matchThreshold}% | Auto-Sync ERP: ${settings.autoSyncErp ? 'ON' : 'OFF'}`, 'system');
     
     // STEP 1: PARSING
     addLog(`Step 1/5: Starting AI Document Parser on file: ${file.name}...`, 'info');
@@ -346,7 +432,10 @@ export default function AiAgentWorkflow() {
         specifications: data.specifications || 'Standard specifications',
         priority: 'High',
         delivery_location: data.delivery_location || 'Houston, Texas, USA',
-        remarks: 'Autonomous AI workflow execution'
+        remarks: 'Autonomous AI workflow execution',
+        target_price: settings.autoNegotiation ? activeTargetPrice : null,
+        target_currency: activeCurrency,
+        auto_negotiate: settings.autoNegotiation
       };
 
       if (data.missing_fields && data.missing_fields.length > 0) {
@@ -515,10 +604,18 @@ export default function AiAgentWorkflow() {
         const customEmails = {};
         if (matchedList[0]) customEmails[matchedList[0].id] = settings.testEmail1 || 'sathinath.padhi@petabytz.com';
         if (matchedList[1]) customEmails[matchedList[1].id] = settings.testEmail2 || 'ashok.kumar@petabytz.com';
-        if (matchedList[2]) customEmails[matchedList[2].id] = settings.testEmail3 || 'sathinath.padhi@softstandard.com';
+        const targetToUse = settings.autoNegotiation ? (rfqData.target_price || confirmedTargetPrice) : null;
+        const currencyToUse = rfqData.target_currency || targetCurrency || 'USD';
         
-        await campaignService.launchReal(tempRfqNum, matchedList.map(s => s.id), customEmails);
-        addLog(`[Resend API] Email campaign launched. Dispatching RFQ invitations...`, 'success');
+        await campaignService.launchReal(
+          tempRfqNum,
+          matchedList.map(s => s.id),
+          customEmails,
+          targetToUse,
+          currencyToUse,
+          settings.autoNegotiation
+        );
+        addLog(`[Resend API] Email campaign launched. Auto-Negotiation: ${settings.autoNegotiation ? `ENABLED (Target: ${currencyToUse} ${Number(targetToUse).toFixed(2)})` : 'DISABLED (Direct Quotation)'}`, 'success');
         matchedList.forEach((s, idx) => {
           const dispatchEmails = [settings.testEmail1, settings.testEmail2, settings.testEmail3];
           const dispatchEmail = dispatchEmails[idx] || s.email || 'sathinath.padhi@petabytz.com';
@@ -768,10 +865,6 @@ export default function AiAgentWorkflow() {
   const handleAcceptRfqRecommendations = async () => {
     if (!pendingRfqData || !pendingRfqNum) return;
     
-    setAgentStatus('running');
-    setUploading(true);
-    setCurrentStep(1); // Set current step to Step 2/5 (Inventory check)
-    
     const updatedRfqData = {
       ...pendingRfqData,
       warranty_requirement: '24 Months',
@@ -787,23 +880,46 @@ export default function AiAgentWorkflow() {
     setPendingRfqData(null);
     setPendingRfqNum(null);
     
+    if (settings.autoNegotiation) {
+      setPendingRecommendationAction({
+        rfqData: updatedRfqData,
+        rfqNum: rfNum,
+        fileName: 'Demo RFQ'
+      });
+      setShowTargetPriceModal(true);
+      return;
+    }
+    
+    setAgentStatus('running');
+    setUploading(true);
+    setCurrentStep(1);
     await resumeAutonomousWorkflow(updatedRfqData, rfNum, 'Demo RFQ');
   };
 
   const handleDismissRfqRecommendations = async () => {
     if (!pendingRfqData || !pendingRfqNum) return;
     
-    setAgentStatus('running');
-    setUploading(true);
-    setCurrentStep(1);
-    
     addLog(`[Human Overrode] Proceeding with RFQ as draft without AI suggestions.`, 'warning');
     
     const rfNum = pendingRfqNum;
+    const rfqDraftData = { ...pendingRfqData };
     setPendingRfqData(null);
     setPendingRfqNum(null);
     
-    await resumeAutonomousWorkflow(pendingRfqData, rfNum, 'Demo RFQ');
+    if (settings.autoNegotiation) {
+      setPendingRecommendationAction({
+        rfqData: rfqDraftData,
+        rfqNum: rfNum,
+        fileName: 'Demo RFQ'
+      });
+      setShowTargetPriceModal(true);
+      return;
+    }
+    
+    setAgentStatus('running');
+    setUploading(true);
+    setCurrentStep(1);
+    await resumeAutonomousWorkflow(rfqDraftData, rfNum, 'Demo RFQ');
   };
 
   const COMPLIANCE_SUPPLIERS = [
@@ -1091,7 +1207,7 @@ export default function AiAgentWorkflow() {
           {/* Settings Grid (Flex wrap for responsive auto-scaling across all devices) */}
           <div className="flex flex-wrap gap-4 pt-2">
             <div className="flex-1 min-w-[135px] space-y-1">
-              <label className="text-[10px] font-bold uppercase text-slate-405 block truncate" title="Auto-Negotiation">Auto-Negotiation</label>
+              <label className="text-[10px] font-bold uppercase text-slate-500 block truncate" title="Auto-Negotiation">Auto-Negotiation</label>
               <select
                 value={settings.autoNegotiation ? 'yes' : 'no'}
                 onChange={(e) => handleSettingChange('autoNegotiation', e.target.value === 'yes')}
@@ -1750,23 +1866,55 @@ export default function AiAgentWorkflow() {
                       </div>
                     </div>
                     
-                    {/* Supplier's quoted price — shown as read-only reference */}
+                    {/* Supplier's quoted price & Buyer Target Price breakdown */}
                     {latestInboundPrice !== null && (
-                      <div className="flex flex-col gap-1 mt-1 mb-1 p-2 bg-amber-50/50 border border-amber-200 rounded-lg text-xs font-semibold text-slate-700">
-                        <div className="flex justify-between items-center text-[10px]">
-                          <span className="text-slate-500 uppercase font-bold">Initial Bid:</span>
-                          <span className="font-extrabold text-slate-700">${firstInboundPrice}/unit</span>
-                        </div>
-                        {firstInboundPrice !== latestInboundPrice && (
-                          <div className="flex justify-between items-center text-[10px] border-t border-amber-100/50 pt-1">
-                            <span className="text-emerald-700 uppercase font-bold">Negotiated Bid:</span>
-                            <span className="font-black text-emerald-800">${latestInboundPrice}/unit</span>
+                      <div className="flex flex-col gap-1.5 mt-1 mb-1 p-2.5 bg-amber-50/60 border border-amber-200 rounded-lg text-xs font-semibold text-slate-700">
+                        {settings.autoNegotiation && confirmedTargetPrice ? (
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-center text-[10px]">
+                              <span className="text-blue-700 font-bold uppercase">Buyer Target Price:</span>
+                              <span className="font-extrabold text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                                {targetCurrency} {Number(confirmedTargetPrice).toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center text-[10px]">
+                              <span className="text-amber-700 font-bold uppercase">Supplier Quoted Price:</span>
+                              <span className="font-black text-slate-800 bg-white px-2 py-0.5 rounded border border-amber-200">
+                                {targetCurrency} {latestInboundPrice.toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center text-[9px] border-t border-amber-200/60 pt-1">
+                              <span className="text-slate-500 font-bold uppercase">Variance from Target:</span>
+                              {(() => {
+                                const varVal = latestInboundPrice - confirmedTargetPrice;
+                                const isTargetMet = varVal <= 0;
+                                return (
+                                  <span className={`font-extrabold px-1.5 py-0.2 rounded ${
+                                    isTargetMet ? 'text-emerald-700 bg-emerald-100/70' : 'text-rose-600 bg-rose-100/70'
+                                  }`}>
+                                    {varVal > 0 ? `+${targetCurrency} ${varVal.toFixed(2)} (Above Target)` : varVal === 0 ? `Target Met (Exact)` : `-${targetCurrency} ${Math.abs(varVal).toFixed(2)} (Below Target)`}
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex justify-between items-center text-[10px]">
+                            <span className="text-slate-600 font-bold uppercase">Supplier Quoted Price:</span>
+                            <span className="font-extrabold text-slate-800">${latestInboundPrice.toFixed(2)}/unit</span>
                           </div>
                         )}
-                        <div className="flex justify-between items-center text-[9px] text-amber-600 border-t border-amber-100/50 pt-1">
+                        
+                        {firstInboundPrice !== null && firstInboundPrice !== latestInboundPrice && (
+                          <div className="flex justify-between items-center text-[10px] border-t border-amber-100 pt-1">
+                            <span className="text-slate-400 font-bold uppercase">Initial Quoted:</span>
+                            <span className="text-slate-500 line-through">${firstInboundPrice.toFixed(2)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between items-center text-[9px] text-amber-700 border-t border-amber-100/60 pt-1 font-medium">
                           <span>Lead Time: {latestInboundLeadTime || 14} days</span>
                           {priceDiff && parseFloat(priceDiff) > 0 && (
-                            <span className="text-emerald-600 font-extrabold">Saved: -${priceDiff}/unit ({((parseFloat(priceDiff) / firstInboundPrice) * 100).toFixed(1)}%)</span>
+                            <span className="text-emerald-600 font-extrabold">Negotiated Savings: -${priceDiff}/unit ({((parseFloat(priceDiff) / firstInboundPrice) * 100).toFixed(1)}%)</span>
                           )}
                         </div>
                       </div>
@@ -1774,7 +1922,7 @@ export default function AiAgentWorkflow() {
 
                     <div className="grid grid-cols-2 gap-2 mt-1">
                       <div>
-                        <label className="text-[9px] font-bold text-[#0078d4] block mb-1">YOUR COUNTER-OFFER PRICE (USD)</label>
+                        <label className="text-[9px] font-bold text-[#0078d4] block mb-1">YOUR COUNTER-OFFER PRICE ({targetCurrency || 'USD'})</label>
                         <input
                           type="number"
                           step="0.01"
@@ -2405,114 +2553,156 @@ export default function AiAgentWorkflow() {
               return priceA - priceB;
             });
 
+          const currSymbol = targetCurrency === 'EUR' ? '€' : targetCurrency === 'GBP' ? '£' : targetCurrency === 'AED' ? 'AED ' : targetCurrency === 'SAR' ? 'SAR ' : targetCurrency === 'INR' ? '₹' : '$';
+
           return (
-            <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50 shadow-sm flex flex-col mt-2">
-              {/* Excel Header Toolbar */}
-              <div className="bg-slate-100 border-b border-slate-200 px-3 py-2 flex items-center justify-between text-[10px] text-slate-500 font-bold select-none">
-                <div className="flex items-center gap-1.5">
-                  <span className="bg-[#107c41] text-white px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase">Excel</span>
-                  <span className="text-slate-700 font-bold text-[10px]">live_bid_sheet.xlsx</span>
-                </div>
-                <div className="flex items-center gap-2 font-mono text-[9px] text-[#107c41] font-semibold">
-                  <span>fx = SORT_ASC(PRICE)</span>
-                </div>
-              </div>
+            <div className="w-full border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs mt-2 select-none">
+              <table className="w-full table-fixed border-collapse text-left">
+                {settings.autoNegotiation && confirmedTargetPrice ? (
+                  <colgroup>
+                    <col className="w-[23%]" />
+                    <col className="w-[15%]" />
+                    <col className="w-[15%]" />
+                    <col className="w-[14%]" />
+                    <col className="w-[11%]" />
+                    <col className="w-[11%]" />
+                    <col className="w-[11%]" />
+                  </colgroup>
+                ) : (
+                  <colgroup>
+                    <col className="w-[32%]" />
+                    <col className="w-[20%]" />
+                    <col className="w-[16%]" />
+                    <col className="w-[16%]" />
+                    <col className="w-[16%]" />
+                  </colgroup>
+                )}
 
-              {/* Formula Bar */}
-              <div className="bg-white border-b border-slate-200 px-3 py-1 flex items-center gap-2 text-[10px] font-mono select-none">
-                <span className="text-slate-400 font-bold border-r border-slate-200 pr-2">A1</span>
-                <span className="text-slate-600 truncate font-semibold">Auto-extracting active quotes in real-time...</span>
-              </div>
+                <thead>
+                  {settings.autoNegotiation && confirmedTargetPrice ? (
+                    <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 text-[9px] uppercase tracking-wider">
+                      <th className="px-2 py-1.5 font-bold text-slate-600 truncate">SUPPLIER</th>
+                      <th className="px-1.5 py-1.5 font-bold text-right text-amber-700 truncate">QUOTED ({targetCurrency})</th>
+                      <th className="px-1.5 py-1.5 font-bold text-right text-blue-700 truncate">TARGET ({targetCurrency})</th>
+                      <th className="px-1.5 py-1.5 font-bold text-center text-slate-600 truncate">VARIANCE</th>
+                      <th className="px-1.5 py-1.5 font-bold text-center text-slate-600 truncate">LEAD TIME</th>
+                      <th className="px-1.5 py-1.5 font-bold text-center text-slate-600 truncate">STATUS</th>
+                      <th className="px-1.5 py-1.5 font-bold text-center text-slate-600 truncate">RANK</th>
+                    </tr>
+                  ) : (
+                    <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 text-[9px] uppercase tracking-wider">
+                      <th className="px-2 py-1.5 font-bold text-slate-600 truncate">SUPPLIER</th>
+                      <th className="px-1.5 py-1.5 font-bold text-right text-slate-700 truncate">PRICE ({targetCurrency || 'USD'})</th>
+                      <th className="px-1.5 py-1.5 font-bold text-center text-slate-600 truncate">LEAD TIME</th>
+                      <th className="px-1.5 py-1.5 font-bold text-center text-slate-600 truncate">STATUS</th>
+                      <th className="px-1.5 py-1.5 font-bold text-center text-slate-600 truncate">RANK</th>
+                    </tr>
+                  )}
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {sortedSuppliers.map((s, idx) => {
+                    const { price, leadTime, isCancelled, isAgreed } = s.info;
+                    const isTopBid = idx === 0 && price !== null && !isCancelled;
+                    
+                    let rowBg = "bg-white";
+                    if (isAgreed) rowBg = "bg-emerald-50/50";
+                    else if (isCancelled) rowBg = "bg-rose-50/25 text-slate-400";
+                    else if (isTopBid) rowBg = "bg-amber-50/35";
+                    
+                    const variance = price !== null && confirmedTargetPrice ? (price - Number(confirmedTargetPrice)) : null;
+                    const isTargetMet = variance !== null && variance <= 0;
 
-              {/* Grid Column Indexes (A, B, C, D, E) */}
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left font-sans text-[10px]">
-                  <thead>
-                    <tr className="bg-slate-100 text-slate-400 font-mono text-[8px] border-b border-slate-200 select-none">
-                      <th className="w-8 border-r border-slate-200 px-1 py-0.5 text-center bg-slate-150"></th>
-                      <th className="border-r border-slate-200 px-2 py-0.5 uppercase font-bold text-center">A</th>
-                      <th className="border-r border-slate-200 px-2 py-0.5 uppercase font-bold text-center">B</th>
-                      <th className="border-r border-slate-200 px-2 py-0.5 uppercase font-bold text-center">C</th>
-                      <th className="border-r border-slate-200 px-2 py-0.5 uppercase font-bold text-center">D</th>
-                      <th className="px-2 py-0.5 uppercase font-bold text-center">E</th>
-                    </tr>
-                    <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 select-none text-[9px]">
-                      <th className="w-8 border-r border-slate-200 px-1 py-1 text-center font-mono text-slate-400 bg-slate-100 font-bold"></th>
-                      <th className="border-r border-slate-200 px-2 py-1 font-bold">SUPPLIER</th>
-                      <th className="border-r border-slate-200 px-2 py-1 font-bold text-right">PRICE (USD)</th>
-                      <th className="border-r border-slate-200 px-2 py-1 font-bold text-center">LEAD TIME</th>
-                      <th className="border-r border-slate-200 px-2 py-1 font-bold text-center">STATUS</th>
-                      <th className="px-2 py-1 font-bold text-center">RANKING</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedSuppliers.map((s, idx) => {
-                      const { price, leadTime, isCancelled, isAgreed } = s.info;
-                      const isTopBid = idx === 0 && price !== null && !isCancelled;
-                      
-                      let rowBg = "bg-white";
-                      if (isAgreed) rowBg = "bg-emerald-50/50";
-                      else if (isCancelled) rowBg = "bg-rose-50/20 text-slate-450";
-                      else if (isTopBid) rowBg = "bg-amber-50/30";
-                      
-                      return (
-                        <tr key={s.id} className={`${rowBg} border-b border-slate-200 hover:bg-slate-50/80 transition-colors font-medium`}>
-                          {/* Row Number Index */}
-                          <td className="w-8 border-r border-slate-200 px-1 py-1.5 text-center font-mono select-none text-slate-400 bg-slate-100 font-bold text-[8px]">
-                            {idx + 1}
-                          </td>
-                          {/* Supplier Name */}
-                          <td className="border-r border-slate-200 px-2 py-1.5 font-bold text-slate-700 truncate max-w-[120px]">
-                            {s.name}
-                          </td>
-                          {/* Price */}
-                          <td className="border-r border-slate-200 px-2 py-1.5 text-right font-mono font-bold text-slate-800">
-                            {price !== null ? `$${price.toFixed(2)}` : "—"}
-                          </td>
-                          {/* Lead Time */}
-                          <td className="border-r border-slate-200 px-2 py-1.5 text-center font-semibold text-slate-600">
-                            {leadTime !== null && leadTime !== undefined ? `${leadTime} days` : "—"}
-                          </td>
-                          {/* Status */}
-                          <td className="border-r border-slate-200 px-2 py-1.5 text-center">
-                            {isCancelled ? (
-                              <span className="text-[8px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
-                                Withdrawn
+                    return (
+                      <tr key={s.id} className={`${rowBg} hover:bg-slate-50/80 transition-colors font-medium`}>
+                        {/* Supplier Name */}
+                        <td className="px-2 py-1.5 font-bold text-slate-800 text-[10px] truncate">
+                          {s.name}
+                        </td>
+                        
+                        {/* Supplier Quoted Price */}
+                        <td className="px-1.5 py-1.5 text-right font-mono font-bold text-[10px] truncate">
+                          {price !== null ? (
+                            <span className="text-slate-900">
+                              {currSymbol}{price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300 font-semibold">—</span>
+                          )}
+                        </td>
+                        
+                        {/* Buyer Target Price & Variance */}
+                        {settings.autoNegotiation && confirmedTargetPrice && (
+                          <>
+                            <td className="px-1.5 py-1.5 text-right font-mono font-bold text-[10px] text-blue-700 truncate">
+                              <span>
+                                {currSymbol}{Number(confirmedTargetPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </span>
-                            ) : isAgreed ? (
-                              <span className="text-[8px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-200">
-                                Awarded
-                              </span>
-                            ) : price !== null ? (
-                              <span className="text-[8px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                                Quoted
-                              </span>
-                            ) : (
-                              <span className="text-[8px] font-bold text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200 animate-pulse">
-                                Pending
-                              </span>
-                            )}
-                          </td>
-                          {/* Ranking Badge */}
-                          <td className="px-2 py-1.5 text-center font-bold">
-                            {isCancelled ? (
-                              <span className="text-slate-400 font-medium">N/A</span>
-                            ) : isTopBid ? (
-                              <span className="text-[8px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 px-1.5 py-0.5 rounded-full shadow-sm whitespace-nowrap">
-                                🏆 Best Bid
-                              </span>
-                            ) : (
-                              <span className="text-[8px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full">
-                                #{idx + 1}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                            </td>
+                            <td className="px-1 py-1.5 text-center font-mono text-[9px] truncate">
+                              {variance !== null ? (
+                                <span className={`inline-block font-bold px-1.5 py-0.5 rounded ${
+                                  isTargetMet 
+                                    ? 'text-emerald-700 bg-emerald-100/80' 
+                                    : 'text-rose-700 bg-rose-100/80'
+                                }`}>
+                                  {variance > 0 
+                                    ? `+${currSymbol}${variance.toFixed(0)}` 
+                                    : variance === 0 
+                                      ? `${currSymbol}0` 
+                                      : `-${currSymbol}${Math.abs(variance).toFixed(0)}`}
+                                </span>
+                              ) : (
+                                <span className="text-slate-300 font-bold">—</span>
+                              )}
+                            </td>
+                          </>
+                        )}
+                        
+                        {/* Lead Time */}
+                        <td className="px-1.5 py-1.5 text-center text-[10px] text-slate-600 truncate font-semibold">
+                          {leadTime !== null && leadTime !== undefined ? `${leadTime}d` : "—"}
+                        </td>
+                        
+                        {/* Status */}
+                        <td className="px-1 py-1.5 text-center truncate">
+                          {isCancelled ? (
+                            <span className="inline-block text-[8px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                              Withdrawn
+                            </span>
+                          ) : isAgreed ? (
+                            <span className="inline-block text-[8px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-250">
+                              Awarded
+                            </span>
+                          ) : price !== null ? (
+                            <span className="inline-block text-[8px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                              Quoted
+                            </span>
+                          ) : (
+                            <span className="inline-block text-[8px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 animate-pulse">
+                              Pending
+                            </span>
+                          )}
+                        </td>
+                        
+                        {/* Ranking Badge */}
+                        <td className="px-1 py-1.5 text-center truncate">
+                          {isCancelled ? (
+                            <span className="text-slate-300 font-bold text-[9px]">—</span>
+                          ) : isTopBid ? (
+                            <span className="inline-block text-[8px] font-extrabold text-emerald-800 bg-emerald-50 border border-emerald-300 px-1.5 py-0.5 rounded-full shadow-2xs">
+                              🏆 Best
+                            </span>
+                          ) : (
+                            <span className="inline-block text-[8px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full">
+                              #{idx + 1}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           );
         })()}
@@ -2536,8 +2726,8 @@ export default function AiAgentWorkflow() {
       </div>
 
       {/* Supplier Compliance Governance Modal */}
-      {showComplianceModal && complianceModalSupplier && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+      {showComplianceModal && complianceModalSupplier && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white border border-slate-250 rounded-3xl p-6 shadow-2xl max-w-lg w-full space-y-5 transform scale-100 transition-all">
             
             {/* Modal Header */}
@@ -2682,18 +2872,138 @@ export default function AiAgentWorkflow() {
             </div>
 
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Auto-Negotiate Target Price Modal */}
+      {showTargetPriceModal && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[999999] overflow-y-auto bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 select-none">
+          <div className="relative bg-white rounded-2xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-200 text-left space-y-5 my-auto animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-150">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-[#0078d4] shadow-xs">
+                  <TrendingUp size={22} />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-800 leading-tight">Auto-Negotiation Target Price</h3>
+                  <span className="text-[11px] text-slate-400 font-semibold">ProcureX AI Negotiation Engine</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelTargetPrice}
+                className="text-slate-400 hover:text-slate-700 rounded-lg p-1.5 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Prompt Question */}
+            <div className="space-y-1.5">
+              <h4 className="text-sm font-bold text-slate-900 leading-snug">
+                What target price do you want to negotiate for?
+              </h4>
+              <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                ProcureX will dispatch tailored outreach emails requiring suppliers to provide their quotation around this target price and evaluate incoming bids against it.
+              </p>
+            </div>
+
+            {/* Target Price & Currency Input */}
+            <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2 space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase text-slate-500 block tracking-wider">
+                    Target Price <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative flex items-center">
+                    <span className="absolute left-3 text-slate-400 font-extrabold text-sm pointer-events-none">
+                      {targetCurrency === 'USD' ? '$' : targetCurrency === 'EUR' ? '€' : targetCurrency === 'GBP' ? '£' : targetCurrency === 'AED' ? 'AED' : targetCurrency === 'SAR' ? 'SAR' : '₹'}
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="1"
+                      autoFocus
+                      placeholder="e.g. 950"
+                      value={targetPriceInput}
+                      onChange={(e) => setTargetPriceInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleConfirmTargetPrice();
+                        if (e.key === 'Escape') handleCancelTargetPrice();
+                      }}
+                      className="w-full text-base font-extrabold pl-8 pr-3 py-2.5 bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#0078d4] focus:ring-2 focus:ring-blue-100 text-slate-800 shadow-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="col-span-1 space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase text-slate-500 block tracking-wider">
+                    Currency
+                  </label>
+                  <select
+                    value={targetCurrency}
+                    onChange={(e) => setTargetCurrency(e.target.value)}
+                    className="w-full text-xs font-bold px-2.5 py-3 bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-[#0078d4] text-slate-800 cursor-pointer shadow-xs"
+                  >
+                    <option value="USD">USD ($)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="GBP">GBP (£)</option>
+                    <option value="AED">AED (د.إ)</option>
+                    <option value="SAR">SAR (﷼)</option>
+                    <option value="INR">INR (₹)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Quick Preset Chips */}
+              <div className="flex items-center gap-1.5 pt-1.5 flex-wrap">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Presets:</span>
+                {[850, 950, 1050, 1200].map(val => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setTargetPriceInput(val.toString())}
+                    className="text-[11px] font-bold px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-blue-50 hover:border-blue-300 hover:text-[#0078d4] text-slate-600 transition-colors shadow-2xs cursor-pointer"
+                  >
+                    ${val}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleCancelTargetPrice}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-3 px-4 rounded-xl transition-colors cursor-pointer border border-slate-200 text-center"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmTargetPrice}
+                className="flex-1 bg-[#0078d4] hover:bg-[#106ebe] text-white font-bold text-xs py-3 px-4 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer text-center"
+              >
+                <Check size={16} /> Confirm / Start Negotiation
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Maximized Live Logs Modal */}
-      {isLogsMaximized && (() => {
+      {isLogsMaximized && typeof document !== 'undefined' && createPortal((() => {
         const filteredLogs = logs.filter(log => 
           log.message.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
           log.timestamp.toLowerCase().includes(logSearchQuery.toLowerCase())
         );
         
         return (
-          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[9999] flex items-center justify-center p-4 md:p-6 transition-all duration-300">
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[999999] flex items-center justify-center p-4 md:p-6 transition-all duration-300">
             <div className="bg-slate-900 border border-slate-800 w-full max-w-6xl h-[85vh] rounded-2xl flex flex-col overflow-hidden shadow-2xl shadow-blue-900/15 transform transition-all duration-300 scale-100">
               
               {/* Modal Header */}
@@ -2798,7 +3108,7 @@ export default function AiAgentWorkflow() {
             </div>
           </div>
         );
-      })()}
+      })(), document.body)}
 
     </div>
   );

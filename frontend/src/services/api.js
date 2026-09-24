@@ -100,7 +100,15 @@ export const copilotService = {
 
 export const campaignService = {
   simulate: (rfqNumber) => api.post('/api/campaign/simulate', { rfq_number: rfqNumber }),
-  launchReal: (rfqNumber, supplierIds, customEmails) => api.post('/api/campaign/launch-real', { rfq_number: rfqNumber, supplier_ids: supplierIds, custom_emails: customEmails }),
+  launchReal: (rfqNumber, supplierIds, customEmails, targetPrice = null, targetCurrency = 'USD', autoNegotiate = true) =>
+    api.post('/api/campaign/launch-real', {
+      rfq_number: rfqNumber,
+      supplier_ids: supplierIds,
+      custom_emails: customEmails,
+      target_price: targetPrice,
+      target_currency: targetCurrency,
+      auto_negotiate: autoNegotiate
+    }),
   injectMockReply: (rfqNumber, supplierId, price, leadTime, paymentTerms, rejected, agreed, toEmail) => api.post('/api/campaign/inject-mock-reply', { rfq_number: rfqNumber, supplier_id: supplierId, price, lead_time: leadTime, payment_terms: paymentTerms, rejected, agreed, to_email: toEmail || '' }),
   agreeToPrice: (rfqNumber, supplierId, price, leadTime, paymentTerms) =>
     api.post('/api/campaign/agree-to-price', {

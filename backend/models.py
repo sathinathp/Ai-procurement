@@ -54,6 +54,9 @@ class RFQ(Base):
     delivery_tolerance = Column(String(255), nullable=True)
     status = Column(String(100), default="Created") 
     # Statuses: Created, RFQ Sent, Responses Received, Under Comparison, Approved, PO Generated
+    target_price = Column(Float, nullable=True)
+    target_currency = Column(String(10), default="USD")
+    auto_negotiate = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     quotes = relationship("QuoteResponse", back_populates="rfq", cascade="all, delete-orphan")
@@ -272,6 +275,7 @@ class NegotiationLog(Base):
     sent_at = Column(DateTime, default=datetime.utcnow)
     # True once supplier has replied for this round
     reply_received = Column(Boolean, default=False)
+    is_final = Column(Boolean, default=False)
     supplier = relationship("Supplier")
 
 
