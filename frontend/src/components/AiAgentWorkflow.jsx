@@ -2565,41 +2565,37 @@ export default function AiAgentWorkflow() {
               <table className="w-full table-fixed border-collapse text-left">
                 {settings.autoNegotiation && confirmedTargetPrice ? (
                   <colgroup>
-                    <col className="w-[23%]" />
-                    <col className="w-[15%]" />
-                    <col className="w-[15%]" />
+                    <col className="w-[26%]" />
+                    <col className="w-[18%]" />
+                    <col className="w-[18%]" />
                     <col className="w-[14%]" />
-                    <col className="w-[11%]" />
-                    <col className="w-[11%]" />
-                    <col className="w-[11%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[12%]" />
                   </colgroup>
                 ) : (
                   <colgroup>
-                    <col className="w-[32%]" />
-                    <col className="w-[20%]" />
-                    <col className="w-[16%]" />
-                    <col className="w-[16%]" />
-                    <col className="w-[16%]" />
+                    <col className="w-[40%]" />
+                    <col className="w-[24%]" />
+                    <col className="w-[18%]" />
+                    <col className="w-[18%]" />
                   </colgroup>
                 )}
 
                 <thead>
                   {settings.autoNegotiation && confirmedTargetPrice ? (
                     <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 text-[9px] uppercase tracking-wider">
-                      <th className="px-2 py-1.5 font-bold text-slate-600 truncate">SUPPLIER</th>
-                      <th className="px-1.5 py-1.5 font-bold text-right text-amber-700 truncate">QUOTED ({targetCurrency})</th>
-                      <th className="px-1.5 py-1.5 font-bold text-right text-blue-700 truncate">TARGET ({targetCurrency})</th>
+                      <th className="px-2.5 py-1.5 font-bold text-slate-600 truncate">SUPPLIER</th>
+                      <th className="px-2 py-1.5 font-bold text-right text-amber-700 truncate">QUOTED ({targetCurrency})</th>
+                      <th className="px-2 py-1.5 font-bold text-right text-blue-700 truncate">TARGET ({targetCurrency})</th>
                       <th className="px-1.5 py-1.5 font-bold text-center text-slate-600 truncate">VARIANCE</th>
                       <th className="px-1.5 py-1.5 font-bold text-center text-slate-600 truncate">LEAD TIME</th>
-                      <th className="px-1.5 py-1.5 font-bold text-center text-slate-600 truncate">STATUS</th>
                       <th className="px-1.5 py-1.5 font-bold text-center text-slate-600 truncate">RANK</th>
                     </tr>
                   ) : (
                     <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 text-[9px] uppercase tracking-wider">
-                      <th className="px-2 py-1.5 font-bold text-slate-600 truncate">SUPPLIER</th>
-                      <th className="px-1.5 py-1.5 font-bold text-right text-slate-700 truncate">PRICE ({targetCurrency || 'USD'})</th>
+                      <th className="px-2.5 py-1.5 font-bold text-slate-600 truncate">SUPPLIER</th>
+                      <th className="px-2 py-1.5 font-bold text-right text-slate-700 truncate">PRICE ({targetCurrency || 'USD'})</th>
                       <th className="px-1.5 py-1.5 font-bold text-center text-slate-600 truncate">LEAD TIME</th>
-                      <th className="px-1.5 py-1.5 font-bold text-center text-slate-600 truncate">STATUS</th>
                       <th className="px-1.5 py-1.5 font-bold text-center text-slate-600 truncate">RANK</th>
                     </tr>
                   )}
@@ -2620,12 +2616,12 @@ export default function AiAgentWorkflow() {
                     return (
                       <tr key={s.id} className={`${rowBg} hover:bg-slate-50/80 transition-colors font-medium`}>
                         {/* Supplier Name */}
-                        <td className="px-2 py-1.5 font-bold text-slate-800 text-[10px] truncate">
+                        <td className="px-2.5 py-1.5 font-bold text-slate-800 text-[10px] truncate">
                           {s.name}
                         </td>
                         
                         {/* Supplier Quoted Price */}
-                        <td className="px-1.5 py-1.5 text-right font-mono font-bold text-[10px] truncate">
+                        <td className="px-2 py-1.5 text-right font-mono font-bold text-[10px] truncate">
                           {price !== null ? (
                             <span className="text-slate-900">
                               {currSymbol}{price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -2638,12 +2634,12 @@ export default function AiAgentWorkflow() {
                         {/* Buyer Target Price & Variance */}
                         {settings.autoNegotiation && confirmedTargetPrice && (
                           <>
-                            <td className="px-1.5 py-1.5 text-right font-mono font-bold text-[10px] text-blue-700 truncate">
+                            <td className="px-2 py-1.5 text-right font-mono font-bold text-[10px] text-blue-700 truncate">
                               <span>
                                 {currSymbol}{Number(confirmedTargetPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </span>
                             </td>
-                            <td className="px-1 py-1.5 text-center font-mono text-[9px] truncate">
+                            <td className="px-1.5 py-1.5 text-center font-mono text-[9px] truncate">
                               {variance !== null ? (
                                 <span className={`inline-block font-bold px-1.5 py-0.5 rounded ${
                                   isTargetMet 
@@ -2668,29 +2664,8 @@ export default function AiAgentWorkflow() {
                           {leadTime !== null && leadTime !== undefined ? `${leadTime}d` : "—"}
                         </td>
                         
-                        {/* Status */}
-                        <td className="px-1 py-1.5 text-center truncate">
-                          {isCancelled ? (
-                            <span className="inline-block text-[8px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
-                              Withdrawn
-                            </span>
-                          ) : isAgreed ? (
-                            <span className="inline-block text-[8px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-250">
-                              Awarded
-                            </span>
-                          ) : price !== null ? (
-                            <span className="inline-block text-[8px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
-                              Quoted
-                            </span>
-                          ) : (
-                            <span className="inline-block text-[8px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 animate-pulse">
-                              Pending
-                            </span>
-                          )}
-                        </td>
-                        
                         {/* Ranking Badge */}
-                        <td className="px-1 py-1.5 text-center truncate">
+                        <td className="px-1.5 py-1.5 text-center truncate">
                           {isCancelled ? (
                             <span className="text-slate-300 font-bold text-[9px]">—</span>
                           ) : isTopBid ? (
