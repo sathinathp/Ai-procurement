@@ -604,6 +604,7 @@ export default function AiAgentWorkflow() {
         const customEmails = {};
         if (matchedList[0]) customEmails[matchedList[0].id] = settings.testEmail1 || 'sathinath.padhi@petabytz.com';
         if (matchedList[1]) customEmails[matchedList[1].id] = settings.testEmail2 || 'ashok.kumar@petabytz.com';
+        if (matchedList[2]) customEmails[matchedList[2].id] = settings.testEmail3 || 'sathinath.padhi@softstandard.com';
         const targetToUse = settings.autoNegotiation ? (rfqData.target_price || confirmedTargetPrice) : null;
         const currencyToUse = rfqData.target_currency || targetCurrency || 'USD';
         
@@ -615,13 +616,13 @@ export default function AiAgentWorkflow() {
           currencyToUse,
           settings.autoNegotiation
         );
-        addLog(`[Resend API] Email campaign launched. Auto-Negotiation: ${settings.autoNegotiation ? `ENABLED (Target: ${currencyToUse} ${Number(targetToUse).toFixed(2)})` : 'DISABLED (Direct Quotation)'}`, 'success');
+        addLog(`[Outreach Engine] Email campaign launched. Auto-Negotiation: ${settings.autoNegotiation ? `ENABLED (Target: ${currencyToUse} ${Number(targetToUse).toFixed(2)})` : 'DISABLED (Direct Quotation)'}`, 'success');
         matchedList.forEach((s, idx) => {
-          const dispatchEmails = [settings.testEmail1, settings.testEmail2, settings.testEmail3];
-          const dispatchEmail = dispatchEmails[idx] || s.email || 'sathinath.padhi@petabytz.com';
-          addLog(`[Resend Outbound] RFQ Invite dispatched to: ${dispatchEmail} (${s.name})`, 'info');
+          const dispatchEmails = [settings.testEmail1 || 'sathinath.padhi@petabytz.com', settings.testEmail2 || 'ashok.kumar@petabytz.com', settings.testEmail3 || 'sathinath.padhi@softstandard.com'];
+          const dispatchEmail = customEmails[s.id] || dispatchEmails[idx] || s.email;
+          addLog(`[SMTP Outbound] RFQ Invite dispatched to: ${dispatchEmail} (${s.name})`, 'info');
         });
-        addLog(`[IMAP Listener] Listening for supplier replies via WebSocket...`, 'info');
+        addLog(`[IMAP Listener] Listening for supplier replies via real-time channel...`, 'info');
         
         await new Promise((resolve, reject) => {
           const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:9000';
@@ -795,6 +796,10 @@ export default function AiAgentWorkflow() {
       }
 
       if (!finalData && !completedByAgreeRef.current) {
+        if (settings.realTimeOutreach) {
+          // In real-time outreach mode, the agent stays active in Step 3 listening for incoming supplier emails
+          return;
+        }
         throw new Error("Workflow aborted or negotiation failed.");
       }
       let bestBid = finalData.shortlist && finalData.shortlist.length > 0 ? finalData.shortlist[0] : null;

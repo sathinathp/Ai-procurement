@@ -65,7 +65,64 @@ def save_agent_settings(settings):
 
 
 def send_real_email_direct(to_email: str, subject: str, body: str, attachment_path: str = None) -> bool:
-    """Send real emails with optional attachments using Resend API if configured, otherwise fallback to SMTP."""
+    """Send real emails to the exact destination recipient using SMTP if configured, otherwise Resend API."""
+    to_email = to_email.strip()
+    
+    # 1. Prioritize standard SMTP if credentials are configured in .env
+    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    try:
+        smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    except ValueError:
+        smtp_port = 587
+    smtp_username = os.getenv("SMTP_USERNAME")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+
+    if smtp_username and smtp_password and "YOUR_EMAIL" not in smtp_username and "YOUR_APP" not in smtp_password:
+        try:
+            msg = MIMEMultipart()
+            from_display = "ProcureX Copilot"
+            msg['From'] = f'"{from_display}" <{smtp_username}>'
+            msg['To'] = to_email
+            msg['Subject'] = subject
+            
+            # Standard headers
+            msg['MIME-Version'] = '1.0'
+            import email.utils
+            msg['Message-ID'] = email.utils.make_msgid(domain='gmail.com')
+            msg['Date'] = email.utils.formatdate(localtime=True)
+            
+            msg.attach(MIMEText(body, 'plain'))
+
+            # Attach file if provided and exists
+            if attachment_path and os.path.exists(attachment_path):
+                from email.mime.base import MIMEBase
+                from email import encoders
+                filename = os.path.basename(attachment_path)
+                try:
+                    with open(attachment_path, "rb") as f:
+                        part = MIMEBase("application", "octet-stream")
+                        part.set_payload(f.read())
+                    encoders.encode_base64(part)
+                    part.add_header(
+                        "Content-Disposition",
+                        f"attachment; filename={filename}",
+                    )
+                    msg.attach(part)
+                    logger.info(f"[SMTP Direct] Successfully attached file {filename} to email.")
+                except Exception as attach_err:
+                    logger.error(f"[SMTP Direct] Error attaching file {filename}: {attach_err}")
+
+            server = smtplib.SMTP(smtp_server, smtp_port, timeout=15)
+            server.starttls()
+            server.login(smtp_username, smtp_password)
+            server.sendmail(smtp_username, to_email, msg.as_string())
+            server.close()
+            logger.info(f"[SMTP Direct] Email successfully delivered directly to {to_email}")
+            return True
+        except Exception as smtp_err:
+            logger.error(f"[SMTP Direct] Error delivering to {to_email}: {smtp_err}. Attempting API fallback...")
+
+    # 2. Resend API Fallback
     resend_key = os.getenv("RESEND_API_KEY")
     if resend_key and "YOUR_" not in resend_key and resend_key.strip():
         try:
@@ -75,13 +132,6 @@ def send_real_email_direct(to_email: str, subject: str, body: str, attachment_pa
             resend_from = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev")
             if not resend_from or not resend_from.strip():
                 resend_from = "onboarding@resend.dev"
-                
-            # If using Resend sandbox (onboarding@resend.dev), Resend restricts recipients to the registered developer email.
-            # Reroute outbound emails to sathinath.padhi@petabytz.com and tag the subject for seamless testing.
-            if resend_from == "onboarding@resend.dev" and to_email.strip().lower() != "sathinath.padhi@petabytz.com":
-                logger.info(f"[Resend] Rerouting email from {to_email} to registered account owner sathinath.padhi@petabytz.com due to sandbox restrictions.")
-                subject = f"[Rerouted from {to_email}] {subject}"
-                to_email = "sathinath.padhi@petabytz.com"
 
             from_display = "ProcureX Copilot"
             from_header = f'"{from_display}" <{resend_from}>'
@@ -113,69 +163,12 @@ def send_real_email_direct(to_email: str, subject: str, body: str, attachment_pa
                 logger.info(f"[Resend] Email successfully sent to {to_email}")
                 return True
             else:
-                logger.error(f"[Resend] Failed to send email via API: {response.text}")
-                # Fallback to SMTP
+                logger.error(f"[Resend] Failed to send email via API to {to_email}: {response.text}")
         except Exception as e:
-            logger.error(f"[Resend] Exception sending email via API: {e}")
-            # Fallback to SMTP
+            logger.error(f"[Resend] Exception sending email via API to {to_email}: {e}")
 
-    # SMTP Fallback
-    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-    try:
-        smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    except ValueError:
-        smtp_port = 587
-    smtp_username = os.getenv("SMTP_USERNAME")
-    smtp_password = os.getenv("SMTP_PASSWORD")
-
-    if not smtp_username or not smtp_password or "YOUR_EMAIL" in smtp_username or "YOUR_APP" in smtp_password:
-        logger.info(f"[SMTP Direct] Credentials not configured. Mocking email to {to_email} (attachment: {attachment_path})")
-        return False
-
-    try:
-        msg = MIMEMultipart()
-        from_display = "ProcureX Copilot"
-        msg['From'] = f'"{from_display}" <{smtp_username}>'
-        msg['To'] = to_email
-        msg['Subject'] = subject
-        
-        # Standard headers
-        msg['MIME-Version'] = '1.0'
-        import email.utils
-        msg['Message-ID'] = email.utils.make_msgid(domain='gmail.com')
-        msg['Date'] = email.utils.formatdate(localtime=True)
-        
-        msg.attach(MIMEText(body, 'plain'))
-
-        # Attach file if provided and exists
-        if attachment_path and os.path.exists(attachment_path):
-            from email.mime.base import MIMEBase
-            from email import encoders
-            filename = os.path.basename(attachment_path)
-            try:
-                with open(attachment_path, "rb") as f:
-                    part = MIMEBase("application", "octet-stream")
-                    part.set_payload(f.read())
-                encoders.encode_base64(part)
-                part.add_header(
-                    "Content-Disposition",
-                    f"attachment; filename={filename}",
-                )
-                msg.attach(part)
-                logger.info(f"[SMTP Direct] Successfully attached file {filename} to email.")
-            except Exception as attach_err:
-                logger.error(f"[SMTP Direct] Error attaching file {filename}: {attach_err}")
-
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(smtp_username, smtp_password)
-        server.sendmail(smtp_username, to_email, msg.as_string())
-        server.close()
-        logger.info(f"[SMTP Direct] Email successfully sent to {to_email}")
-        return True
-    except Exception as e:
-        logger.error(f"[SMTP Direct] Failed to send email to {to_email}: {e}")
-        return False
+    logger.info(f"[Email Dispatch] No active SMTP or API credentials configured to deliver to {to_email}.")
+    return False
 
 
 def ai_extract_from_body(body_text: str) -> dict:
